@@ -68,15 +68,22 @@ rulego.Registry.Register(&MyNode{})
 
 ## 贡献
 
-`RuleGo` 旨在创建一个开放的、丰富的生态系统，欢迎贡献扩展组件。如果您提交的组件代码没有第三方依赖或者是通用性组件请提交到[github.com/rulego/rulego/components](https://github.com/rulego/rulego) 下的内置`components`,
-否则提交到本仓库。     
+`RuleGo` 的核心特性是组件化，所有业务逻辑都是组件，并能灵活配置和重用它们。目前，`RuleGo` 已经内置了一些常用的组件，如消息类型 Switch, JavaScript Switch, JavaScript 过滤器, JavaScript 转换器, HTTP 推送, MQTT 推送, 发送邮件, 日志记录 等组件。      
+但是，我们知道这些组件还远远不能满足所有用户的需求，所以我们希望能有更多的开发者为 RuleGo 贡献扩展组件，让 RuleGo 的生态更加丰富和强大。     
 
-我们也欢迎任何形式的贡献，包括提交问题、建议、文档、测试或代码。请遵循以下步骤：
+如果你对 RuleGo 感兴趣，并且想要为它贡献扩展组件，你可以参考以下步骤：
 
-* 克隆项目仓库到本地
-* 创建一个新的分支并进行修改
-* 提交一个合并请求到主分支
-* 等待审核和反馈
+- 阅读 RuleGo 的 [文档](https://github.com/rulego/rulego) ，了解其架构、特性和使用方法。
+- Fork RuleGo 的 [仓库](https://github.com/rulego/rulego) ，并 clone 到本地。
+- 参考 RuleGo 的 [示例](https://github.com/rulego/rulego/tree/main/components) ，编写你自己的扩展组件，并实现相应的接口和方法。
+- 在本地测试你的扩展组件，确保其功能正常且无误。
+- 提交你的代码，并发起 pull request，我们会尽快审核并合并你的贡献。
+- 在 GitHub/Gitee 上给 RuleGo 项目点个星星，让更多的人知道它。
+
+我们非常欢迎和感谢任何形式的贡献，无论是代码、文档、建议还是反馈。我们相信，有了你们的支持，RuleGo 会成为一个更好的规则引擎和事件处理框架。谢谢！
+
+如果您提交的组件代码没有第三方依赖或者是通用性组件请提交到：[github.com/rulego/rulego](https://github.com/rulego/rulego) 下的内置`components`,
+否则提交到本仓库：[rulego-components](https://github.com/rulego/rulego-components) 。
 
 ## 交流群
 

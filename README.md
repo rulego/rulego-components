@@ -68,15 +68,21 @@ Then use your component in the rule chain DSL file
 
 ## Contributing
 
-`RuleGo` aims to create an open and rich ecosystem, and welcomes contributions of extension components. If the component you submit has no third-party dependencies or is a general-purpose component, please submit it to [github.com/rulego/rulego/components](https://github.com/rulego/rulego) under the built-in `components`,
-otherwise submit it to this repository.
+The core feature of `RuleGo` is componentization, where all business logic is composed of components, and they can be flexibly configured and reused. Currently, `RuleGo` has built-in some common components, such as message type Switch, JavaScript Switch, JavaScript Filter, JavaScript Transformer, HTTP Push, MQTT Push, Send Email, Log Record and so on.      
+However, we know that these components are far from meeting the needs of all users, so we hope to have more developers contribute to RuleGo's extension components, making RuleGo's ecosystem more rich and powerful.     
 
-We also welcome any form of contribution, including submitting issues, suggestions, documentation, tests or code. Please follow these steps:
+If you are interested in RuleGo and want to contribute to its extension components, you can follow these steps:
 
-* Clone the project repository to your local machine
-* Create a new branch and make your changes
-* Submit a merge request to the main branch
-* Wait for review and feedback
+- Read RuleGo's [documentation](https://github.com/rulego/rulego)  , and learn about its architecture, features and usage.
+- Fork RuleGo's [repository](https://github.com/rulego/rulego)  , and clone it to your local machine.
+- Refer to RuleGo's [examples](https://github.com/rulego/rulego/tree/main/components) , and write your own extension component, implementing the corresponding interfaces and methods.
+- Test your extension component locally, and make sure it works properly and correctly.
+- Submit your code and create a pull request, we will review and merge your contribution as soon as possible.
+- Give a star to the RuleGo project on GitHub/Gitee, and let more people know about it.
+
+We welcome and appreciate any form of contribution, whether it is code, documentation, suggestion or feedback. We believe that with your support, RuleGo will become a better rule engine and event processing framework. Thank you!
+
+If the component code you submit has no third-party dependencies or is a general-purpose component, please submit it to the built-in `components` under [github.com/rulego/rulego](https://github.com/rulego/rulego) , otherwise submit it to this repository: [rulego-components](https://github.com/rulego/rulego-components) .
 
 ## License
 
