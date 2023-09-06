@@ -19,7 +19,7 @@ package main
 import (
 	"fmt"
 	"github.com/rulego/rulego"
-	"github.com/rulego/rulego-components/redis"
+	"github.com/rulego/rulego-components/external/redis"
 	"github.com/rulego/rulego/api/types"
 	"time"
 )
