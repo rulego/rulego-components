@@ -46,7 +46,8 @@ type ClientNodeConfiguration struct {
 //成功：转向Success链，redis执行结果存放在msg.Data
 //失败：转向Failure链
 type ClientNode struct {
-	config      ClientNodeConfiguration
+	//节点配置
+	Config      ClientNodeConfiguration
 	redisClient *redis.Client
 }
 
@@ -61,11 +62,11 @@ func (x *ClientNode) New() types.Node {
 
 // Init 初始化组件
 func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
-	err := maps.Map2Struct(configuration, &x.config)
+	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
 		x.redisClient = redis.NewClient(&redis.Options{
-			Addr:     x.config.Server,
-			PoolSize: x.config.PoolSize,
+			Addr:     x.Config.Server,
+			PoolSize: x.Config.PoolSize,
 		})
 		err = x.redisClient.Ping().Err()
 	}
@@ -78,9 +79,9 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) error {
 	var err error
 
 	var args []interface{}
-	cmd := x.SprintfDict(x.config.Cmd, msg)
+	cmd := x.SprintfDict(x.Config.Cmd, msg)
 	args = append(args, cmd)
-	for _, item := range x.config.Params {
+	for _, item := range x.Config.Params {
 		if itemStr, ok := item.(string); ok {
 			args = append(args, x.SprintfDict(itemStr, msg))
 		} else {
