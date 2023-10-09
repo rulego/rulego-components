@@ -108,7 +108,7 @@ var chainJsonFile = `
           "cmd": "SET",
           "params": ["${key}", "$data"],
           "poolSize": 10,
-          "Server": "192.168.82.82:6379"
+          "Server": "192.168.1.1:6379"
         }
       },
 	{
@@ -120,7 +120,7 @@ var chainJsonFile = `
           "cmd": "SET",
           "params": ["${key}", "${value}"],
           "poolSize": 10,
-          "Server": "192.168.82.82:6379"
+          "Server": "192.168.1.1:6379"
         }
       }
     ],
