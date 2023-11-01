@@ -68,7 +68,7 @@ func TestRedisClientSetFromData(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
 	configuration["Cmd"] = "SET"
-	configuration["Params"] = []interface{}{"${key}", "$data"}
+	configuration["Params"] = []interface{}{"${key}", "${msg.data}"}
 	configuration["PoolSize"] = 10
 	configuration["Server"] = "192.168.1.1:6379"
 	config := types.NewConfig()

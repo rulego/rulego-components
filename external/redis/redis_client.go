@@ -23,18 +23,15 @@ import (
 	"github.com/rulego/rulego/utils/str"
 )
 
-const (
-	DataKey = "$data"
-	TypeKey = "$type"
-)
-
 // ClientNodeConfiguration 节点配置
 type ClientNodeConfiguration struct {
 	// Cmd 执行命令，例如SET/GET/DEL
-	//可以使用${}占位符读取metadata元数据，其中$data和$type是预留字段，分别代表msg payload和msg type
+	// 可以使用${}占位符读取metadata元数据
+	// 支持${msg.data}获取消息负荷，${msg.type}获取消息类型
 	Cmd string
 	// Params 执行命令参数
-	//可以使用${}占位符读取metadata元数据，其中$data和$type是预留字段，分别代表msg payload和msg type
+	// 可以使用${}占位符读取metadata元数据
+	// 支持${msg.data}获取消息负荷，${msg.type}获取消息类型
 	Params []interface{}
 	// PoolSize 连接池大小
 	PoolSize int
@@ -77,13 +74,16 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) error {
 	var data interface{}
 	var err error
+	metadataCopy := msg.Metadata.Copy()
+	metadataCopy.PutValue("msg.data", msg.Data)
+	metadataCopy.PutValue("msg.type", msg.Type)
 
 	var args []interface{}
-	cmd := x.SprintfDict(x.Config.Cmd, msg)
+	cmd := str.SprintfDict(x.Config.Cmd, metadataCopy.Values())
 	args = append(args, cmd)
 	for _, item := range x.Config.Params {
 		if itemStr, ok := item.(string); ok {
-			args = append(args, x.SprintfDict(itemStr, msg))
+			args = append(args, str.SprintfDict(itemStr, metadataCopy.Values()))
 		} else {
 			args = append(args, item)
 		}
@@ -105,17 +105,5 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) error {
 func (x *ClientNode) Destroy() {
 	if x.redisClient != nil {
 		_ = x.redisClient.Close()
-	}
-}
-
-//SprintfDict 执行占位符变量替换
-//${}占位符读取metadata元数据，其中$data和$type是预留字段，分别代表msg payload和msg type
-func (x *ClientNode) SprintfDict(value string, msg types.RuleMsg) string {
-	if value == DataKey {
-		return msg.Data
-	} else if value == TypeKey {
-		return msg.Type
-	} else {
-		return str.SprintfDict(value, msg.Metadata.Values())
 	}
 }
