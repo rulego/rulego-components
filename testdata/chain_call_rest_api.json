@@ -1,0 +1,53 @@
+{
+  "ruleChain": {
+    "id":"chain_call_rest_api",
+    "name": "测试规则链",
+    "root": true
+  },
+  "metadata": {
+    "nodes": [
+      {
+        "id": "s1",
+        "type": "jsFilter",
+        "name": "过滤",
+        "debugMode": true,
+        "configuration": {
+          "jsScript": "return msg!='bb';"
+        }
+      },
+      {
+        "id": "s2",
+        "type": "jsTransform",
+        "name": "转换",
+        "debugMode": true,
+        "configuration": {
+          "jsScript": "metadata['test']='test02';\n metadata['index']=52;\n msgType='TEST_MSG_TYPE2';\n  msg['aa']=66; return {'msg':msg,'metadata':metadata,'msgType':msgType};"
+        }
+      },
+      {
+        "id": "s3",
+        "type": "restApiCall",
+        "name": "推送数据",
+        "debugMode": true,
+        "configuration": {
+          "restEndpointUrlPattern": "http://192.168.136.26:9099/api/msg",
+          "requestMethod": "POST",
+          "maxParallelRequestsCount": 200
+        }
+      }
+    ],
+    "connections": [
+      {
+        "fromId": "s1",
+        "toId": "s2",
+        "type": "True"
+      },
+      {
+        "fromId": "s2",
+        "toId": "s3",
+        "type": "Success"
+      }
+    ],
+    "ruleChainConnections": null
+  }
+}
