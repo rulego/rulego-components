@@ -18,10 +18,16 @@ package redis
 
 import (
 	"github.com/go-redis/redis"
+	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/str"
 )
+
+//注册节点
+func init() {
+	_ = rulego.Registry.Register(&ClientNode{})
+}
 
 // ClientNodeConfiguration 节点配置
 type ClientNodeConfiguration struct {

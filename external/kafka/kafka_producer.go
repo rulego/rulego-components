@@ -18,11 +18,17 @@ package kafka
 
 import (
 	"github.com/IBM/sarama"
+	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/str"
 	"strconv"
 )
+
+//注册节点
+func init() {
+	_ = rulego.Registry.Register(&ProducerNode{})
+}
 
 // NodeConfiguration 节点配置
 type NodeConfiguration struct {

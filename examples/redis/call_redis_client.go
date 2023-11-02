@@ -19,15 +19,14 @@ package main
 import (
 	"fmt"
 	"github.com/rulego/rulego"
-	"github.com/rulego/rulego-components/external/redis"
 	"github.com/rulego/rulego/api/types"
 	"time"
+
+	_ "github.com/rulego/rulego-components/external/redis"
 )
 
 //测试x/redisClient组件
 func main() {
-	//加载扩展组件
-	_ = rulego.Registry.Register(&redis.ClientNode{})
 
 	config := rulego.NewConfig()
 
@@ -44,7 +43,7 @@ func main() {
 	msg := types.NewMsg(0, "TEST_MSG_TYPE1", types.JSON, metaData, "{\"temperature\":41}")
 
 	ruleEngine.OnMsgWithOptions(msg, types.WithEndFunc(func(msg types.RuleMsg, err error) {
-		fmt.Println("msg处理结果=====")
+		fmt.Println("1.msg处理结果=====")
 		//得到规则链处理结果
 		fmt.Println(msg, err)
 	}))
@@ -57,7 +56,7 @@ func main() {
 	msg = types.NewMsg(0, "TEST_MSG_TYPE2", types.JSON, metaData, "{\"temperature\":42}")
 
 	ruleEngine.OnMsgWithOptions(msg, types.WithEndFunc(func(msg types.RuleMsg, err error) {
-		fmt.Println("msg处理结果=====")
+		fmt.Println("2.msg处理结果=====")
 		//得到规则链处理结果
 		fmt.Println(msg, err)
 	}))
@@ -106,7 +105,7 @@ var chainJsonFile = `
         "debugMode": true,
         "configuration": {
           "cmd": "SET",
-          "params": ["${key}", "$data"],
+          "params": ["${key}", "${msg.data}"],
           "poolSize": 10,
           "Server": "192.168.1.1:6379"
         }
