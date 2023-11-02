@@ -32,14 +32,14 @@ func init() {
 
 // NodeConfiguration 节点配置
 type NodeConfiguration struct {
+	// Brokers kafka服务器地址列表
+	Brokers []string
 	// Topic 发布主题，可以使用 ${metaKeyName} 替换元数据中的变量
 	Topic string
 	// Key 分区键，可以使用 ${metaKeyName} 替换元数据中的变量
 	Key string
 	//Partition 分区编号
 	Partition int32
-	// Brokers kafka服务器地址列表
-	Brokers []string
 }
 
 type ProducerNode struct {

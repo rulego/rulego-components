@@ -31,6 +31,10 @@ func init() {
 
 // ClientNodeConfiguration 节点配置
 type ClientNodeConfiguration struct {
+	// Server redis服务器地址
+	Server string
+	// PoolSize 连接池大小
+	PoolSize int
 	// Cmd 执行命令，例如SET/GET/DEL
 	// 可以使用${}占位符读取metadata元数据
 	// 支持${msg.data}获取消息负荷，${msg.type}获取消息类型
@@ -39,10 +43,6 @@ type ClientNodeConfiguration struct {
 	// 可以使用${}占位符读取metadata元数据
 	// 支持${msg.data}获取消息负荷，${msg.type}获取消息类型
 	Params []interface{}
-	// PoolSize 连接池大小
-	PoolSize int
-	// Server redis服务器地址
-	Server string
 }
 
 //ClientNode redis客户端节点，
