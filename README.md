@@ -13,39 +13,31 @@ The component library is divided into the following submodules:
 
 ## Installation
 
-Use the `go get` command to install `RuleGo`:
-
-```bash
-go get github.com/rulego/rulego
-```
-
 Use the `go get` command to install `rulego-components`:
 
 ```bash
-go get github.com/rulego/rulego-components/{submodel}
+go get github.com/rulego/rulego-components
 ```
-
 
 ## Usage
 
-Register the component to the `RuleGo` default registry
+Use the blank identifier to import the extension component, and the extension component will automatically register to `RuleGo`
 ```go
-rulego.Registry.Register(&MyNode{})
+_ "github.com/rulego/rulego-components/external/redis"
 ```
 
-Then use your component in the rule chain DSL file
+Then use the type specified by the component in the rule chain JSON file to call the extension component
 ```json
 {
   "ruleChain": {
-    "name": "Test rule chain",
-    "root": true,
-    "debugMode": false
+    "id": "rule01",
+    "name": "Test rule chain"
   },
   "metadata": {
     "nodes": [
       {
         "id": "s1",
-        "type": "test/upper",
+        "type": "x/redisClient",
         "name": "Name",
         "debugMode": true,
         "configuration": {
@@ -73,7 +65,7 @@ However, we know that these components are far from meeting the needs of all use
 
 If you are interested in RuleGo and want to contribute to its extension components, you can follow these steps:
 
-- Read RuleGo's [documentation](https://github.com/rulego/rulego)  , and learn about its architecture, features and usage.
+- Read RuleGo's [documentation](https://rulego.cc)  , and learn about its architecture, features and usage.
 - Fork RuleGo's [repository](https://github.com/rulego/rulego)  , and clone it to your local machine.
 - Refer to RuleGo's [examples](https://github.com/rulego/rulego/tree/main/components) , and write your own extension component, implementing the corresponding interfaces and methods.
 - Test your extension component locally, and make sure it works properly and correctly.

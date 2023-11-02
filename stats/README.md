@@ -46,9 +46,8 @@ Then use your component in the rule chain DSL file:
 ```json
 {
   "ruleChain": {
-    "name": "Test rule chain",
-    "root": true,
-    "debugMode": false
+    "id": "rue01",
+    "name": "Test rule chain"
   },
   "metadata": {
     "nodes": [

@@ -4,7 +4,7 @@
 
 ## 特性
 组件库分为以下子模块：
-* **endpoint：** 接收端端点，负责监听并接收数据，然后交给`RuleGo`规则引擎处理。例如：MQTT endpoint（订阅MQTT Broker 数据）、HTTP endpoint（HTTP server）
+* **endpoint：** 接收端端点，负责监听并接收数据，然后交给`RuleGo`规则引擎处理。例如：MQTT Endpoint（订阅MQTT Broker 数据）、REST Endpoint（HTTP Server）、Websocket Endpoint、Kafka Endpoint
 * **filter：** 对消息进行过滤。
 * **transform：** 对消息进行转换。
 * **action：** 执行某些动作。
@@ -13,39 +13,31 @@
 
 ## 安装
 
-使用`go get`命令安装`RuleGo`：
-
-```bash
-go get github.com/rulego/rulego
-```
-
 使用`go get`命令安装`rulego-components`：
 
 ```bash
-go get github.com/rulego/rulego-components/{submodel}
+go get github.com/rulego/rulego-components
 ```
-
 
 ## 使用
 
-把组件注册到`RuleGo`默认注册器
+使用空白标识符导入扩展组件，扩展组件会自动注册到`RuleGo`
 ```go
-rulego.Registry.Register(&MyNode{})
+_ "github.com/rulego/rulego-components/external/redis"
 ```
 
-然后在规则链DSL文件使用您的组件
+然后在规则链JSON文件使用组件指定的type调用扩展组件
 ```json
 {
   "ruleChain": {
-    "name": "测试规则链",
-    "root": true,
-    "debugMode": false
+    "id": "rule01",
+    "name": "测试规则链"
   },
   "metadata": {
     "nodes": [
       {
         "id": "s1",
-        "type": "test/upper",
+        "type": "x/redisClient",
         "name": "名称",
         "debugMode": true,
         "configuration": {
@@ -73,7 +65,7 @@ rulego.Registry.Register(&MyNode{})
 
 如果你对 RuleGo 感兴趣，并且想要为它贡献扩展组件，你可以参考以下步骤：
 
-- 阅读 RuleGo 的 [文档](https://github.com/rulego/rulego) ，了解其架构、特性和使用方法。
+- 阅读 RuleGo 的 [文档](https://rulego.cc) ，了解其架构、特性和使用方法。
 - Fork RuleGo 的 [仓库](https://github.com/rulego/rulego) ，并 clone 到本地。
 - 参考 RuleGo 的 [示例](https://github.com/rulego/rulego/tree/main/components) ，编写你自己的扩展组件，并实现相应的接口和方法。
 - 在本地测试你的扩展组件，确保其功能正常且无误。

@@ -1,4 +1,5 @@
 # action
+
 执行某些动作。
 
 ## 怎样自定义组件
@@ -42,9 +43,8 @@ rulego.Registry.Register(&MyNode{})
 ```json
 {
   "ruleChain": {
-    "name": "测试规则链",
-    "root": true,
-    "debugMode": false
+    "id": "rue01",
+    "name": "测试规则链"
   },
   "metadata": {
     "nodes": [

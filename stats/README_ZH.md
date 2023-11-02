@@ -42,9 +42,8 @@ rulego.Registry.Register(&MyNode{})
 ```json
 {
   "ruleChain": {
+    "id": "rue01",
     "name": "测试规则链",
-    "root": true,
-    "debugMode": false
   },
   "metadata": {
     "nodes": [
