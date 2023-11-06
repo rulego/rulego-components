@@ -65,8 +65,7 @@ rulego.Registry.Register(&MyNode{})
         "toId": "连接下一个组件ID",
         "type": "与组件的连接关系"
       }
-    ],
-    "ruleChainConnections": null
+    ]
   }
 }
 ```

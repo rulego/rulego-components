@@ -68,8 +68,7 @@ Then use your component in the rule chain DSL file:
         "toId": "Connect to the next component ID",
         "type": "The connection relationship with the component"
       }
-    ],
-    "ruleChainConnections": null
+    ]
   }
 }
 ```

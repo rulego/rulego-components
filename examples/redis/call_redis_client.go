@@ -144,8 +144,7 @@ var chainJsonFile = `
         "toId": "s6",
         "type": "Success"
       }
-    ],
-    "ruleChainConnections": null
+    ]
   }
 }
 `

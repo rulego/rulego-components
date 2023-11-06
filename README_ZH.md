@@ -52,8 +52,7 @@ _ "github.com/rulego/rulego-components/external/redis"
         "toId": "连接下一个组件ID",
         "type": "与组件的连接关系"
       }
-    ],
-    "ruleChainConnections": null
+    ]
   }
 }
 ```

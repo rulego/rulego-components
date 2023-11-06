@@ -52,8 +52,7 @@ Then use the type specified by the component in the rule chain JSON file to call
         "toId": "Connect to the next component ID",
         "type": "The connection relationship with the component"
       }
-    ],
-    "ruleChainConnections": null
+    ]
   }
 }
 ```
