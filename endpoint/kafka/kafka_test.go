@@ -43,7 +43,9 @@ func TestKafkaEndpoint(t *testing.T) {
 	_, _ = rulego.New("default", buf, rulego.WithConfig(config))
 
 	//启动kafka接收服务
-	kafkaEndpoint := &Kafka{Config: Config{Brokers: []string{"localhost:9092"}}, RuleConfig: config}
+	kafkaEndpoint, err := endpoint.New(Type, config, Config{
+		Brokers: []string{"localhost:9092"},
+	})
 	//路由1
 	router1 := endpoint.NewRouter().From("device.msg.request").Process(func(router *endpoint.Router, exchange *endpoint.Exchange) bool {
 
@@ -65,8 +67,8 @@ func TestKafkaEndpoint(t *testing.T) {
 	}).End()
 
 	//注册路由
-	_, err = kafkaEndpoint.AddRouterWithParams(router1)
-	_, err = kafkaEndpoint.AddRouterWithParams(router2)
+	_, err = kafkaEndpoint.AddRouter(router1)
+	_, err = kafkaEndpoint.AddRouter(router2)
 	if err != nil {
 		panic(err)
 	}

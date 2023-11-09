@@ -26,6 +26,17 @@ import (
 	"strconv"
 )
 
+//Type 组件类型
+const Type = "kafka"
+
+//Endpoint 别名
+type Endpoint = Kafka
+
+//注册组件
+func init() {
+	_ = endpoint.Registry.Register(&Endpoint{})
+}
+
 //RequestMessage http请求消息
 type RequestMessage struct {
 	request *sarama.ConsumerMessage
@@ -174,7 +185,7 @@ type Kafka struct {
 
 //Type 组件类型
 func (k *Kafka) Type() string {
-	return "kafka"
+	return Type
 }
 
 func (k *Kafka) New() types.Node {
@@ -212,7 +223,7 @@ func (k *Kafka) Id() string {
 
 }
 
-func (k *Kafka) AddRouterWithParams(router *endpoint.Router, params ...interface{}) (string, error) {
+func (k *Kafka) AddRouter(router *endpoint.Router, params ...interface{}) (string, error) {
 	if router == nil {
 		return "", errors.New("router can not nil")
 	}
@@ -236,7 +247,7 @@ func (k *Kafka) AddRouterWithParams(router *endpoint.Router, params ...interface
 	return router.GetFrom().From, nil
 }
 
-func (k *Kafka) RemoveRouterWithParams(routerId string, params ...interface{}) error {
+func (k *Kafka) RemoveRouter(routerId string, params ...interface{}) error {
 	k.Lock()
 	defer k.Unlock()
 	//删除订阅
