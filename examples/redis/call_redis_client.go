@@ -42,7 +42,7 @@ func main() {
 
 	msg := types.NewMsg(0, "TEST_MSG_TYPE1", types.JSON, metaData, "{\"temperature\":41}")
 
-	ruleEngine.OnMsgWithOptions(msg, types.WithEndFunc(func(msg types.RuleMsg, err error) {
+	ruleEngine.OnMsgWithOptions(msg, types.WithEndFunc(func(ctx types.RuleContext, msg types.RuleMsg, err error) {
 		fmt.Println("1.msg处理结果=====")
 		//得到规则链处理结果
 		fmt.Println(msg, err)
@@ -55,7 +55,7 @@ func main() {
 
 	msg = types.NewMsg(0, "TEST_MSG_TYPE2", types.JSON, metaData, "{\"temperature\":42}")
 
-	ruleEngine.OnMsgWithOptions(msg, types.WithEndFunc(func(msg types.RuleMsg, err error) {
+	ruleEngine.OnMsgWithOptions(msg, types.WithEndFunc(func(ctx types.RuleContext, msg types.RuleMsg, err error) {
 		fmt.Println("2.msg处理结果=====")
 		//得到规则链处理结果
 		fmt.Println(msg, err)

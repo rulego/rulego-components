@@ -106,10 +106,8 @@ github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZN
 github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 h1:N/ElC8H3+5XpJzTSTfLsJV/mx9Q9g7kxmchpfZyxgzM=
 github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475/go.mod h1:bCqnVzQkZxMG4s8nGwiZ5l3QUCyqpo9Y+/ZMZ9VjZe4=
 github.com/rogpeppe/go-internal v1.6.1/go.mod h1:xXDCJY+GAPziupqXw64V24skbSoqbTEfhy4qGm1nDQc=
-github.com/rulego/rulego v0.15.1-0.20231027012310-0560d99791b4 h1:13XD+E2o3J/5Tiex3genmdlCKiZzYufqxdT7N7OSTM0=
-github.com/rulego/rulego v0.15.1-0.20231027012310-0560d99791b4/go.mod h1:lcDhSmNxCmx93QoxJQksJsjPRYjcx2bEtOEH/ujw5IU=
-github.com/rulego/rulego v0.16.1-0.20231109082351-a0637278ebfb h1:OgYaOY779A/IqPQiLi9m+6CpgMkRQ+mPDzP/Ubu3kU8=
-github.com/rulego/rulego v0.16.1-0.20231109082351-a0637278ebfb/go.mod h1:lcDhSmNxCmx93QoxJQksJsjPRYjcx2bEtOEH/ujw5IU=
+github.com/rulego/rulego v0.16.1-0.20231113130321-bbe8e1206841 h1:T5aKPgREeswZfq6G744zXus1zYsj5Fg7bww2KgoKu/Y=
+github.com/rulego/rulego v0.16.1-0.20231113130321-bbe8e1206841/go.mod h1:lcDhSmNxCmx93QoxJQksJsjPRYjcx2bEtOEH/ujw5IU=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/objx v0.4.0/go.mod h1:YvHI0jy2hoMjB+UWwv71VJQ9isScKT/TqJzVSSt89Yw=
 github.com/stretchr/objx v0.5.0/go.mod h1:Yh+to48EsGEfYuaHDzXPcE3xhTkx73EhmCGUpEOglKo=

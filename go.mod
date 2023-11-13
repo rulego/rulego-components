@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/IBM/sarama v1.41.3
 	github.com/go-redis/redis v6.15.9+incompatible
-	github.com/rulego/rulego v0.16.1-0.20231109082351-a0637278ebfb
+	github.com/rulego/rulego v0.16.1-0.20231113130321-bbe8e1206841
 )
 
 require (
