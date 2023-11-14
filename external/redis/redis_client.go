@@ -60,7 +60,11 @@ func (x *ClientNode) Type() string {
 }
 
 func (x *ClientNode) New() types.Node {
-	return &ClientNode{}
+	return &ClientNode{Config: ClientNodeConfiguration{
+		Server: "127.0.0.1:6379",
+		Cmd:    "GET",
+		Params: []interface{}{"${key}"},
+	}}
 }
 
 // Init 初始化组件
