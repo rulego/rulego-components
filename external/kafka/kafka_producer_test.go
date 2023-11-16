@@ -43,9 +43,5 @@ func TestKafkaProducerNodeOnMsg(t *testing.T) {
 	// 在元数据中添加发布键
 	metaData.PutValue("id", "1")
 	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, "{\"test\":\"AA\"}")
-	err = node.OnMsg(ctx, msg)
-	if err != nil {
-		t.Errorf("err=%s", err)
-	}
-
+	node.OnMsg(ctx, msg)
 }

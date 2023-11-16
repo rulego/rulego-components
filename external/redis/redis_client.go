@@ -24,7 +24,7 @@ import (
 	"github.com/rulego/rulego/utils/str"
 )
 
-//注册节点
+// 注册节点
 func init() {
 	_ = rulego.Registry.Register(&ClientNode{})
 }
@@ -45,9 +45,9 @@ type ClientNodeConfiguration struct {
 	Params []interface{}
 }
 
-//ClientNode redis客户端节点，
-//成功：转向Success链，redis执行结果存放在msg.Data
-//失败：转向Failure链
+// ClientNode redis客户端节点，
+// 成功：转向Success链，redis执行结果存放在msg.Data
+// 失败：转向Failure链
 type ClientNode struct {
 	//节点配置
 	Config      ClientNodeConfiguration
@@ -81,7 +81,7 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 }
 
 // OnMsg 处理消息
-func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) error {
+func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	var data interface{}
 	var err error
 	metadataCopy := msg.Metadata.Copy()
@@ -108,7 +108,6 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) error {
 		msg.Data = str.ToString(data)
 		ctx.TellSuccess(msg)
 	}
-	return err
 }
 
 // Destroy 销毁组件

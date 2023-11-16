@@ -31,7 +31,7 @@ func TestRedisClientNodeOnMsg(t *testing.T) {
 	TestRedisClientDelOnMsg(t)
 }
 
-//测试添加key/value
+// 测试添加key/value
 func TestRedisClientSetFromMetadata(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
@@ -54,16 +54,13 @@ func TestRedisClientSetFromMetadata(t *testing.T) {
 	metaData.PutValue("key", "test")
 	metaData.PutValue("value", `{"aa":"lala"}`)
 	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, "")
-	err = node.OnMsg(ctx, msg)
-	if err != nil {
-		t.Errorf("err=%s", err)
-	}
+	node.OnMsg(ctx, msg)
 
 	time.Sleep(time.Second * 1)
 
 }
 
-//测试添加key/value ,value使用msg payload
+// 测试添加key/value ,value使用msg payload
 func TestRedisClientSetFromData(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
@@ -85,16 +82,13 @@ func TestRedisClientSetFromData(t *testing.T) {
 	// 在元数据中添加参数
 	metaData.PutValue("key", "test")
 	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, `{"aa":"lala"}`)
-	err = node.OnMsg(ctx, msg)
-	if err != nil {
-		t.Errorf("err=%s", err)
-	}
+	node.OnMsg(ctx, msg)
 
 	time.Sleep(time.Second * 1)
 
 }
 
-//测试获取key
+// 测试获取key
 func TestRedisClientGetOnMsg(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
@@ -116,16 +110,13 @@ func TestRedisClientGetOnMsg(t *testing.T) {
 	// 在元数据中添加参数
 	metaData.PutValue("key", "test")
 	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, "")
-	err = node.OnMsg(ctx, msg)
-	if err != nil {
-		t.Errorf("err=%s", err)
-	}
+	node.OnMsg(ctx, msg)
 
 	time.Sleep(time.Second * 1)
 
 }
 
-//测试删除key
+// 测试删除key
 func TestRedisClientDelOnMsg(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
@@ -147,10 +138,7 @@ func TestRedisClientDelOnMsg(t *testing.T) {
 	// 在元数据中添加参数
 	metaData.PutValue("key", "test")
 	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, "")
-	err = node.OnMsg(ctx, msg)
-	if err != nil {
-		t.Errorf("err=%s", err)
-	}
+	node.OnMsg(ctx, msg)
 
 	time.Sleep(time.Second * 1)
 

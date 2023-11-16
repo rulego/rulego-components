@@ -25,7 +25,7 @@ import (
 	"strconv"
 )
 
-//注册节点
+// 注册节点
 func init() {
 	_ = rulego.Registry.Register(&ProducerNode{})
 }
@@ -73,7 +73,7 @@ func (x *ProducerNode) Init(ruleConfig types.Config, configuration types.Configu
 }
 
 // OnMsg 处理消息
-func (x *ProducerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) error {
+func (x *ProducerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	values := msg.Metadata.Values()
 	topic := str.SprintfDict(x.Config.Topic, values)
 	key := str.SprintfDict(x.Config.Key, values)
@@ -91,7 +91,6 @@ func (x *ProducerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) error {
 		msg.Metadata.PutValue("offset", strconv.Itoa(int(offset)))
 		ctx.TellSuccess(msg)
 	}
-	return err
 }
 
 // Destroy 销毁组件

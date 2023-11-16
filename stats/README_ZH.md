@@ -19,7 +19,7 @@ func (n *UpperNode) Init(ruleConfig types.Config, configuration types.Configurat
 return nil
 }
 //处理消息
-func (n *UpperNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) error {
+func (n *UpperNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 msg.Data = strings.ToUpper(msg.Data)
 // Send the modified message to the next node
 ctx.TellSuccess(msg)
