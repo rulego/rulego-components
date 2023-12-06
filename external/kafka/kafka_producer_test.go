@@ -34,7 +34,7 @@ func TestKafkaProducerNodeOnMsg(t *testing.T) {
 	if err != nil {
 		t.Errorf("err=%s", err)
 	}
-	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string) {
+	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err error) {
 		assert.Equal(t, types.Success, relationType)
 		// 检查发布结果是否正确
 		assert.Equal(t, "0", msg.Metadata.GetValue("partition"))

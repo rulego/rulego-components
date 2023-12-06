@@ -44,7 +44,7 @@ func TestRedisClientSetFromMetadata(t *testing.T) {
 	if err != nil {
 		t.Errorf("err=%s", err)
 	}
-	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string) {
+	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
 		// 检查结果是否正确
 		assert.Equal(t, "OK", msg.Data)
@@ -73,7 +73,7 @@ func TestRedisClientSetFromData(t *testing.T) {
 	if err != nil {
 		t.Errorf("err=%s", err)
 	}
-	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string) {
+	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
 		// 检查结果是否正确
 		assert.Equal(t, "OK", msg.Data)
@@ -101,7 +101,7 @@ func TestRedisClientGetOnMsg(t *testing.T) {
 	if err != nil {
 		t.Errorf("err=%s", err)
 	}
-	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string) {
+	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
 		// 检查结果是否正确
 		assert.Equal(t, `{"aa":"lala"}`, msg.Data)
@@ -129,7 +129,7 @@ func TestRedisClientDelOnMsg(t *testing.T) {
 	if err != nil {
 		t.Errorf("err=%s", err)
 	}
-	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string) {
+	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
 		// 检查结果是否正确
 		assert.Equal(t, "1", msg.Data)
