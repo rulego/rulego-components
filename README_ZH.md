@@ -6,11 +6,15 @@
 组件库分为以下子模块：
 * **endpoint：** 接收端端点，负责监听并接收数据，然后交给`RuleGo`规则引擎处理。例如：MQTT Endpoint（订阅MQTT Broker 数据）、REST Endpoint（HTTP Server）、Websocket Endpoint、Kafka Endpoint
 * **filter：** 对消息进行过滤。
+  - [x/luaFilter](/filter/lua_filter.go) 使用lua脚本对消息进行过滤。
 * **transform：** 对消息进行转换。
+  - [x/luaTransform](/transform/lua_transform.go) 使用lua脚本对消息进行转换。
 * **action：** 执行某些动作。
 * **stats：** 对数据进行统计、分析。
 * **external：** 外部集成，和第三方系统进行集成，例如：调用kafka、数据库、第三方api等。
-
+  - [x/kafkaProducer](/external/kafka/kafka_producer.go) kafka 生产者。
+  - [x/redisClient](/external/redis/redis_client.go) redis 客户端。
+  
 ## 安装
 
 使用`go get`命令安装`rulego-components`：

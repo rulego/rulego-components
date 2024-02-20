@@ -5,11 +5,15 @@
 ## Features
 The component library is divided into the following submodules:
 * **endpoint:** Receiver endpoint, responsible for listening and receiving data, and then handing it over to the `RuleGo` rule engine for processing. For example: MQTT endpoint (subscribe to MQTT Broker data), HTTP endpoint (HTTP server)
-* **filter:** Filter messages.
-* **transform:** Transform messages.
+* **filter:** Filter the messages.
+    - [x/luaFilter](/filter/lua_filter.go) Use lua script to filter the messages.
+* **transform:** Transform the messages.
+    - [x/luaTransform](/transform/lua_transform.go) Use lua script to transform the messages.
 * **action:** Perform some actions.
-* **stats:** Perform statistics and analysis on data.
+* **stats:** Perform statistics and analysis on the data.
 * **external:** External integration, integrate with third-party systems, such as: calling kafka, database, third-party api, etc.
+    - [x/kafkaProducer](/external/kafka/kafka_producer.go) kafka producer.
+    - [x/redisClient](/external/redis/redis_client.go) redis client.
 
 ## Installation
 
