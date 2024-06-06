@@ -17,27 +17,32 @@
 package kafka
 
 import (
+	"context"
 	"errors"
 	"github.com/IBM/sarama"
 	"github.com/rulego/rulego/api/types"
+	endpointApi "github.com/rulego/rulego/api/types/endpoint"
 	"github.com/rulego/rulego/endpoint"
+	"github.com/rulego/rulego/endpoint/impl"
 	"github.com/rulego/rulego/utils/maps"
 	"net/textproto"
 	"strconv"
 )
 
-//Type 组件类型
+// Type 组件类型
 const Type = "kafka"
 
-//Endpoint 别名
+// Endpoint 别名
 type Endpoint = Kafka
 
-//注册组件
+var _ endpointApi.Endpoint = (*Endpoint)(nil)
+
+// 注册组件
 func init() {
 	_ = endpoint.Registry.Register(&Endpoint{})
 }
 
-//RequestMessage http请求消息
+// RequestMessage http请求消息
 type RequestMessage struct {
 	request *sarama.ConsumerMessage
 	msg     *types.RuleMsg
@@ -47,6 +52,7 @@ type RequestMessage struct {
 func (r *RequestMessage) Body() []byte {
 	return r.request.Value
 }
+
 func (r *RequestMessage) Headers() textproto.MIMEHeader {
 	header := make(map[string][]string)
 	header["topic"] = []string{r.request.Topic}
@@ -91,7 +97,7 @@ func (r *RequestMessage) GetError() error {
 	return r.err
 }
 
-//ResponseMessage http响应消息
+// ResponseMessage http响应消息
 type ResponseMessage struct {
 	request  *sarama.ConsumerMessage
 	response sarama.SyncProducer
@@ -169,9 +175,9 @@ type Config struct {
 	Brokers []string
 }
 
-//Kafka Kafka 接收端端点
+// Kafka Kafka 接收端端点
 type Kafka struct {
-	endpoint.BaseEndpoint
+	impl.BaseEndpoint
 	RuleConfig types.Config
 	//Config 配置
 	Config Config
@@ -183,7 +189,7 @@ type Kafka struct {
 	topics map[string]sarama.PartitionConsumer
 }
 
-//Type 组件类型
+// Type 组件类型
 func (k *Kafka) Type() string {
 	return Type
 }
@@ -192,14 +198,14 @@ func (k *Kafka) New() types.Node {
 	return &Kafka{}
 }
 
-//Init 初始化
+// Init 初始化
 func (k *Kafka) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &k.Config)
 	k.RuleConfig = ruleConfig
 	return err
 }
 
-//Destroy 销毁
+// Destroy 销毁
 func (k *Kafka) Destroy() {
 	_ = k.Close()
 }
@@ -211,6 +217,7 @@ func (k *Kafka) Close() error {
 	if nil != k.producer {
 		return k.producer.Close()
 	}
+	k.BaseEndpoint.Destroy()
 	return nil
 }
 
@@ -220,10 +227,9 @@ func (k *Kafka) Id() string {
 	} else {
 		return ""
 	}
-
 }
 
-func (k *Kafka) AddRouter(router *endpoint.Router, params ...interface{}) (string, error) {
+func (k *Kafka) AddRouter(router endpointApi.Router, params ...interface{}) (string, error) {
 	if router == nil {
 		return "", errors.New("router can not nil")
 	}
@@ -232,6 +238,9 @@ func (k *Kafka) AddRouter(router *endpoint.Router, params ...interface{}) (strin
 		return "", err
 	}
 
+	if id := router.GetId(); id == "" {
+		router.SetId(router.GetFrom().ToString())
+	}
 	var partition = int32(0)
 	//指定分区
 	if len(params) > 0 {
@@ -244,7 +253,7 @@ func (k *Kafka) AddRouter(router *endpoint.Router, params ...interface{}) (strin
 	if err := k.createTopicConsumer(router, partition); err != nil {
 		return "", err
 	}
-	return router.GetFrom().From, nil
+	return router.GetId(), nil
 }
 
 func (k *Kafka) RemoveRouter(routerId string, params ...interface{}) error {
@@ -262,7 +271,7 @@ func (k *Kafka) Start() error {
 	return k.initKafkaClient()
 }
 
-//initKafkaClient 初始化kafka客户端
+// initKafkaClient 初始化kafka客户端
 func (k *Kafka) initKafkaClient() error {
 	if k.consumer == nil {
 		config := sarama.NewConfig()
@@ -285,8 +294,8 @@ func (k *Kafka) initKafkaClient() error {
 	return nil
 }
 
-//创建kafka消费者
-func (k *Kafka) createTopicConsumer(router *endpoint.Router, partition int32) error {
+// 创建kafka消费者
+func (k *Kafka) createTopicConsumer(router endpointApi.Router, partition int32) error {
 	if form := router.GetFrom(); form != nil {
 		partitionConsumer, err := k.consumer.ConsumePartition(form.ToString(), partition, sarama.OffsetNewest)
 		if err != nil {
@@ -304,15 +313,15 @@ func (k *Kafka) createTopicConsumer(router *endpoint.Router, partition int32) er
 	return nil
 }
 
-//处理订阅消息
-func (k *Kafka) handleMessages(partitionConsumer sarama.PartitionConsumer, router *endpoint.Router) {
+// 处理订阅消息
+func (k *Kafka) handleMessages(partitionConsumer sarama.PartitionConsumer, router endpointApi.Router) {
 	defer func() {
 		if err := partitionConsumer.Close(); err != nil {
 			k.Printf("failed to close partition consumer: %v", err)
 		}
 	}()
 	for msg := range partitionConsumer.Messages() { // loop until partition consumer is closed or context is canceled
-		exchange := &endpoint.Exchange{
+		exchange := &endpointApi.Exchange{
 			In: &RequestMessage{
 				request: msg,
 			},
@@ -324,7 +333,7 @@ func (k *Kafka) handleMessages(partitionConsumer sarama.PartitionConsumer, route
 				},
 			}}
 
-		k.DoProcess(router, exchange)
+		k.DoProcess(context.Background(), router, exchange)
 	}
 }
 

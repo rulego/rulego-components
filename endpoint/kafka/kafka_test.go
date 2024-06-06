@@ -18,21 +18,20 @@ package kafka
 
 import (
 	"fmt"
+	"github.com/IBM/sarama"
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
+	endpointApi "github.com/rulego/rulego/api/types/endpoint"
 	"github.com/rulego/rulego/endpoint"
 	"github.com/rulego/rulego/test/assert"
 	"os"
-	"os/signal"
-	"syscall"
 	"testing"
+	"time"
 )
 
 var testdataFolder = "../../testdata"
 
 func TestKafkaEndpoint(t *testing.T) {
-	c := make(chan os.Signal)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 
 	buf, err := os.ReadFile(testdataFolder + "/chain_msg_type_switch.json")
 	if err != nil {
@@ -43,15 +42,16 @@ func TestKafkaEndpoint(t *testing.T) {
 	_, _ = rulego.New("default", buf, rulego.WithConfig(config))
 
 	//启动kafka接收服务
-	kafkaEndpoint, err := endpoint.New(Type, config, Config{
+	kafkaEndpoint, err := endpoint.Registry.New(Type, config, Config{
 		Brokers: []string{"localhost:9092"},
 	})
 	//路由1
-	router1 := endpoint.NewRouter().From("device.msg.request").Process(func(router *endpoint.Router, exchange *endpoint.Exchange) bool {
+	router1 := endpoint.NewRouter().From("device.msg.request").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 
 		fmt.Println("接收到数据：device.msg.request", exchange.In.GetMsg())
+		assert.Equal(t, "test message", exchange.In.GetMsg().Data)
 		return true
-	}).To("chain:default").Process(func(router *endpoint.Router, exchange *endpoint.Exchange) bool {
+	}).To("chain:default").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		//往指定主题发送数据，用于响应
 		exchange.Out.Headers().Add("topic", "device.msg.response")
 		exchange.Out.SetBody([]byte("this is response"))
@@ -59,7 +59,7 @@ func TestKafkaEndpoint(t *testing.T) {
 	}).End()
 
 	//模拟获取响应
-	router2 := endpoint.NewRouter().From("device.msg.response").Process(func(router *endpoint.Router, exchange *endpoint.Exchange) bool {
+	router2 := endpoint.NewRouter().From("device.msg.response").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 
 		fmt.Println("接收到数据：device.msg.response", exchange.In.GetMsg())
 		assert.Equal(t, "this is response", exchange.In.GetMsg().Data)
@@ -77,5 +77,42 @@ func TestKafkaEndpoint(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	<-c
+
+	// 测试发布和订阅
+	producer, err := sarama.NewSyncProducer([]string{"localhost:9092"}, nil)
+	if err != nil {
+		t.Fatal("Failed to start Sarama producer:", err)
+	}
+	defer producer.Close()
+
+	consumer, err := sarama.NewConsumer([]string{"localhost:9092"}, nil)
+	if err != nil {
+		t.Fatal("Failed to start Sarama consumer:", err)
+	}
+	defer consumer.Close()
+
+	// 发布消息到 device.msg.request
+	_, _, err = producer.SendMessage(&sarama.ProducerMessage{
+		Topic: "device.msg.request",
+		Value: sarama.StringEncoder("test message"),
+	})
+	if err != nil {
+		t.Fatal("Failed to send message:", err)
+	}
+
+	// 创建消费者来读取 device.msg.response
+	partitionConsumer, err := consumer.ConsumePartition("device.msg.response", 0, sarama.OffsetNewest)
+	if err != nil {
+		t.Fatal("Failed to start consumer for response topic:", err)
+	}
+	defer partitionConsumer.Close()
+
+	// 等待并验证响应
+	select {
+	case msg := <-partitionConsumer.Messages():
+		assert.Equal(t, "this is response", string(msg.Value))
+	case <-time.After(5 * time.Second):
+		t.Fatal("Failed to receive message within the timeout period")
+	}
+
 }

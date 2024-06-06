@@ -17,7 +17,8 @@
 package redis
 
 import (
-	"github.com/go-redis/redis"
+	"context"
+	"github.com/redis/go-redis/v9"
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/utils/maps"
@@ -75,7 +76,7 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 			Addr:     x.Config.Server,
 			PoolSize: x.Config.PoolSize,
 		})
-		err = x.redisClient.Ping().Err()
+		err = x.redisClient.Ping(context.Background()).Err()
 	}
 	return err
 }
@@ -100,7 +101,7 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	}
 
 	//请求redis服务器，并得到返回结果
-	data, err = x.redisClient.Do(args...).Result()
+	data, err = x.redisClient.Do(ctx.GetContext(), args...).Result()
 
 	if err != nil {
 		ctx.TellFailure(msg, err)
