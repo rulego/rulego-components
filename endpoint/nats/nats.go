@@ -29,7 +29,7 @@ import (
 )
 
 // Type 组件类型
-const Type = "nats"
+const Type = types.EndpointTypePrefix + "nats"
 
 // Endpoint 别名
 type Endpoint = Nats
@@ -185,7 +185,11 @@ func (n *Nats) Id() string {
 }
 
 func (n *Nats) New() types.Node {
-	return &Nats{}
+	return &Nats{
+		Config: Config{
+			Server: "nats://127.0.0.1:4222",
+		},
+	}
 }
 
 // Init 初始化

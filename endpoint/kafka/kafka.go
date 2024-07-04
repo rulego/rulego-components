@@ -30,7 +30,7 @@ import (
 )
 
 // Type 组件类型
-const Type = "kafka"
+const Type = types.EndpointTypePrefix + "kafka"
 
 // Endpoint 别名
 type Endpoint = Kafka
@@ -195,7 +195,11 @@ func (k *Kafka) Type() string {
 }
 
 func (k *Kafka) New() types.Node {
-	return &Kafka{}
+	return &Kafka{
+		Config: Config{
+			Brokers: []string{"localhost:9092"},
+		},
+	}
 }
 
 // Init 初始化

@@ -215,6 +215,8 @@ github.com/rulego/rulego v0.20.1-0.20240606072141-ad286c15ed21 h1:ZzJ6MgzRKWEy79
 github.com/rulego/rulego v0.20.1-0.20240606072141-ad286c15ed21/go.mod h1:V0VbWCF3r4eW3HfdQ5mbZUweK4fYKstV4DeRgPGv2Ys=
 github.com/rulego/rulego v0.21.0-alpha.1 h1:UoX9MixLm3Bqx1Yd0/vrvcJsFY1LxDGq9FMgIZID6XY=
 github.com/rulego/rulego v0.21.0-alpha.1/go.mod h1:V0VbWCF3r4eW3HfdQ5mbZUweK4fYKstV4DeRgPGv2Ys=
+github.com/rulego/rulego v0.21.1-0.20240704164124-98c53feed104 h1:fClLDmIMK3X+y1rllYAr0aPuNBL7+ka8THuaRDCbsQw=
+github.com/rulego/rulego v0.21.1-0.20240704164124-98c53feed104/go.mod h1:V0VbWCF3r4eW3HfdQ5mbZUweK4fYKstV4DeRgPGv2Ys=
 github.com/sirupsen/logrus v1.2.0/go.mod h1:LxeOpSwHxABJmUn/MG1IvRgCAasNZTLOkJPxbbu5VWo=
 github.com/sirupsen/logrus v1.4.2/go.mod h1:tLMulIdttU9McNUspp0xgXVQah82FyeX6MwdIuYE2rE=
 github.com/sirupsen/logrus v1.6.0/go.mod h1:7uNnSEd1DgxDLC74fIahvMZmmYsHGZGEOFrfsX/uA88=
