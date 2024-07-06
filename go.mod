@@ -6,7 +6,7 @@ require (
 	github.com/IBM/sarama v1.43.2
 	github.com/nats-io/nats.go v1.35.0
 	github.com/redis/go-redis/v9 v9.5.2
-	github.com/rulego/rulego v0.21.1-0.20240704164124-98c53feed104
+	github.com/rulego/rulego v0.21.1-0.20240706123835-d0e0b268e07b
 	github.com/vadv/gopher-lua-libs v0.5.0
 	github.com/yuin/gopher-lua v1.1.1
 )
