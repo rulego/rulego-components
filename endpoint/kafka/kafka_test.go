@@ -17,7 +17,6 @@
 package kafka
 
 import (
-	"fmt"
 	"github.com/IBM/sarama"
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
@@ -47,8 +46,7 @@ func TestKafkaEndpoint(t *testing.T) {
 	})
 	//路由1
 	router1 := endpoint.NewRouter().From("device.msg.request").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
-
-		fmt.Println("接收到数据：device.msg.request", exchange.In.GetMsg())
+		//fmt.Println("接收到数据：device.msg.request", exchange.In.GetMsg())
 		assert.Equal(t, "test message", exchange.In.GetMsg().Data)
 		return true
 	}).To("chain:default").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
@@ -60,8 +58,13 @@ func TestKafkaEndpoint(t *testing.T) {
 
 	//模拟获取响应
 	router2 := endpoint.NewRouter().From("device.msg.response").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
+		//fmt.Println("接收到数据：device.msg.response", exchange.In.GetMsg())
+		assert.Equal(t, "this is response", exchange.In.GetMsg().Data)
+		return true
+	}).End()
 
-		fmt.Println("接收到数据：device.msg.response", exchange.In.GetMsg())
+	router3 := endpoint.NewRouter().From("device.msg.response").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
+		//fmt.Println("接收到数据：device.msg.response", exchange.In.GetMsg())
 		assert.Equal(t, "this is response", exchange.In.GetMsg().Data)
 		return true
 	}).End()
@@ -72,6 +75,8 @@ func TestKafkaEndpoint(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
+	_, err = kafkaEndpoint.AddRouter(router3)
+	assert.NotNil(t, err)
 	//并启动服务
 	err = kafkaEndpoint.Start()
 	if err != nil {

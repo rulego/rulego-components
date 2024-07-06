@@ -19,6 +19,7 @@ package nats
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/nats-io/nats.go"
 	"github.com/rulego/rulego/api/types"
 	endpointApi "github.com/rulego/rulego/api/types/endpoint"
@@ -53,8 +54,8 @@ func (r *RequestMessage) Body() []byte {
 }
 
 func (r *RequestMessage) Headers() textproto.MIMEHeader {
-	header := make(map[string][]string)
-	header["topic"] = []string{r.request.Subject}
+	header := make(textproto.MIMEHeader)
+	header.Set("topic", r.request.Subject)
 	return header
 }
 
@@ -226,8 +227,12 @@ func (n *Nats) AddRouter(router endpointApi.Router, params ...interface{}) (stri
 		routerId = router.GetFrom().ToString()
 		router.SetId(routerId)
 	}
-
-	subscription, err := n.conn.Subscribe(router.GetFrom().ToString(), func(msg *nats.Msg) {
+	n.Lock()
+	defer n.Unlock()
+	if _, ok := n.subscriptions[routerId]; ok {
+		return routerId, fmt.Errorf("routerId %s already exists", routerId)
+	}
+	subscription, err := n.conn.Subscribe(router.FromToString(), func(msg *nats.Msg) {
 		exchange := &endpointApi.Exchange{
 			In: &RequestMessage{
 				request: msg,
@@ -245,12 +250,13 @@ func (n *Nats) AddRouter(router endpointApi.Router, params ...interface{}) (stri
 	if err != nil {
 		return "", err
 	}
-
 	n.subscriptions[routerId] = subscription
 	return routerId, nil
 }
 
 func (n *Nats) RemoveRouter(routerId string, params ...interface{}) error {
+	n.Lock()
+	defer n.Unlock()
 	if subscription, ok := n.subscriptions[routerId]; ok {
 		delete(n.subscriptions, routerId)
 		return subscription.Unsubscribe()

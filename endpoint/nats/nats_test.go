@@ -17,7 +17,6 @@
 package nats
 
 import (
-	"fmt"
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/test/assert"
 	"os"
@@ -64,7 +63,7 @@ func TestNatsEndpoint(t *testing.T) {
 	count := int32(0)
 	// 模拟获取响应
 	router2 := endpoint.NewRouter().SetId("router3").From("device.msg.response").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
-		fmt.Println("接收到数据：device.msg.response", exchange.In.GetMsg())
+		//fmt.Println("接收到数据：device.msg.response", exchange.In.GetMsg())
 		assert.Equal(t, "this is response", exchange.In.GetMsg().Data)
 		atomic.AddInt32(&count, 1)
 		return true
@@ -72,7 +71,7 @@ func TestNatsEndpoint(t *testing.T) {
 
 	// 模拟获取响应,相同主题
 	router3 := endpoint.NewRouter().SetId("router3").From("device.msg.response").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
-		fmt.Println("接收到数据：device.msg.response", exchange.In.GetMsg())
+		//fmt.Println("接收到数据：device.msg.response", exchange.In.GetMsg())
 		assert.Equal(t, "this is response", exchange.In.GetMsg().Data)
 		atomic.AddInt32(&count, 1)
 		return true
@@ -88,9 +87,7 @@ func TestNatsEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	router3Id, err := natsEndpoint.AddRouter(router3)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NotNil(t, err)
 	// 启动服务
 	err = natsEndpoint.Start()
 	if err != nil {
@@ -109,7 +106,7 @@ func TestNatsEndpoint(t *testing.T) {
 	// 等待消息处理
 	time.Sleep(time.Second * 1)
 
-	assert.Equal(t, int32(2), count)
+	assert.Equal(t, int32(1), count)
 
 	count = 0
 	//删除一个相同的主题
@@ -122,6 +119,6 @@ func TestNatsEndpoint(t *testing.T) {
 	// 等待消息处理
 	time.Sleep(time.Second * 1)
 
-	assert.Equal(t, int32(1), count)
+	assert.Equal(t, int32(0), count)
 
 }

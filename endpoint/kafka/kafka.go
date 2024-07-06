@@ -19,6 +19,7 @@ package kafka
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/IBM/sarama"
 	"github.com/rulego/rulego/api/types"
 	endpointApi "github.com/rulego/rulego/api/types/endpoint"
@@ -54,8 +55,8 @@ func (r *RequestMessage) Body() []byte {
 }
 
 func (r *RequestMessage) Headers() textproto.MIMEHeader {
-	header := make(map[string][]string)
-	header["topic"] = []string{r.request.Topic}
+	header := make(textproto.MIMEHeader)
+	header.Set("topic", r.request.Topic)
 	return header
 }
 
@@ -197,7 +198,7 @@ func (k *Kafka) Type() string {
 func (k *Kafka) New() types.Node {
 	return &Kafka{
 		Config: Config{
-			Brokers: []string{"localhost:9092"},
+			Brokers: []string{"127.0.0.1:9092"},
 		},
 	}
 }
@@ -301,16 +302,24 @@ func (k *Kafka) initKafkaClient() error {
 // 创建kafka消费者
 func (k *Kafka) createTopicConsumer(router endpointApi.Router, partition int32) error {
 	if form := router.GetFrom(); form != nil {
-		partitionConsumer, err := k.consumer.ConsumePartition(form.ToString(), partition, sarama.OffsetNewest)
-		if err != nil {
-			k.Printf("failed to start consumer for topic %s: %v", form.ToString(), err)
-			return err
+		routerId := router.GetId()
+		if routerId == "" {
+			routerId = router.GetFrom().ToString()
+			router.SetId(routerId)
 		}
 		k.Lock()
 		if k.topics == nil {
 			k.topics = make(map[string]sarama.PartitionConsumer)
 		}
-		k.topics[router.FromToString()] = partitionConsumer
+		if _, ok := k.topics[routerId]; ok {
+			return fmt.Errorf("routerId %s already exists", routerId)
+		}
+		partitionConsumer, err := k.consumer.ConsumePartition(form.ToString(), partition, sarama.OffsetNewest)
+		if err != nil {
+			k.Printf("failed to start consumer for topic %s: %v", form.ToString(), err)
+			return err
+		}
+		k.topics[routerId] = partitionConsumer
 		defer k.Unlock()
 		go k.handleMessages(partitionConsumer, router)
 	}
