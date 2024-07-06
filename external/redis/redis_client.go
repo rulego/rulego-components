@@ -36,6 +36,7 @@ type ClientNodeConfiguration struct {
 	Server string
 	// PoolSize 连接池大小
 	PoolSize int
+	Db       int
 	// Cmd 执行命令，例如SET/GET/DEL
 	// 可以使用${}占位符读取metadata元数据
 	// 支持${msg.data}获取消息负荷，${msg.type}获取消息类型
@@ -65,6 +66,7 @@ func (x *ClientNode) New() types.Node {
 		Server: "127.0.0.1:6379",
 		Cmd:    "GET",
 		Params: []interface{}{"${key}"},
+		Db:     0,
 	}}
 }
 
@@ -75,6 +77,7 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 		x.redisClient = redis.NewClient(&redis.Options{
 			Addr:     x.Config.Server,
 			PoolSize: x.Config.PoolSize,
+			DB:       x.Config.Db,
 		})
 		err = x.redisClient.Ping(context.Background()).Err()
 	}
