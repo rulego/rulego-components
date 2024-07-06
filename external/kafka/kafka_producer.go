@@ -55,7 +55,7 @@ func (x *ProducerNode) Type() string {
 func (x *ProducerNode) New() types.Node {
 	return &ProducerNode{
 		Config: NodeConfiguration{
-			Brokers:   []string{"localhost:9092"},
+			Brokers:   []string{"127.0.0.1:9092"},
 			Partition: 0,
 		},
 	}
