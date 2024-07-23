@@ -20,6 +20,7 @@ import (
 	"github.com/IBM/sarama"
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
+	"github.com/rulego/rulego/components/base"
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/str"
 	"strconv"
@@ -34,9 +35,9 @@ func init() {
 type NodeConfiguration struct {
 	// Brokers kafka服务器地址列表
 	Brokers []string
-	// Topic 发布主题，可以使用 ${metaKeyName} 替换元数据中的变量
+	// Topic 发布主题，可以使用 ${metadata.key} 读取元数据中的变量或者使用 ${msg.key} 读取消息负荷中的变量进行替换
 	Topic string
-	// Key 分区键，可以使用 ${metaKeyName} 替换元数据中的变量
+	// Key 分区键，可以使用 ${metadata.key} 读取元数据中的变量或者使用 ${msg.key} 读取消息负荷中的变量进行替换
 	Key string
 	//Partition 分区编号
 	Partition int32
@@ -45,6 +46,10 @@ type NodeConfiguration struct {
 type ProducerNode struct {
 	Config        NodeConfiguration
 	kafkaProducer sarama.SyncProducer
+	//topic 模板
+	topicTemplate str.Template
+	//key 模板
+	keyTemplate str.Template
 }
 
 // Type 返回组件类型
@@ -68,15 +73,22 @@ func (x *ProducerNode) Init(ruleConfig types.Config, configuration types.Configu
 		config := sarama.NewConfig()
 		config.Producer.Return.Successes = true // 同步模式需要设置这个参数为true
 		x.kafkaProducer, err = sarama.NewSyncProducer(x.Config.Brokers, config)
+		x.topicTemplate = str.NewTemplate(x.Config.Topic)
+		x.keyTemplate = str.NewTemplate(x.Config.Key)
 	}
 	return err
 }
 
 // OnMsg 处理消息
 func (x *ProducerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
-	values := msg.Metadata.Values()
-	topic := str.SprintfDict(x.Config.Topic, values)
-	key := str.SprintfDict(x.Config.Key, values)
+	topic := x.Config.Topic
+	key := x.Config.Key
+	if !x.topicTemplate.IsNotVar() || !x.keyTemplate.IsNotVar() {
+		evn := base.NodeUtils.GetEvnAndMetadata(ctx, msg)
+		topic = str.ExecuteTemplate(topic, evn)
+		key = str.ExecuteTemplate(key, evn)
+	}
+
 	message := &sarama.ProducerMessage{
 		Topic:     topic,
 		Partition: x.Config.Partition,

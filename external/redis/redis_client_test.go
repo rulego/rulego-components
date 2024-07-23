@@ -36,9 +36,9 @@ func TestRedisClientSetFromMetadata(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
 	configuration["Cmd"] = "SET"
-	configuration["Params"] = []interface{}{"${key}", "${value}"}
+	configuration["Params"] = []interface{}{"${metadata.key}", "${metadata.value}"}
 	configuration["PoolSize"] = 10
-	configuration["Server"] = "192.168.1.1:6379"
+	configuration["Server"] = "127.0.0.1:6379"
 	config := types.NewConfig()
 	err := node.Init(config, configuration)
 	if err != nil {
@@ -65,9 +65,9 @@ func TestRedisClientSetFromData(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
 	configuration["Cmd"] = "SET"
-	configuration["Params"] = []interface{}{"${key}", "${msg.data}"}
+	configuration["Params"] = []interface{}{"${metadata.key}", "${data}"}
 	configuration["PoolSize"] = 10
-	configuration["Server"] = "192.168.1.1:6379"
+	configuration["Server"] = "127.0.0.1:6379"
 	config := types.NewConfig()
 	err := node.Init(config, configuration)
 	if err != nil {
@@ -93,9 +93,9 @@ func TestRedisClientGetOnMsg(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
 	configuration["Cmd"] = "GET"
-	configuration["Params"] = []interface{}{"${key}"}
+	configuration["Params"] = []interface{}{"${metadata.key}"}
 	configuration["PoolSize"] = 10
-	configuration["Server"] = "192.168.1.1:6379"
+	configuration["Server"] = "127.0.0.1:6379"
 	config := types.NewConfig()
 	err := node.Init(config, configuration)
 	if err != nil {
@@ -121,9 +121,9 @@ func TestRedisClientDelOnMsg(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
 	configuration["Cmd"] = "DEL"
-	configuration["Params"] = []interface{}{"${key}"}
+	configuration["Params"] = []interface{}{"${metadata.key}"}
 	configuration["PoolSize"] = 10
-	configuration["Server"] = "192.168.1.1:6379"
+	configuration["Server"] = "127.0.0.1:6379"
 	config := types.NewConfig()
 	err := node.Init(config, configuration)
 	if err != nil {

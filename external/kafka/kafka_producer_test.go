@@ -27,7 +27,7 @@ func TestKafkaProducerNodeOnMsg(t *testing.T) {
 	var node ProducerNode
 	var configuration = make(types.Configuration)
 	configuration["topic"] = "device.msg.request"
-	configuration["key"] = "${id}"
+	configuration["key"] = "${metadata.id}"
 	configuration["brokers"] = []string{"localhost:9092"}
 	config := types.NewConfig()
 	err := node.Init(config, configuration)

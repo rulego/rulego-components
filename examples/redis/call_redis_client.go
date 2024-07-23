@@ -25,7 +25,7 @@ import (
 	_ "github.com/rulego/rulego-components/external/redis"
 )
 
-//测试x/redisClient组件
+// 测试x/redisClient组件
 func main() {
 
 	config := rulego.NewConfig()
@@ -105,9 +105,9 @@ var chainJsonFile = `
         "debugMode": true,
         "configuration": {
           "cmd": "SET",
-          "params": ["${key}", "${msg.data}"],
+          "params": ["${metadata.key}", "${data}"],
           "poolSize": 10,
-          "Server": "192.168.1.1:6379"
+          "Server": "127.0.0.1:6379"
         }
       },
 	{
@@ -117,9 +117,9 @@ var chainJsonFile = `
         "debugMode": true,
         "configuration": {
           "cmd": "SET",
-          "params": ["${key}", "${value}"],
+          "params": ["${metadata.key}", "${metadata.value}"],
           "poolSize": 10,
-          "Server": "192.168.1.1:6379"
+          "Server": "127.0.0.1:6379"
         }
       }
     ],

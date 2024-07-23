@@ -21,6 +21,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
+	"github.com/rulego/rulego/components/base"
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/str"
 )
@@ -38,12 +39,14 @@ type ClientNodeConfiguration struct {
 	PoolSize int
 	Db       int
 	// Cmd 执行命令，例如SET/GET/DEL
-	// 可以使用${}占位符读取metadata元数据
-	// 支持${msg.data}获取消息负荷，${msg.type}获取消息类型
+	// 支持${metadata.key}占位符读取metadata元数据
+	// 支持${msg.key}占位符读取消息负荷指定key数据
+	// 支持${data}获取消息原始负荷
 	Cmd string
 	// Params 执行命令参数
-	// 可以使用${}占位符读取metadata元数据
-	// 支持${msg.data}获取消息负荷，${msg.type}获取消息类型
+	// 支持${metadata.key}占位符读取metadata元数据
+	// 支持${msg.key}占位符读取消息负荷指定key数据
+	// 支持${data}获取消息原始负荷
 	Params []interface{}
 }
 
@@ -54,6 +57,10 @@ type ClientNode struct {
 	//节点配置
 	Config      ClientNodeConfiguration
 	redisClient *redis.Client
+	//cmd是否有变量
+	cmdHasVar bool
+	//参数是否有变量
+	paramsHasVar bool
 }
 
 // Type 返回组件类型
@@ -65,7 +72,7 @@ func (x *ClientNode) New() types.Node {
 	return &ClientNode{Config: ClientNodeConfiguration{
 		Server: "127.0.0.1:6379",
 		Cmd:    "GET",
-		Params: []interface{}{"${key}"},
+		Params: []interface{}{"${metadata.key}"},
 		Db:     0,
 	}}
 }
@@ -80,6 +87,17 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 			DB:       x.Config.Db,
 		})
 		err = x.redisClient.Ping(context.Background()).Err()
+
+		if str.CheckHasVar(x.Config.Cmd) {
+			x.cmdHasVar = true
+		}
+		//检查是参数否有变量
+		for _, item := range x.Config.Params {
+			if v, ok := item.(string); ok && str.CheckHasVar(v) {
+				x.paramsHasVar = true
+				break
+			}
+		}
 	}
 	return err
 }
@@ -88,19 +106,28 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	var data interface{}
 	var err error
-	metadataCopy := msg.Metadata.Copy()
-	metadataCopy.PutValue("msg.data", msg.Data)
-	metadataCopy.PutValue("msg.type", msg.Type)
+	var evn map[string]interface{}
+	if x.cmdHasVar || x.paramsHasVar {
+		evn = base.NodeUtils.GetEvnAndMetadata(ctx, msg)
+	}
+	var cmd = x.Config.Cmd
+	if x.cmdHasVar {
+		cmd = str.ExecuteTemplate(x.Config.Cmd, evn)
+	}
 
 	var args []interface{}
-	cmd := str.SprintfDict(x.Config.Cmd, metadataCopy.Values())
 	args = append(args, cmd)
-	for _, item := range x.Config.Params {
-		if itemStr, ok := item.(string); ok {
-			args = append(args, str.SprintfDict(itemStr, metadataCopy.Values()))
-		} else {
-			args = append(args, item)
+
+	if x.paramsHasVar {
+		for _, item := range x.Config.Params {
+			if itemStr, ok := item.(string); ok {
+				args = append(args, str.ExecuteTemplate(itemStr, evn))
+			} else {
+				args = append(args, item)
+			}
 		}
+	} else {
+		args = append(args, x.Config.Params)
 	}
 
 	//请求redis服务器，并得到返回结果

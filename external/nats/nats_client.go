@@ -21,6 +21,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
+	"github.com/rulego/rulego/components/base"
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/str"
 	"sync/atomic"
@@ -50,6 +51,8 @@ type ClientNode struct {
 	natsClient *nats.Conn
 	// 是否正在连接NATS服务器
 	connecting int32
+	//topic 模板
+	topicTemplate str.Template
 }
 
 // Type 组件类型
@@ -69,13 +72,16 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
 		_ = x.tryInitClient()
+		x.topicTemplate = str.NewTemplate(x.Config.Topic)
 	}
 	return err
 }
 
 // OnMsg 处理消息
 func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
-	topic := str.SprintfDict(x.Config.Topic, msg.Metadata.Values())
+	topic := x.topicTemplate.ExecuteFn(func() map[string]any {
+		return base.NodeUtils.GetEvnAndMetadata(ctx, msg)
+	})
 	if x.natsClient == nil {
 		if err := x.tryInitClient(); err != nil {
 			ctx.TellFailure(msg, err)
