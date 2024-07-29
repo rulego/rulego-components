@@ -26,6 +26,7 @@ import (
 	"github.com/rulego/rulego/endpoint"
 	"github.com/rulego/rulego/endpoint/impl"
 	"github.com/rulego/rulego/utils/maps"
+	"github.com/rulego/rulego/utils/runtime"
 	"net/textproto"
 	"strings"
 )
@@ -227,7 +228,7 @@ func (n *Redis) AddRouter(router endpointApi.Router, params ...interface{}) (str
 	if router == nil {
 		return "", errors.New("router cannot be nil")
 	}
-	// 初始化NATS客户端
+	// 初始化客户端
 	if err := n.initRedisClient(); err != nil {
 		return "", err
 	}
@@ -245,33 +246,29 @@ func (n *Redis) pSubscribe(channels ...string) {
 	if n.pubSub != nil {
 		_ = n.pubSub.Close()
 	}
+	if len(channels) == 0 {
+		return
+	}
 	n.pubSub = n.redisClient.PSubscribe(context.Background(), channels...)
 	go func() {
 		// 遍历接收消息
 		for msg := range n.pubSub.Channel() {
-			n.RLock()
-			routers := n.channelRouterMap[msg.Pattern]
-			n.RUnlock()
-			for _, router := range routers {
-				exchange := &endpointApi.Exchange{
-					In: &RequestMessage{
-						redisClient: n.redisClient,
-						topic:       msg.Channel,
-						body:        []byte(msg.Payload),
-					},
-					Out: &ResponseMessage{
-						redisClient: n.redisClient,
-						topic:       msg.Channel,
-						log: func(format string, v ...interface{}) {
-							n.Printf(format, v...)
-						},
-					},
+			// 处理消息逻辑
+			if n.RuleConfig.Pool != nil {
+				err := n.RuleConfig.Pool.Submit(func() {
+					n.handlerMsg(msg)
+				})
+				if err != nil {
+					n.Printf("kafka consumer handler err :%v", err)
 				}
-				n.DoProcess(context.Background(), router, exchange)
+			} else {
+				go n.handlerMsg(msg)
 			}
+
 		}
 	}()
 }
+
 func (n *Redis) RemoveRouter(routerId string, params ...interface{}) error {
 	channels := n.removeSubByRouterId(routerId)
 	n.pSubscribe(channels...)
@@ -361,4 +358,32 @@ func (n *Redis) checkSubByRouterId(routerId string) bool {
 		}
 	}
 	return false
+}
+
+func (n *Redis) handlerMsg(msg *redis.Message) {
+	defer func() {
+		if e := recover(); e != nil {
+			n.Printf("redis endpoint handler err :\n%v", runtime.Stack())
+		}
+	}()
+	n.RLock()
+	routers := n.channelRouterMap[msg.Pattern]
+	n.RUnlock()
+	for _, router := range routers {
+		exchange := &endpointApi.Exchange{
+			In: &RequestMessage{
+				redisClient: n.redisClient,
+				topic:       msg.Channel,
+				body:        []byte(msg.Payload),
+			},
+			Out: &ResponseMessage{
+				redisClient: n.redisClient,
+				topic:       msg.Channel,
+				log: func(format string, v ...interface{}) {
+					n.Printf(format, v...)
+				},
+			},
+		}
+		n.DoProcess(context.Background(), router, exchange)
+	}
 }
