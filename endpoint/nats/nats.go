@@ -26,6 +26,7 @@ import (
 	"github.com/rulego/rulego/endpoint"
 	"github.com/rulego/rulego/endpoint/impl"
 	"github.com/rulego/rulego/utils/maps"
+	"github.com/rulego/rulego/utils/runtime"
 	"net/textproto"
 )
 
@@ -233,6 +234,11 @@ func (n *Nats) AddRouter(router endpointApi.Router, params ...interface{}) (stri
 		return routerId, fmt.Errorf("routerId %s already exists", routerId)
 	}
 	subscription, err := n.conn.Subscribe(router.FromToString(), func(msg *nats.Msg) {
+		defer func() {
+			if e := recover(); e != nil {
+				n.Printf("nats endpoint handler err :\n%v", runtime.Stack())
+			}
+		}()
 		exchange := &endpointApi.Exchange{
 			In: &RequestMessage{
 				request: msg,
