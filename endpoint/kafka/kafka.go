@@ -26,12 +26,22 @@ import (
 	"github.com/rulego/rulego/endpoint"
 	"github.com/rulego/rulego/endpoint/impl"
 	"github.com/rulego/rulego/utils/maps"
+	"github.com/rulego/rulego/utils/runtime"
 	"net/textproto"
 	"strconv"
+	"strings"
 )
 
 // Type 组件类型
 const Type = types.EndpointTypePrefix + "kafka"
+const (
+	//Topic 消息主题
+	Topic = "topic"
+	//Key 消息key
+	Key = "key"
+	//Partition 消费分区
+	Partition = "partition"
+)
 
 // Endpoint 别名
 type Endpoint = Kafka
@@ -56,7 +66,7 @@ func (r *RequestMessage) Body() []byte {
 
 func (r *RequestMessage) Headers() textproto.MIMEHeader {
 	header := make(textproto.MIMEHeader)
-	header.Set("topic", r.request.Topic)
+	header.Set(Topic, r.request.Topic)
 	return header
 }
 
@@ -77,7 +87,7 @@ func (r *RequestMessage) GetMsg() *types.RuleMsg {
 		//默认指定是JSON格式，如果不是该类型，请在process函数中修改
 		ruleMsg := types.NewMsg(0, r.From(), types.JSON, types.NewMetadata(), string(r.Body()))
 
-		ruleMsg.Metadata.PutValue("topic", r.From())
+		ruleMsg.Metadata.PutValue(Topic, r.From())
 
 		r.msg = &ruleMsg
 	}
@@ -140,10 +150,10 @@ func (r *ResponseMessage) SetStatusCode(statusCode int) {
 
 func (r *ResponseMessage) SetBody(body []byte) {
 	r.body = body
-	topic := r.Headers().Get("topic")
+	topic := r.Headers().Get(Topic)
 	if topic != "" {
-		key := r.Headers().Get("key")
-		partitionStr := r.Headers().Get("partition")
+		key := r.Headers().Get(Key)
+		partitionStr := r.Headers().Get(Partition)
 		var partition = int32(0)
 		if partitionStr != "" {
 			if num, err := strconv.ParseInt(partitionStr, 10, 32); err == nil {
@@ -174,6 +184,8 @@ func (r *ResponseMessage) GetError() error {
 type Config struct {
 	// Brokers kafka服务器地址列表
 	Brokers []string
+	// GroupId 消费者组Id
+	GroupId string
 }
 
 // Kafka Kafka 接收端端点
@@ -182,12 +194,10 @@ type Kafka struct {
 	RuleConfig types.Config
 	//Config 配置
 	Config Config
-	//消息消费者
-	consumer sarama.Consumer
 	//消息生产者，用于响应
 	producer sarama.SyncProducer
 	// 主题和主题消费者映射关系，用于取消订阅
-	topics map[string]sarama.PartitionConsumer
+	handlers map[string]sarama.ConsumerGroup
 }
 
 // Type 组件类型
@@ -199,6 +209,7 @@ func (k *Kafka) New() types.Node {
 	return &Kafka{
 		Config: Config{
 			Brokers: []string{"127.0.0.1:9092"},
+			GroupId: "rulego",
 		},
 	}
 }
@@ -206,6 +217,10 @@ func (k *Kafka) New() types.Node {
 // Init 初始化
 func (k *Kafka) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &k.Config)
+	k.Config.GroupId = strings.TrimSpace(k.Config.GroupId)
+	if k.Config.GroupId == "" {
+		k.Config.GroupId = "rulego"
+	}
 	k.RuleConfig = ruleConfig
 	return err
 }
@@ -216,9 +231,12 @@ func (k *Kafka) Destroy() {
 }
 
 func (k *Kafka) Close() error {
-	if nil != k.consumer {
-		return k.consumer.Close()
+	for _, v := range k.handlers {
+		v.Close()
 	}
+
+	k.handlers = nil
+
 	if nil != k.producer {
 		return k.producer.Close()
 	}
@@ -246,16 +264,7 @@ func (k *Kafka) AddRouter(router endpointApi.Router, params ...interface{}) (str
 	if id := router.GetId(); id == "" {
 		router.SetId(router.GetFrom().ToString())
 	}
-	var partition = int32(0)
-	//指定分区
-	if len(params) > 0 {
-		if v1, ok1 := params[0].(int32); ok1 {
-			partition = v1
-		} else if v2, ok2 := params[0].(int); ok2 {
-			partition = int32(v2)
-		}
-	}
-	if err := k.createTopicConsumer(router, partition); err != nil {
+	if err := k.createTopicConsumer(router); err != nil {
 		return "", err
 	}
 	return router.GetId(), nil
@@ -265,8 +274,8 @@ func (k *Kafka) RemoveRouter(routerId string, params ...interface{}) error {
 	k.Lock()
 	defer k.Unlock()
 	//删除订阅
-	if v, ok := k.topics[routerId]; ok {
-		delete(k.topics, routerId)
+	if v, ok := k.handlers[routerId]; ok {
+		delete(k.handlers, routerId)
 		return v.Close()
 	}
 	return nil
@@ -278,14 +287,6 @@ func (k *Kafka) Start() error {
 
 // initKafkaClient 初始化kafka客户端
 func (k *Kafka) initKafkaClient() error {
-	if k.consumer == nil {
-		config := sarama.NewConfig()
-		consumer, err := sarama.NewConsumer(k.Config.Brokers, config)
-		if err != nil {
-			return err
-		}
-		k.consumer = consumer
-	}
 	if k.producer == nil {
 		config := sarama.NewConfig()
 		config.Producer.Return.Successes = true // 同步模式需要设置这个参数为true
@@ -300,7 +301,7 @@ func (k *Kafka) initKafkaClient() error {
 }
 
 // 创建kafka消费者
-func (k *Kafka) createTopicConsumer(router endpointApi.Router, partition int32) error {
+func (k *Kafka) createTopicConsumer(router endpointApi.Router) error {
 	if form := router.GetFrom(); form != nil {
 		routerId := router.GetId()
 		if routerId == "" {
@@ -308,50 +309,88 @@ func (k *Kafka) createTopicConsumer(router endpointApi.Router, partition int32) 
 			router.SetId(routerId)
 		}
 		k.Lock()
-		if k.topics == nil {
-			k.topics = make(map[string]sarama.PartitionConsumer)
+		if k.handlers == nil {
+			k.handlers = make(map[string]sarama.ConsumerGroup)
 		}
-		if _, ok := k.topics[routerId]; ok {
+		if _, ok := k.handlers[routerId]; ok {
 			return fmt.Errorf("routerId %s already exists", routerId)
 		}
-		partitionConsumer, err := k.consumer.ConsumePartition(form.ToString(), partition, sarama.OffsetNewest)
+		config := sarama.NewConfig()
+		consumer, err := sarama.NewConsumerGroup(k.Config.Brokers, k.Config.GroupId, config)
 		if err != nil {
-			k.Printf("failed to start consumer for topic %s: %v", form.ToString(), err)
 			return err
 		}
-		k.topics[routerId] = partitionConsumer
+		k.handlers[routerId] = consumer
 		defer k.Unlock()
-		go k.handleMessages(partitionConsumer, router)
+
+		topics := []string{form.ToString()}                // 订阅的主题列表
+		handler := &consumerHandler{router: router, ep: k} // 自定义的消费者处理程序
+
+		go func() {
+			defer consumer.Close()
+			if err := consumer.Consume(context.Background(), topics, handler); err != nil {
+				k.Printf("failed to start consumer for topic %s: %v", form.ToString(), err)
+			}
+		}()
+
 	}
 	return nil
-}
-
-// 处理订阅消息
-func (k *Kafka) handleMessages(partitionConsumer sarama.PartitionConsumer, router endpointApi.Router) {
-	defer func() {
-		if err := partitionConsumer.Close(); err != nil {
-			k.Printf("failed to close partition consumer: %v", err)
-		}
-	}()
-	for msg := range partitionConsumer.Messages() { // loop until partition consumer is closed or context is canceled
-		exchange := &endpointApi.Exchange{
-			In: &RequestMessage{
-				request: msg,
-			},
-			Out: &ResponseMessage{
-				request:  msg,
-				response: k.producer,
-				log: func(format string, v ...interface{}) {
-					k.Printf(format, v...)
-				},
-			}}
-
-		k.DoProcess(context.Background(), router, exchange)
-	}
 }
 
 func (k *Kafka) Printf(format string, v ...interface{}) {
 	if k.RuleConfig.Logger != nil {
 		k.RuleConfig.Logger.Printf(format, v...)
 	}
+}
+
+// 自定义消费者处理程序
+type consumerHandler struct {
+	ep         *Endpoint
+	router     endpointApi.Router
+	ruleConfig types.Config
+}
+
+func (h *consumerHandler) Setup(sarama.ConsumerGroupSession) error   { return nil }
+func (h *consumerHandler) Cleanup(sarama.ConsumerGroupSession) error { return nil }
+func (h *consumerHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	for msg := range claim.Messages() {
+		// 处理消息逻辑
+		if h.ruleConfig.Pool != nil {
+			err := h.ruleConfig.Pool.Submit(func() {
+				h.handlerMsg(session, msg)
+			})
+			if err != nil {
+				h.ep.Printf("kafka consumer handler err :%v", err)
+			}
+			return err
+		} else {
+			go h.handlerMsg(session, msg)
+		}
+	}
+	return nil
+}
+func (h *consumerHandler) handlerMsg(session sarama.ConsumerGroupSession, msg *sarama.ConsumerMessage) {
+	defer func() {
+		if e := recover(); e != nil {
+			h.ep.Printf("kafka endpoint handler err :\n%v", runtime.Stack())
+		}
+	}()
+	exchange := &endpointApi.Exchange{
+		In: &RequestMessage{
+			request: msg,
+		},
+		Out: &ResponseMessage{
+			request:  msg,
+			response: h.ep.producer,
+			log: func(format string, v ...interface{}) {
+				h.ep.Printf(format, v...)
+			},
+		},
+	}
+	metadata := exchange.In.GetMsg().Metadata
+	metadata.PutValue(Key, string(msg.Key))
+	metadata.PutValue(Partition, strconv.Itoa(int(msg.Partition)))
+
+	h.ep.DoProcess(context.Background(), h.router, exchange)
+	session.MarkMessage(msg, "") // 标记消息已处理
 }

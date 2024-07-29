@@ -24,6 +24,7 @@ import (
 	"github.com/rulego/rulego/endpoint"
 	"github.com/rulego/rulego/test/assert"
 	"os"
+	"sync"
 	"testing"
 	"time"
 )
@@ -43,6 +44,7 @@ func TestKafkaEndpoint(t *testing.T) {
 	//启动kafka接收服务
 	kafkaEndpoint, err := endpoint.Registry.New(Type, config, Config{
 		Brokers: []string{"localhost:9092"},
+		GroupId: "test01",
 	})
 	//路由1
 	router1 := endpoint.NewRouter().From("device.msg.request").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
@@ -95,7 +97,29 @@ func TestKafkaEndpoint(t *testing.T) {
 		t.Fatal("Failed to start Sarama consumer:", err)
 	}
 	defer consumer.Close()
+	var wg sync.WaitGroup
+	wg.Add(1)
 
+	go func(g *sync.WaitGroup) {
+		// 创建消费者来读取 device.msg.response
+		partitionConsumer, err := consumer.ConsumePartition("device.msg.response", 0, sarama.OffsetNewest)
+		if err != nil {
+			t.Fatal("Failed to start consumer for response topic:", err)
+		}
+		defer partitionConsumer.Close()
+
+		// 等待并验证响应
+		select {
+		case msg := <-partitionConsumer.Messages():
+			assert.Equal(t, "this is response", string(msg.Value))
+			g.Done()
+		case <-time.After(5 * time.Second):
+			g.Done()
+			t.Fatal("Failed to receive message within the timeout period")
+		}
+	}(&wg)
+
+	time.Sleep(time.Second)
 	// 发布消息到 device.msg.request
 	_, _, err = producer.SendMessage(&sarama.ProducerMessage{
 		Topic: "device.msg.request",
@@ -104,20 +128,6 @@ func TestKafkaEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to send message:", err)
 	}
-
-	// 创建消费者来读取 device.msg.response
-	partitionConsumer, err := consumer.ConsumePartition("device.msg.response", 0, sarama.OffsetNewest)
-	if err != nil {
-		t.Fatal("Failed to start consumer for response topic:", err)
-	}
-	defer partitionConsumer.Close()
-
-	// 等待并验证响应
-	select {
-	case msg := <-partitionConsumer.Messages():
-		assert.Equal(t, "this is response", string(msg.Value))
-	case <-time.After(5 * time.Second):
-		t.Fatal("Failed to receive message within the timeout period")
-	}
-
+	wg.Wait()
+	kafkaEndpoint.Destroy()
 }
