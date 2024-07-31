@@ -61,7 +61,7 @@ func TestRedisEndpoint(t *testing.T) {
 		return true
 	}).To("chain:default").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		// 往指定主题发送数据，用于响应
-		exchange.Out.Headers().Add("topic", "device.msg.response")
+		exchange.Out.Headers().Add(KeyResponseTopic, "device.msg.response")
 		exchange.Out.SetBody([]byte("this is response"))
 		return true
 	}).End()
@@ -76,7 +76,7 @@ func TestRedisEndpoint(t *testing.T) {
 		return true
 	}).To("chain:default").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		// 往指定主题发送数据，用于响应
-		exchange.Out.Headers().Add("topic", "device.msg.response")
+		exchange.Out.Headers().Add(KeyResponseTopic, "device.msg.response")
 		exchange.Out.SetBody([]byte("this is response"))
 		return true
 	}).End()
@@ -117,7 +117,7 @@ func TestRedisEndpoint(t *testing.T) {
 		return true
 	}).To("chain:default").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		// 往指定主题发送数据，用于响应
-		exchange.Out.Headers().Add("topic", "device.msg.response")
+		exchange.Out.Headers().Add(KeyResponseTopic, "device.msg.response")
 		exchange.Out.SetBody([]byte("this is response"))
 		return true
 	}).End()

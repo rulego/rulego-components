@@ -33,6 +33,13 @@ import (
 
 var testdataFolder = "../../testdata"
 
+func Test2t(*testing.T) {
+	// 测试发布和订阅
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: "127.0.0.1:6379",
+	})
+	addData(redisClient, "device.msg.request")
+}
 func TestRedisEndpoint(t *testing.T) {
 	buf, err := os.ReadFile(testdataFolder + "/chain_msg_type_switch.json")
 	if err != nil {
@@ -61,7 +68,7 @@ func TestRedisEndpoint(t *testing.T) {
 		return true
 	}).To("chain:default").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		// 往指定主题发送数据，用于响应
-		exchange.Out.Headers().Add("topic", "device.msg.response")
+		exchange.Out.Headers().Add(KeyResponseTopic, "device.msg.response")
 		exchange.Out.SetBody([]byte("this is response"))
 		return true
 	}).End()
@@ -76,7 +83,7 @@ func TestRedisEndpoint(t *testing.T) {
 		return true
 	}).To("chain:default").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		// 往指定主题发送数据，用于响应
-		exchange.Out.Headers().Add("topic", "device.msg.response")
+		exchange.Out.Headers().Add(KeyResponseTopic, "device.msg.response")
 		exchange.Out.SetBody([]byte("this is response"))
 		return true
 	}).End()

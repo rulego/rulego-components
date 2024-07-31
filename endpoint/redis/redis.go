@@ -34,6 +34,13 @@ import (
 // Type 组件类型
 const Type = types.EndpointTypePrefix + "redis"
 
+const (
+	// KeyResponseTopic 响应主题metadataKey
+	KeyResponseTopic = "responseTopic"
+	// KeyResponseChannel 响应主题metadataKey
+	KeyResponseChannel = "responseChannel"
+)
+
 // Endpoint 别名
 type Endpoint = Redis
 
@@ -144,11 +151,25 @@ func (r *ResponseMessage) GetMsg() *types.RuleMsg {
 func (r *ResponseMessage) SetStatusCode(statusCode int) {
 }
 
+// 从msg.Metadata或者响应头获取
+func (r *ResponseMessage) getMetadataValue(metadataName, headerName string) string {
+	var v string
+	if r.GetMsg() != nil {
+		metadata := r.GetMsg().Metadata
+		v = metadata.GetValue(metadataName)
+	}
+	if v == "" {
+		return r.Headers().Get(headerName)
+	} else {
+		return v
+	}
+}
+
 func (r *ResponseMessage) SetBody(body []byte) {
 	r.body = body
-	topic := r.Headers().Get("topic")
+	topic := r.getMetadataValue(KeyResponseTopic, KeyResponseTopic)
 	if topic == "" {
-		topic = r.Headers().Get("channel")
+		topic = r.getMetadataValue(KeyResponseChannel, KeyResponseChannel)
 	}
 	if topic != "" {
 		_ = r.redisClient.Publish(context.Background(), topic, string(r.body))

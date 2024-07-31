@@ -42,6 +42,14 @@ const (
 	//Partition 消费分区
 	Partition = "partition"
 )
+const (
+	// KeyResponseTopic 响应主题metadataKey
+	KeyResponseTopic = "responseTopic"
+	// KeyResponseKey 响应key metadataKey
+	KeyResponseKey = "key"
+	// KeyResponsePartition 响应 消费分区metadataKey
+	KeyResponsePartition = "partition"
+)
 
 // Endpoint 别名
 type Endpoint = Kafka
@@ -148,12 +156,25 @@ func (r *ResponseMessage) GetMsg() *types.RuleMsg {
 func (r *ResponseMessage) SetStatusCode(statusCode int) {
 }
 
+// 从msg.Metadata或者响应头获取
+func (r *ResponseMessage) getMetadataValue(metadataName, headerName string) string {
+	var v string
+	if r.GetMsg() != nil {
+		metadata := r.GetMsg().Metadata
+		v = metadata.GetValue(metadataName)
+	}
+	if v == "" {
+		return r.Headers().Get(headerName)
+	} else {
+		return v
+	}
+}
 func (r *ResponseMessage) SetBody(body []byte) {
 	r.body = body
-	topic := r.Headers().Get(Topic)
+	topic := r.getMetadataValue(KeyResponseTopic, KeyResponseTopic)
 	if topic != "" {
-		key := r.Headers().Get(Key)
-		partitionStr := r.Headers().Get(Partition)
+		key := r.getMetadataValue(KeyResponseKey, KeyResponseKey)
+		partitionStr := r.getMetadataValue(KeyResponsePartition, KeyResponsePartition)
 		var partition = int32(0)
 		if partitionStr != "" {
 			if num, err := strconv.ParseInt(partitionStr, 10, 32); err == nil {

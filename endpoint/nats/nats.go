@@ -33,6 +33,9 @@ import (
 // Type 组件类型
 const Type = types.EndpointTypePrefix + "nats"
 
+// KeyResponseTopic 响应主题metadataKey
+const KeyResponseTopic = "responseTopic"
+
 // Endpoint 别名
 type Endpoint = Nats
 
@@ -137,9 +140,23 @@ func (r *ResponseMessage) GetMsg() *types.RuleMsg {
 func (r *ResponseMessage) SetStatusCode(statusCode int) {
 }
 
+// 从msg.Metadata或者响应头获取
+func (r *ResponseMessage) getMetadataValue(metadataName, headerName string) string {
+	var v string
+	if r.GetMsg() != nil {
+		metadata := r.GetMsg().Metadata
+		v = metadata.GetValue(metadataName)
+	}
+	if v == "" {
+		return r.Headers().Get(headerName)
+	} else {
+		return v
+	}
+}
+
 func (r *ResponseMessage) SetBody(body []byte) {
 	r.body = body
-	topic := r.Headers().Get("topic")
+	topic := r.getMetadataValue(KeyResponseTopic, KeyResponseTopic)
 	if topic != "" {
 		err := r.response.Publish(topic, r.body)
 		if err != nil {
