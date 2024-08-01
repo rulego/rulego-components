@@ -25,16 +25,19 @@ import (
 )
 
 func TestRedisClientNodeOnMsg(t *testing.T) {
-	//TestRedisClientSetFromMetadata(t)
-	//TestRedisClientSetFromData(t)
-	//TestRedisClientGetOnMsg(t)
-	//TestRedisClientDelOnMsg(t)
-	TestRedisClientHMSet(t)
-	TestRedisClientHMGet(t)
+	testRedisClientSetFromMetadata(t)
+	testRedisClientSetFromData(t)
+	testRedisClientGetOnMsg(t)
+	testRedisClientDelOnMsg(t)
+	testRedisClientHMSet(t)
+	testRedisClientHMGet(t)
+	testRedisClientHMSetFromExpr(t)
+	testRedisClientHMGetFromExpr(t)
+	testRedisClientFlushDB(t)
 }
 
 // 测试添加key/value
-func TestRedisClientSetFromMetadata(t *testing.T) {
+func testRedisClientSetFromMetadata(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
 	configuration["Cmd"] = "SET"
@@ -63,7 +66,7 @@ func TestRedisClientSetFromMetadata(t *testing.T) {
 }
 
 // 测试添加key/value ,value使用msg payload
-func TestRedisClientSetFromData(t *testing.T) {
+func testRedisClientSetFromData(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
 	configuration["Cmd"] = "SET"
@@ -91,7 +94,7 @@ func TestRedisClientSetFromData(t *testing.T) {
 }
 
 // 测试获取key
-func TestRedisClientGetOnMsg(t *testing.T) {
+func testRedisClientGetOnMsg(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
 	configuration["Cmd"] = "GET"
@@ -119,7 +122,7 @@ func TestRedisClientGetOnMsg(t *testing.T) {
 }
 
 // 测试删除key
-func TestRedisClientDelOnMsg(t *testing.T) {
+func testRedisClientDelOnMsg(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
 	configuration["Cmd"] = "DEL"
@@ -146,7 +149,7 @@ func TestRedisClientDelOnMsg(t *testing.T) {
 
 }
 
-func TestRedisClientHMSet(t *testing.T) {
+func testRedisClientHMSet(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
 	configuration["Cmd"] = "HMSET"
@@ -172,7 +175,7 @@ func TestRedisClientHMSet(t *testing.T) {
 
 	time.Sleep(time.Second * 1)
 }
-func TestRedisClientHMGet(t *testing.T) {
+func testRedisClientHMGet(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
 	configuration["Cmd"] = "HMGET"
@@ -194,6 +197,75 @@ func TestRedisClientHMGet(t *testing.T) {
 	metaData.PutValue("key", "test")
 	metaData.PutValue("value", `{"aa":"lala"}`)
 	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, "")
+	node.OnMsg(ctx, msg)
+
+	time.Sleep(time.Second * 1)
+}
+
+func testRedisClientHMSetFromExpr(t *testing.T) {
+	var node ClientNode
+	var configuration = make(types.Configuration)
+	configuration["cmd"] = "HMSET"
+	configuration["paramsExpr"] = "msg"
+	configuration["poolSize"] = 10
+	configuration["server"] = "127.0.0.1:6379"
+	config := types.NewConfig()
+	err := node.Init(config, configuration)
+	if err != nil {
+		t.Errorf("err=%s", err)
+	}
+	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
+		assert.Equal(t, types.Success, relationType)
+		// 检查结果是否正确
+		assert.Equal(t, "OK", msg.Data)
+	})
+	metaData := types.NewMetadata()
+	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, `["myhash2", "field1", "value1"]`)
+	node.OnMsg(ctx, msg)
+
+	time.Sleep(time.Second * 1)
+}
+
+func testRedisClientHMGetFromExpr(t *testing.T) {
+	var node ClientNode
+	var configuration = make(types.Configuration)
+	configuration["cmd"] = "HMGET"
+	configuration["paramsExpr"] = "msg"
+	configuration["server"] = "127.0.0.1:6379"
+	config := types.NewConfig()
+	err := node.Init(config, configuration)
+	if err != nil {
+		t.Errorf("err=%s", err)
+	}
+	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
+		assert.Equal(t, types.Success, relationType)
+		// 检查结果是否正确
+		assert.Equal(t, "[\"value1\"]", msg.Data)
+	})
+	metaData := types.NewMetadata()
+	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, `["myhash", "field1"]`)
+	node.OnMsg(ctx, msg)
+
+	time.Sleep(time.Second * 1)
+}
+
+func testRedisClientFlushDB(t *testing.T) {
+	var node ClientNode
+	var configuration = make(types.Configuration)
+	configuration["cmd"] = "FlushDB"
+	configuration["server"] = "127.0.0.1:6379"
+	config := types.NewConfig()
+	err := node.Init(config, configuration)
+	if err != nil {
+		t.Errorf("err=%s", err)
+	}
+	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
+		assert.Equal(t, types.Success, relationType)
+		// 检查结果是否正确
+		assert.Equal(t, "[\"value1\"]", msg.Data)
+	})
+	metaData := types.NewMetadata()
+	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, ``)
 	node.OnMsg(ctx, msg)
 
 	time.Sleep(time.Second * 1)

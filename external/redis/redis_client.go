@@ -18,12 +18,16 @@ package redis
 
 import (
 	"context"
+	"fmt"
+	"github.com/expr-lang/expr"
+	"github.com/expr-lang/expr/vm"
 	"github.com/redis/go-redis/v9"
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/components/base"
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/str"
+	"strings"
 )
 
 // 注册节点
@@ -43,6 +47,8 @@ type ClientNodeConfiguration struct {
 	// 支持${msg.key}占位符读取消息负荷指定key数据
 	// 支持${data}获取消息原始负荷
 	Cmd string
+	// ParamsExpr 动态参数表达式，表达式执行结果必须是数组。ParamsExpr和Params同时存在则优先使用ParamsExpr
+	ParamsExpr string
 	// Params 执行命令参数
 	// 支持${metadata.key}占位符读取metadata元数据
 	// 支持${msg.key}占位符读取消息负荷指定key数据
@@ -60,7 +66,8 @@ type ClientNode struct {
 	//cmd是否有变量
 	cmdHasVar bool
 	//参数是否有变量
-	paramsHasVar bool
+	paramsHasVar      bool
+	paramsExprProgram *vm.Program
 }
 
 // Type 返回组件类型
@@ -98,6 +105,14 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 				break
 			}
 		}
+
+		if exprV := strings.TrimSpace(x.Config.ParamsExpr); exprV != "" {
+			if program, err := expr.Compile(exprV, expr.AllowUndefinedVariables()); err != nil {
+				return err
+			} else {
+				x.paramsExprProgram = program
+			}
+		}
 	}
 	return err
 }
@@ -107,7 +122,7 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	var data interface{}
 	var err error
 	var evn map[string]interface{}
-	if x.cmdHasVar || x.paramsHasVar {
+	if x.cmdHasVar || x.paramsHasVar || x.paramsExprProgram != nil {
 		evn = base.NodeUtils.GetEvnAndMetadata(ctx, msg)
 	}
 	var cmd = x.Config.Cmd
@@ -117,8 +132,20 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 
 	var args []interface{}
 	args = append(args, cmd)
-
-	if x.paramsHasVar {
+	if x.paramsExprProgram != nil {
+		var exprVm = vm.VM{}
+		if out, err := exprVm.Run(x.paramsExprProgram, evn); err != nil {
+			ctx.TellFailure(msg, err)
+			return
+		} else {
+			if v, ok := out.([]interface{}); ok {
+				args = append(args, v...)
+			} else {
+				ctx.TellFailure(msg, fmt.Errorf("expr result must be []interface{}"))
+				return
+			}
+		}
+	} else if x.paramsHasVar {
 		for _, item := range x.Config.Params {
 			if itemStr, ok := item.(string); ok {
 				args = append(args, str.ExecuteTemplate(itemStr, evn))
