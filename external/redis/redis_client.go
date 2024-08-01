@@ -127,7 +127,7 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 			}
 		}
 	} else {
-		args = append(args, x.Config.Params)
+		args = append(args, x.Config.Params...)
 	}
 
 	//请求redis服务器，并得到返回结果

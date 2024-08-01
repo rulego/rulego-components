@@ -25,10 +25,12 @@ import (
 )
 
 func TestRedisClientNodeOnMsg(t *testing.T) {
-	TestRedisClientSetFromMetadata(t)
-	TestRedisClientSetFromData(t)
-	TestRedisClientGetOnMsg(t)
-	TestRedisClientDelOnMsg(t)
+	//TestRedisClientSetFromMetadata(t)
+	//TestRedisClientSetFromData(t)
+	//TestRedisClientGetOnMsg(t)
+	//TestRedisClientDelOnMsg(t)
+	TestRedisClientHMSet(t)
+	TestRedisClientHMGet(t)
 }
 
 // 测试添加key/value
@@ -142,4 +144,57 @@ func TestRedisClientDelOnMsg(t *testing.T) {
 
 	time.Sleep(time.Second * 1)
 
+}
+
+func TestRedisClientHMSet(t *testing.T) {
+	var node ClientNode
+	var configuration = make(types.Configuration)
+	configuration["Cmd"] = "HMSET"
+	configuration["Params"] = []interface{}{"myhash", "field1", "value1"}
+	configuration["PoolSize"] = 10
+	configuration["Server"] = "127.0.0.1:6379"
+	config := types.NewConfig()
+	err := node.Init(config, configuration)
+	if err != nil {
+		t.Errorf("err=%s", err)
+	}
+	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
+		assert.Equal(t, types.Success, relationType)
+		// 检查结果是否正确
+		assert.Equal(t, "OK", msg.Data)
+	})
+	metaData := types.NewMetadata()
+	// 在元数据中添加参数
+	metaData.PutValue("key", "test")
+	metaData.PutValue("value", `{"aa":"lala"}`)
+	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, "")
+	node.OnMsg(ctx, msg)
+
+	time.Sleep(time.Second * 1)
+}
+func TestRedisClientHMGet(t *testing.T) {
+	var node ClientNode
+	var configuration = make(types.Configuration)
+	configuration["Cmd"] = "HMGET"
+	configuration["Params"] = []interface{}{"myhash", "field1"}
+	configuration["PoolSize"] = 10
+	configuration["Server"] = "127.0.0.1:6379"
+	config := types.NewConfig()
+	err := node.Init(config, configuration)
+	if err != nil {
+		t.Errorf("err=%s", err)
+	}
+	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
+		assert.Equal(t, types.Success, relationType)
+		// 检查结果是否正确
+		assert.Equal(t, "[\"value1\"]", msg.Data)
+	})
+	metaData := types.NewMetadata()
+	// 在元数据中添加参数
+	metaData.PutValue("key", "test")
+	metaData.PutValue("value", `{"aa":"lala"}`)
+	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, "")
+	node.OnMsg(ctx, msg)
+
+	time.Sleep(time.Second * 1)
 }
