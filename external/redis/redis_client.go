@@ -38,6 +38,8 @@ func init() {
 type ClientNodeConfiguration struct {
 	// Server redis服务器地址
 	Server string
+	// Password 密码
+	Password string
 	// PoolSize 连接池大小
 	PoolSize int
 	Db       int
@@ -91,6 +93,7 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 			Addr:     x.Config.Server,
 			PoolSize: x.Config.PoolSize,
 			DB:       x.Config.Db,
+			Password: x.Config.Password,
 		})
 		err = x.redisClient.Ping(context.Background()).Err()
 

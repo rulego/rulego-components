@@ -354,8 +354,9 @@ func (n *Redis) Start() error {
 func (n *Redis) initRedisClient() error {
 	if n.redisClient == nil {
 		n.redisClient = redis.NewClient(&redis.Options{
-			Addr: n.Config.Server,
-			DB:   n.Config.Db,
+			Addr:     n.Config.Server,
+			DB:       n.Config.Db,
+			Password: n.Config.Password,
 		})
 		return n.redisClient.Ping(context.Background()).Err()
 	}
