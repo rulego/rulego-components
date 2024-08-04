@@ -18,6 +18,7 @@ package redis
 
 import (
 	"context"
+	"fmt"
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
 	"github.com/redis/go-redis/v9"
@@ -131,6 +132,7 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	if x.cmdHasVar {
 		cmd = str.ExecuteTemplate(x.Config.Cmd, evn)
 	}
+	cmd = strings.ToLower(strings.TrimSpace(cmd))
 
 	var args []interface{}
 	args = append(args, cmd)
@@ -157,9 +159,17 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	} else {
 		args = append(args, x.Config.Params...)
 	}
-
-	//请求redis服务器，并得到返回结果
-	data, err = x.redisClient.Do(ctx.GetContext(), args...).Result()
+	if cmd == "hgetall" {
+		if len(args) < 2 {
+			ctx.TellFailure(msg, fmt.Errorf("hgetall need one param"))
+			return
+		}
+		//hgetall特殊处理强制，返回值转换成确定的map[string][string]类型
+		data, err = x.redisClient.HGetAll(ctx.GetContext(), str.ToString(args[1])).Result()
+	} else {
+		//请求redis服务器，并得到返回结果
+		data, err = x.redisClient.Do(ctx.GetContext(), args...).Result()
+	}
 
 	if err != nil {
 		ctx.TellFailure(msg, err)
