@@ -4,7 +4,9 @@ go 1.20
 
 require (
 	github.com/IBM/sarama v1.43.2
+	github.com/expr-lang/expr v1.16.0
 	github.com/nats-io/nats.go v1.35.0
+	github.com/rabbitmq/amqp091-go v1.10.1-0.20240821123418-dc67c21576c2
 	github.com/redis/go-redis/v9 v9.5.2
 	github.com/rulego/rulego v0.22.1-0.20240729093613-233652e7cd8c
 	github.com/vadv/gopher-lua-libs v0.5.0
@@ -28,7 +30,6 @@ require (
 	github.com/eapache/go-xerial-snappy v0.0.0-20230731223053-c322873962e3 // indirect
 	github.com/eapache/queue v1.1.0 // indirect
 	github.com/eclipse/paho.mqtt.golang v1.4.2 // indirect
-	github.com/expr-lang/expr v1.16.0 // indirect
 	github.com/fatih/color v1.7.0 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/go-sql-driver/mysql v1.7.1 // indirect
