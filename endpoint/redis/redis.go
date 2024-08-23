@@ -280,7 +280,7 @@ func (n *Redis) pSubscribe(channels ...string) {
 					n.handlerMsg(msg)
 				})
 				if err != nil {
-					n.Printf("kafka consumer handler err :%v", err)
+					n.Printf("redis consumer handler err :%v", err)
 				}
 			} else {
 				go n.handlerMsg(msg)
