@@ -85,10 +85,11 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	if x.natsClient == nil {
 		if err := x.tryInitClient(); err != nil {
 			ctx.TellFailure(msg, err)
-		} else {
-			ctx.TellFailure(msg, ClientNotInitErr)
+			return
 		}
-	} else if err := x.natsClient.Publish(topic, []byte(msg.Data)); err != nil {
+	}
+
+	if err := x.natsClient.Publish(topic, []byte(msg.Data)); err != nil {
 		ctx.TellFailure(msg, err)
 	} else {
 		ctx.TellSuccess(msg)
