@@ -23,7 +23,6 @@ import (
 	"github.com/rulego/rulego/components/base"
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/str"
-	"sync/atomic"
 )
 
 const (
@@ -54,6 +53,7 @@ type ClientNodeConfiguration struct {
 }
 
 type ClientNode struct {
+	base.SharedNode[*amqp.Connection]
 	// 节点配置
 	Config      ClientNodeConfiguration
 	amqpConn    *amqp.Connection
@@ -86,8 +86,10 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 	if err != nil {
 		return err
 	}
+	_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, true, func() (*amqp.Connection, error) {
+		return x.initClient()
+	})
 	x.keyTemplate = str.NewTemplate(x.Config.Key)
-	_ = x.tryInitClient()
 	return nil
 }
 
@@ -99,18 +101,16 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	}
 	key := x.keyTemplate.Execute(evn)
 
-	if x.amqpChannel == nil || x.amqpChannel.IsClosed() {
-		if err := x.tryInitClient(); err != nil {
-			ctx.TellFailure(msg, err)
-			return
-		}
+	ch, err := x.checkChannel()
+	if err == nil {
+		err = ch.Publish(x.Config.Exchange, key, false, false,
+			amqp.Publishing{
+				ContentType:     x.getContentType(msg),
+				ContentEncoding: KeyUTF8,
+				Body:            []byte(msg.Data),
+			})
 	}
-	err := x.amqpChannel.Publish(x.Config.Exchange, key, false, false,
-		amqp.Publishing{
-			ContentType:     x.getContentType(msg),
-			ContentEncoding: KeyUTF8,
-			Body:            []byte(msg.Data),
-		})
+
 	if err != nil {
 		ctx.TellFailure(msg, err)
 	} else {
@@ -139,23 +139,42 @@ func (x *ClientNode) getContentType(msg types.RuleMsg) string {
 	}
 }
 
-func (x *ClientNode) isConnecting() bool {
-	return atomic.LoadInt32(&x.connecting) == 1
-}
-
-// TryInitClient 尝试初始化RabbitMQ客户端
-func (x *ClientNode) tryInitClient() error {
-	if (x.amqpChannel == nil || x.amqpChannel.IsClosed()) && atomic.CompareAndSwapInt32(&x.connecting, 0, 1) {
-		defer atomic.StoreInt32(&x.connecting, 0)
+func (x *ClientNode) initClient() (*amqp.Connection, error) {
+	if x.amqpConn != nil && !x.amqpConn.IsClosed() {
+		return x.amqpConn, nil
+	} else {
+		x.Locker.Lock()
+		defer x.Locker.Unlock()
+		if x.amqpConn != nil && !x.amqpConn.IsClosed() {
+			return x.amqpConn, nil
+		}
 		var err error
 		x.amqpConn, err = amqp.Dial(x.Config.Server)
-		if err != nil {
-			return err
-		}
-		x.amqpChannel, err = x.amqpConn.Channel()
-		if err != nil {
-			return err
-		}
+		return x.amqpConn, err
+	}
+}
+
+func (x *ClientNode) checkChannel() (*amqp.Channel, error) {
+	if x.amqpChannel != nil && !x.amqpChannel.IsClosed() {
+		return x.amqpChannel, nil
+	}
+	var err error
+	var conn *amqp.Connection
+	conn, err = x.SharedNode.Get()
+	if err != nil {
+		return nil, err
+	}
+	x.Locker.Lock()
+	defer x.Locker.Unlock()
+	if x.amqpChannel != nil && !x.amqpChannel.IsClosed() {
+		return x.amqpChannel, nil
+	}
+	x.amqpChannel, err = conn.Channel()
+	if err != nil {
+		return nil, err
+	}
+	if x.Config.Exchange != "" {
+		//声明交换机
 		err = x.amqpChannel.ExchangeDeclare(
 			x.Config.Exchange,     // 交换机名称
 			x.Config.ExchangeType, // 交换机类型
@@ -167,11 +186,12 @@ func (x *ClientNode) tryInitClient() error {
 		)
 		if err != nil {
 			//如果交换机已经存在，则不再声明，重新创建通道
-			x.amqpChannel, err = x.amqpConn.Channel()
+			x.amqpChannel, err = conn.Channel()
 			if err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
-	return nil
+
+	return x.amqpChannel, err
 }

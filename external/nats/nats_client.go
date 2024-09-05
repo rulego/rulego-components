@@ -24,7 +24,6 @@ import (
 	"github.com/rulego/rulego/components/base"
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/str"
-	"sync/atomic"
 )
 
 // ClientNotInitErr 表示NATS客户端未初始化的错误
@@ -46,9 +45,10 @@ type ClientNodeConfiguration struct {
 }
 
 type ClientNode struct {
+	base.SharedNode[*nats.Conn]
 	// 节点配置
-	Config     ClientNodeConfiguration
-	natsClient *nats.Conn
+	Config ClientNodeConfiguration
+	client *nats.Conn
 	// 是否正在连接NATS服务器
 	connecting int32
 	//topic 模板
@@ -71,7 +71,9 @@ func (x *ClientNode) New() types.Node {
 func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
-		_ = x.tryInitClient()
+		_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, true, func() (*nats.Conn, error) {
+			return x.initClient()
+		})
 		x.topicTemplate = str.NewTemplate(x.Config.Topic)
 	}
 	return err
@@ -82,14 +84,12 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	topic := x.topicTemplate.ExecuteFn(func() map[string]any {
 		return base.NodeUtils.GetEvnAndMetadata(ctx, msg)
 	})
-	if x.natsClient == nil {
-		if err := x.tryInitClient(); err != nil {
-			ctx.TellFailure(msg, err)
-			return
-		}
+	client, err := x.SharedNode.Get()
+	if err != nil {
+		ctx.TellFailure(msg, err)
+		return
 	}
-
-	if err := x.natsClient.Publish(topic, []byte(msg.Data)); err != nil {
+	if err := client.Publish(topic, []byte(msg.Data)); err != nil {
 		ctx.TellFailure(msg, err)
 	} else {
 		ctx.TellSuccess(msg)
@@ -98,22 +98,22 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 
 // Destroy 销毁
 func (x *ClientNode) Destroy() {
-	if x.natsClient != nil {
-		x.natsClient.Close()
+	if x.client != nil {
+		x.client.Close()
 	}
 }
 
-func (x *ClientNode) isConnecting() bool {
-	return atomic.LoadInt32(&x.connecting) == 1
-}
-
-// TryInitClient 尝试初始化NATS客户端
-func (x *ClientNode) tryInitClient() error {
-	if x.natsClient == nil && atomic.CompareAndSwapInt32(&x.connecting, 0, 1) {
-		defer atomic.StoreInt32(&x.connecting, 0)
+func (x *ClientNode) initClient() (*nats.Conn, error) {
+	if x.client != nil {
+		return x.client, nil
+	} else {
+		x.Locker.Lock()
+		defer x.Locker.Unlock()
+		if x.client != nil {
+			return x.client, nil
+		}
 		var err error
-		x.natsClient, err = nats.Connect(x.Config.Server, nats.UserInfo(x.Config.Username, x.Config.Password))
-		return err
+		x.client, err = nats.Connect(x.Config.Server, nats.UserInfo(x.Config.Username, x.Config.Password))
+		return x.client, err
 	}
-	return nil
 }

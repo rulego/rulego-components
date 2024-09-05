@@ -43,7 +43,8 @@ type ClientNodeConfiguration struct {
 	Password string
 	// PoolSize 连接池大小
 	PoolSize int
-	Db       int
+	// Db 数据库index
+	Db int
 	// Cmd 执行命令，例如SET/GET/DEL
 	// 支持${metadata.key}占位符读取metadata元数据
 	// 支持${msg.key}占位符读取消息负荷指定key数据
@@ -62,9 +63,10 @@ type ClientNodeConfiguration struct {
 // 成功：转向Success链，redis执行结果存放在msg.Data
 // 失败：转向Failure链
 type ClientNode struct {
+	base.SharedNode[*redis.Client]
 	//节点配置
-	Config      ClientNodeConfiguration
-	redisClient *redis.Client
+	Config ClientNodeConfiguration
+	client *redis.Client
 	//cmd是否有变量
 	cmdHasVar bool
 	//参数是否有变量
@@ -90,13 +92,10 @@ func (x *ClientNode) New() types.Node {
 func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
-		x.redisClient = redis.NewClient(&redis.Options{
-			Addr:     x.Config.Server,
-			PoolSize: x.Config.PoolSize,
-			DB:       x.Config.Db,
-			Password: x.Config.Password,
+		//初始化客户端
+		_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, true, func() (*redis.Client, error) {
+			return x.initClient()
 		})
-		err = x.redisClient.Ping(context.Background()).Err()
 
 		if str.CheckHasVar(x.Config.Cmd) {
 			x.cmdHasVar = true
@@ -159,16 +158,22 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	} else {
 		args = append(args, x.Config.Params...)
 	}
+
+	client, err := x.SharedNode.Get()
+	if err != nil {
+		ctx.TellFailure(msg, err)
+		return
+	}
 	if cmd == "hgetall" {
 		if len(args) < 2 {
 			ctx.TellFailure(msg, fmt.Errorf("hgetall need one param"))
 			return
 		}
 		//hgetall特殊处理强制，返回值转换成确定的map[string][string]类型
-		data, err = x.redisClient.HGetAll(ctx.GetContext(), str.ToString(args[1])).Result()
+		data, err = client.HGetAll(ctx.GetContext(), str.ToString(args[1])).Result()
 	} else {
 		//请求redis服务器，并得到返回结果
-		data, err = x.redisClient.Do(ctx.GetContext(), args...).Result()
+		data, err = client.Do(ctx.GetContext(), args...).Result()
 	}
 
 	if err != nil {
@@ -181,7 +186,26 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 
 // Destroy 销毁组件
 func (x *ClientNode) Destroy() {
-	if x.redisClient != nil {
-		_ = x.redisClient.Close()
+	if x.client != nil {
+		_ = x.client.Close()
+	}
+}
+
+func (x *ClientNode) initClient() (*redis.Client, error) {
+	if x.client != nil {
+		return x.client, nil
+	} else {
+		x.Locker.Lock()
+		defer x.Locker.Unlock()
+		if x.client != nil {
+			return x.client, nil
+		}
+		x.client = redis.NewClient(&redis.Options{
+			Addr:     x.Config.Server,
+			PoolSize: x.Config.PoolSize,
+			DB:       x.Config.Db,
+			Password: x.Config.Password,
+		})
+		return x.client, x.client.Ping(context.Background()).Err()
 	}
 }

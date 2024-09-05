@@ -23,6 +23,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/rulego/rulego/api/types"
 	endpointApi "github.com/rulego/rulego/api/types/endpoint"
+	"github.com/rulego/rulego/components/base"
 	"github.com/rulego/rulego/endpoint"
 	"github.com/rulego/rulego/endpoint/impl"
 	"github.com/rulego/rulego/utils/json"
@@ -215,6 +216,7 @@ type Config struct {
 // Redis Redis接收端端点
 type Redis struct {
 	impl.BaseEndpoint
+	base.SharedNode[*redis.Client]
 	RuleConfig types.Config
 	//Config 配置
 	Config                   Config
@@ -225,15 +227,15 @@ type Redis struct {
 }
 
 // Type 组件类型
-func (n *Redis) Type() string {
+func (x *Redis) Type() string {
 	return Type
 }
 
-func (n *Redis) Id() string {
-	return n.Config.Server
+func (x *Redis) Id() string {
+	return x.Config.Server
 }
 
-func (n *Redis) New() types.Node {
+func (x *Redis) New() types.Node {
 	return &Redis{
 		Config: Config{
 			Server:  "127.0.0.1:6379",
@@ -244,47 +246,51 @@ func (n *Redis) New() types.Node {
 }
 
 // Init 初始化
-func (n *Redis) Init(ruleConfig types.Config, configuration types.Configuration) error {
-	err := maps.Map2Struct(configuration, &n.Config)
+func (x *Redis) Init(ruleConfig types.Config, configuration types.Configuration) error {
+	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
-		n.Config.GroupId = strings.TrimSpace(n.Config.GroupId)
-		if n.Config.GroupId == "" {
-			n.Config.GroupId = "rulego"
+		x.Config.GroupId = strings.TrimSpace(x.Config.GroupId)
+		if x.Config.GroupId == "" {
+			x.Config.GroupId = "rulego"
 		}
+		_ = x.SharedNode.Init(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*redis.Client, error) {
+			return x.initClient()
+		})
 	}
-	n.RuleConfig = ruleConfig
+	x.RuleConfig = ruleConfig
 	return err
 }
 
 // Destroy 销毁
-func (n *Redis) Destroy() {
-	_ = n.Close()
+func (x *Redis) Destroy() {
+	_ = x.Close()
 }
 
-func (n *Redis) Close() error {
-	if nil != n.redisClient {
-		_ = n.redisClient.Close()
+func (x *Redis) Close() error {
+	if nil != x.redisClient {
+		_ = x.redisClient.Close()
 	}
-	n.BaseEndpoint.Destroy()
+	x.BaseEndpoint.Destroy()
 	return nil
 }
 
-func (n *Redis) AddRouter(router endpointApi.Router, params ...interface{}) (string, error) {
+func (x *Redis) AddRouter(router endpointApi.Router, params ...interface{}) (string, error) {
 	if router == nil {
 		return "", errors.New("router cannot be nil")
 	}
-	// 初始化客户端
-	if err := n.initRedisClient(); err != nil {
+	// 获取或者初始化客户端
+	client, err := x.SharedNode.Get()
+	if err != nil {
 		return "", err
 	}
-	routerId := n.CheckAndSetRouterId(router)
-	if err := n.addRouter(router); err != nil {
+	routerId := x.CheckAndSetRouterId(router)
+	if err := x.addRouter(router); err != nil {
 		return routerId, err
 	}
-	return routerId, n.createConsumerGroup(router)
+	return routerId, x.createConsumerGroup(client, router)
 }
 
-func (n *Redis) parseStreams(streamNames string) []string {
+func (x *Redis) parseStreams(streamNames string) []string {
 	// 分割 Stream 名称
 	streamList := strings.Split(streamNames, ",")
 
@@ -299,33 +305,33 @@ func (n *Redis) parseStreams(streamNames string) []string {
 	return streams
 }
 
-func (n *Redis) createConsumerGroup(router endpointApi.Router) error {
+func (x *Redis) createConsumerGroup(client *redis.Client, router endpointApi.Router) error {
 	for _, streamName := range strings.Split(router.FromToString(), ",") {
 		// 创建消费者组
-		if err := n.redisClient.XGroupCreateMkStream(context.Background(), streamName, n.Config.GroupId, "$").Err(); err != nil {
+		if err := client.XGroupCreateMkStream(context.Background(), streamName, x.Config.GroupId, "$").Err(); err != nil {
 			if err.Error() != "BUSYGROUP Consumer Group name already exists" {
 				return err
 			}
 		}
 	}
 	var args = &redis.XReadGroupArgs{
-		Group:    n.Config.GroupId,
+		Group:    x.Config.GroupId,
 		Consumer: router.GetId(),
-		Streams:  n.parseStreams(router.FromToString()),
+		Streams:  x.parseStreams(router.FromToString()),
 		Block:    0, // 阻塞等待新消息
 		Count:    1, // 一次处理一条消息
 	}
 	go func() {
 		// 消费消息
 		for {
-			messages, err := n.redisClient.XReadGroup(context.Background(), args).Result()
+			messages, err := client.XReadGroup(context.Background(), args).Result()
 			if err != nil {
-				n.Printf("XReadGroup err:%v", err)
+				x.Printf("XReadGroup err:%v", err)
 				break
 			}
 			for _, message := range messages {
 				for _, msg := range message.Messages {
-					go n.handlerMsg(message.Stream, msg, router)
+					go x.handlerMsg(client, message.Stream, msg, router)
 				}
 			}
 		}
@@ -333,98 +339,113 @@ func (n *Redis) createConsumerGroup(router endpointApi.Router) error {
 	return nil
 }
 
-func (n *Redis) RemoveRouter(routerId string, params ...interface{}) error {
-	streamName := n.deleteRouter(routerId)
+func (x *Redis) RemoveRouter(routerId string, params ...interface{}) error {
+	streamName := x.deleteRouter(routerId)
 	if streamName == "" {
 		return nil
 	}
+	// 获取或者初始化客户端
+	client, err := x.SharedNode.Get()
+	if err != nil {
+		return err
+	}
 	for _, item := range strings.Split(streamName, ",") {
-		if err := n.redisClient.XGroupDestroy(context.Background(), item, n.Config.GroupId).Err(); err != nil {
+		if err := client.XGroupDestroy(context.Background(), item, x.Config.GroupId).Err(); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (n *Redis) Start() error {
-	return n.initRedisClient()
-}
-
-// initRedisClient 初始化Redis客户端
-func (n *Redis) initRedisClient() error {
-	if n.redisClient == nil {
-		n.redisClient = redis.NewClient(&redis.Options{
-			Addr:     n.Config.Server,
-			DB:       n.Config.Db,
-			Password: n.Config.Password,
+func (x *Redis) Start() error {
+	if !x.SharedNode.IsInit() {
+		return x.SharedNode.Init(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*redis.Client, error) {
+			return x.initClient()
 		})
-		return n.redisClient.Ping(context.Background()).Err()
 	}
 	return nil
 }
 
-func (n *Redis) Printf(format string, v ...interface{}) {
-	if n.RuleConfig.Logger != nil {
-		n.RuleConfig.Logger.Printf(format, v...)
+func (x *Redis) initClient() (*redis.Client, error) {
+	if x.redisClient != nil {
+		return x.redisClient, nil
+	} else {
+		x.Locker.Lock()
+		defer x.Locker.Unlock()
+		if x.redisClient != nil {
+			return x.redisClient, nil
+		}
+		x.redisClient = redis.NewClient(&redis.Options{
+			Addr:     x.Config.Server,
+			DB:       x.Config.Db,
+			Password: x.Config.Password,
+		})
+		return x.redisClient, x.redisClient.Ping(context.Background()).Err()
 	}
 }
 
-func (n *Redis) addRouter(router endpointApi.Router) error {
-	n.Lock()
-	defer n.Unlock()
+func (x *Redis) Printf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Printf(format, v...)
+	}
+}
 
-	if n.routerIdAndStreamNameMap == nil {
-		n.routerIdAndStreamNameMap = map[string]string{}
+func (x *Redis) addRouter(router endpointApi.Router) error {
+	x.Lock()
+	defer x.Unlock()
+
+	if x.routerIdAndStreamNameMap == nil {
+		x.routerIdAndStreamNameMap = map[string]string{}
 	}
-	if n.streamNameAndRouterIdMap == nil {
-		n.streamNameAndRouterIdMap = map[string]string{}
+	if x.streamNameAndRouterIdMap == nil {
+		x.streamNameAndRouterIdMap = map[string]string{}
 	}
-	if _, ok := n.routerIdAndStreamNameMap[router.GetId()]; ok {
+	if _, ok := x.routerIdAndStreamNameMap[router.GetId()]; ok {
 		return fmt.Errorf("routerId:%s already exists", router.GetId())
 	}
-	if _, ok := n.streamNameAndRouterIdMap[router.FromToString()]; ok {
+	if _, ok := x.streamNameAndRouterIdMap[router.FromToString()]; ok {
 		return fmt.Errorf("steam:%s already exists", router.FromToString())
 	}
-	n.routerIdAndStreamNameMap[router.GetId()] = router.FromToString()
-	n.streamNameAndRouterIdMap[router.FromToString()] = router.GetId()
+	x.routerIdAndStreamNameMap[router.GetId()] = router.FromToString()
+	x.streamNameAndRouterIdMap[router.FromToString()] = router.GetId()
 	return nil
 }
 
 // 从存储器中删除路由
-func (n *Redis) deleteRouter(id string) string {
-	n.Lock()
-	defer n.Unlock()
-	if n.streamNameAndRouterIdMap != nil {
-		if streamName, ok := n.routerIdAndStreamNameMap[id]; ok {
-			delete(n.routerIdAndStreamNameMap, id)
-			delete(n.streamNameAndRouterIdMap, streamName)
+func (x *Redis) deleteRouter(id string) string {
+	x.Lock()
+	defer x.Unlock()
+	if x.streamNameAndRouterIdMap != nil {
+		if streamName, ok := x.routerIdAndStreamNameMap[id]; ok {
+			delete(x.routerIdAndStreamNameMap, id)
+			delete(x.streamNameAndRouterIdMap, streamName)
 			return streamName
 		}
 	}
 	return ""
 }
 
-func (n *Redis) handlerMsg(stream string, msg redis.XMessage, router endpointApi.Router) {
+func (x *Redis) handlerMsg(client *redis.Client, stream string, msg redis.XMessage, router endpointApi.Router) {
 	defer func() {
 		if e := recover(); e != nil {
-			n.Printf("redis stream endpoint handler err :\n%v", runtime.Stack())
+			x.Printf("redis stream endpoint handler err :\n%v", runtime.Stack())
 		}
 	}()
 	exchange := &endpointApi.Exchange{
 		In: &RequestMessage{
-			redisClient: n.redisClient,
+			redisClient: client,
 			topic:       stream,
 			body:        []byte(str.ToString(msg.Values)),
 		},
 		Out: &ResponseMessage{
-			redisClient: n.redisClient,
+			redisClient: client,
 			topic:       stream,
 			log: func(format string, v ...interface{}) {
-				n.Printf(format, v...)
+				x.Printf(format, v...)
 			},
 		},
 	}
-	n.DoProcess(context.Background(), router, exchange)
+	x.DoProcess(context.Background(), router, exchange)
 	// 确认消息处理完成
-	_ = n.redisClient.XAck(context.Background(), router.GetFrom().ToString(), n.Config.GroupId, msg.ID).Err()
+	_ = client.XAck(context.Background(), router.GetFrom().ToString(), x.Config.GroupId, msg.ID).Err()
 }

@@ -262,7 +262,7 @@ func testRedisClientFlushDB(t *testing.T) {
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
 		// 检查结果是否正确
-		assert.Equal(t, "[\"value1\"]", msg.Data)
+		assert.Equal(t, "OK", msg.Data)
 	})
 	metaData := types.NewMetadata()
 	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, ``)

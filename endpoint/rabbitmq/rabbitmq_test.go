@@ -33,7 +33,7 @@ import (
 var testdataFolder = "../../testdata"
 
 const (
-	server        = "amqp://guest:guest@127.0.0.1:5672/"
+	server        = "amqp://guest:guest@8.134.32.225:5672/"
 	exchange      = "rulego.topic.test"
 	topicRequest  = "device.msg.request"
 	topicResponse = "device.msg.response"

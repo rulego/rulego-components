@@ -59,8 +59,9 @@ func TestClientNode(t *testing.T) {
 	})
 
 	t.Run("OnMsg", func(t *testing.T) {
+		var server = "amqp://guest:guest@8.134.32.225:5672/"
 		node1, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
-			"server":       "amqp://guest:guest@127.0.0.1:5672/",
+			"server":       server,
 			"exchange":     "rulego.topic.test",
 			"exchangeType": "topic",
 			"durable":      true,
@@ -70,7 +71,7 @@ func TestClientNode(t *testing.T) {
 		}, Registry)
 		assert.Nil(t, err)
 		node2, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
-			"server":       "amqp://guest:guest@127.0.0.1:5672/",
+			"server":       server,
 			"exchange":     "rulego.topic.test",
 			"exchangeType": "topic",
 			"durable":      false,
@@ -79,7 +80,7 @@ func TestClientNode(t *testing.T) {
 		}, Registry)
 		assert.Nil(t, err)
 		node3, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
-			"server":       "amqp://guest:guest@127.0.0.1:5672/",
+			"server":       server,
 			"exchange":     "rulego.topic.test",
 			"exchangeType": "topic",
 			"durable":      true,
@@ -92,12 +93,17 @@ func TestClientNode(t *testing.T) {
 		metaData.PutValue("key", "/device/msg")
 		msgList := []test.Msg{
 			{
+				MetaData:   metaData,
+				MsgType:    "ACTIVITY_EVENT1",
+				Data:       "{\"temperature\":60}",
+				AfterSleep: time.Millisecond * 200,
+			},
+			{
 				MetaData: metaData,
 				MsgType:  "ACTIVITY_EVENT2",
-				Data:     "{\"temperature\":60}",
+				Data:     "{\"temperature\":61}",
 			},
 		}
-
 		var nodeList = []test.NodeAndCallback{
 			{
 				Node:    node1,
@@ -124,6 +130,6 @@ func TestClientNode(t *testing.T) {
 		for _, item := range nodeList {
 			test.NodeOnMsgWithChildren(t, item.Node, item.MsgList, item.ChildrenNodes, item.Callback)
 		}
-		time.Sleep(time.Second * 13)
+		time.Sleep(time.Second * 10)
 	})
 }

@@ -22,6 +22,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/rulego/rulego/api/types"
 	endpointApi "github.com/rulego/rulego/api/types/endpoint"
+	"github.com/rulego/rulego/components/base"
 	"github.com/rulego/rulego/endpoint"
 	"github.com/rulego/rulego/endpoint/impl"
 	"github.com/rulego/rulego/utils/maps"
@@ -223,21 +224,22 @@ type Config struct {
 
 type RabbitMQ struct {
 	impl.BaseEndpoint
+	base.SharedNode[*amqp.Connection]
 	RuleConfig types.Config
 	Config     Config
 	conn       *amqp.Connection
 	channels   map[string]*amqp.Channel
 }
 
-func (e *RabbitMQ) Type() string {
+func (x *RabbitMQ) Type() string {
 	return Type
 }
 
-func (e *RabbitMQ) Id() string {
-	return e.Config.Server
+func (x *RabbitMQ) Id() string {
+	return x.Config.Server
 }
 
-func (e *RabbitMQ) New() types.Node {
+func (x *RabbitMQ) New() types.Node {
 	return &RabbitMQ{
 		Config: Config{
 			Server:       "amqp://guest:guest@127.0.0.1:5672/",
@@ -250,51 +252,54 @@ func (e *RabbitMQ) New() types.Node {
 	}
 }
 
-func (e *RabbitMQ) Init(ruleConfig types.Config, configuration types.Configuration) error {
-	err := maps.Map2Struct(configuration, &e.Config)
-	e.RuleConfig = ruleConfig
-	if e.Config.ExchangeType == "" {
-		e.Config.ExchangeType = "direct"
+func (x *RabbitMQ) Init(ruleConfig types.Config, configuration types.Configuration) error {
+	err := maps.Map2Struct(configuration, &x.Config)
+	x.RuleConfig = ruleConfig
+	if x.Config.ExchangeType == "" {
+		x.Config.ExchangeType = "direct"
 	}
+	_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, true, func() (*amqp.Connection, error) {
+		return x.initClient()
+	})
 	return err
 }
 
-func (e *RabbitMQ) Destroy() {
-	_ = e.Close()
+func (x *RabbitMQ) Destroy() {
+	_ = x.Close()
 }
 
-func (e *RabbitMQ) Close() error {
-	if e.conn != nil {
-		return e.conn.Close()
+func (x *RabbitMQ) Close() error {
+	if x.conn != nil {
+		return x.conn.Close()
 	}
-	e.Lock()
-	defer e.Unlock()
-	for _, ch := range e.channels {
+	x.Lock()
+	defer x.Unlock()
+	for _, ch := range x.channels {
 		_ = ch.Close()
 	}
-	e.channels = map[string]*amqp.Channel{}
+	x.channels = map[string]*amqp.Channel{}
 	return nil
 }
 
-func (e *RabbitMQ) AddRouter(router endpointApi.Router, params ...interface{}) (string, error) {
-	routerId := e.CheckAndSetRouterId(router)
+func (x *RabbitMQ) AddRouter(router endpointApi.Router, params ...interface{}) (string, error) {
+	routerId := x.CheckAndSetRouterId(router)
 
-	e.RLock()
-	_, ok := e.channels[routerId]
-	e.RUnlock()
+	x.RLock()
+	_, ok := x.channels[routerId]
+	x.RUnlock()
 	if ok {
 		return routerId, fmt.Errorf("routerId %s already exists", routerId)
 	}
 
-	if ch, q, err := e.queueBind(router.FromToString()); err != nil {
+	if ch, q, err := x.queueBind(router.FromToString()); err != nil {
 		return "", err
 	} else {
-		e.Lock()
-		defer e.Unlock()
-		if e.channels == nil {
-			e.channels = make(map[string]*amqp.Channel)
+		x.Lock()
+		defer x.Unlock()
+		if x.channels == nil {
+			x.channels = make(map[string]*amqp.Channel)
 		}
-		e.channels[routerId] = ch
+		x.channels[routerId] = ch
 		msgs, err := ch.Consume(
 			q.Name, // Queue name
 			"",     // Consumer tag
@@ -310,15 +315,15 @@ func (e *RabbitMQ) AddRouter(router endpointApi.Router, params ...interface{}) (
 		go func(router endpointApi.Router, ch *amqp.Channel) {
 			for msg := range msgs {
 				// 处理消息逻辑
-				if e.RuleConfig.Pool != nil {
-					submitErr := e.RuleConfig.Pool.Submit(func() {
-						e.handlerMsg(router, ch, msg)
+				if x.RuleConfig.Pool != nil {
+					submitErr := x.RuleConfig.Pool.Submit(func() {
+						x.handlerMsg(router, ch, msg)
 					})
 					if submitErr != nil {
-						e.Printf("rabbitmq consumer handler err :%v", submitErr)
+						x.Printf("rabbitmq consumer handler err :%v", submitErr)
 					}
 				} else {
-					go e.handlerMsg(router, ch, msg)
+					go x.handlerMsg(router, ch, msg)
 				}
 
 			}
@@ -327,84 +332,97 @@ func (e *RabbitMQ) AddRouter(router endpointApi.Router, params ...interface{}) (
 	}
 }
 
-func (e *RabbitMQ) RemoveRouter(routerId string, params ...interface{}) error {
-	if e.channels == nil {
+func (x *RabbitMQ) RemoveRouter(routerId string, params ...interface{}) error {
+	if x.channels == nil {
 		return nil
 	}
-	e.Lock()
-	defer e.Unlock()
-	if ch, ok := e.channels[routerId]; ok {
-		delete(e.channels, routerId)
+	x.Lock()
+	defer x.Unlock()
+	if ch, ok := x.channels[routerId]; ok {
+		delete(x.channels, routerId)
 		return ch.Close()
 	}
 	return nil
 }
 
-func (e *RabbitMQ) Start() error {
-	return e.initClient()
+func (x *RabbitMQ) Start() error {
+	if !x.SharedNode.IsInit() {
+		return x.SharedNode.Init(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*amqp.Connection, error) {
+			return x.initClient()
+		})
+	}
+	return nil
 }
 
-func (e *RabbitMQ) Printf(format string, v ...interface{}) {
-	if e.RuleConfig.Logger != nil {
-		e.RuleConfig.Logger.Printf(format, v...)
+func (x *RabbitMQ) Printf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Printf(format, v...)
 	}
 }
 
-func (e *RabbitMQ) initClient() error {
-	conn, err := amqp.Dial(e.Config.Server)
-	e.conn = conn
-	return err
-}
-
-func (e *RabbitMQ) queueBind(key string) (*amqp.Channel, *amqp.Queue, error) {
-	if e.conn == nil {
-		if err := e.initClient(); err != nil {
-			return nil, nil, err
+func (x *RabbitMQ) initClient() (*amqp.Connection, error) {
+	if x.conn != nil && !x.conn.IsClosed() {
+		return x.conn, nil
+	} else {
+		x.Locker.Lock()
+		defer x.Locker.Unlock()
+		if x.conn != nil && !x.conn.IsClosed() {
+			return x.conn, nil
 		}
+		var err error
+		x.conn, err = amqp.Dial(x.Config.Server)
+		return x.conn, err
 	}
-	ch, err := e.conn.Channel()
+}
+
+func (x *RabbitMQ) queueBind(key string) (*amqp.Channel, *amqp.Queue, error) {
+	conn, err := x.SharedNode.Get()
 	if err != nil {
 		return nil, nil, err
 	}
-	q, err := ch.QueueDeclare("", e.Config.Durable, e.Config.AutoDelete, true, false, nil)
+	ch, err := conn.Channel()
+	if err != nil {
+		return nil, nil, err
+	}
+	q, err := ch.QueueDeclare("", x.Config.Durable, x.Config.AutoDelete, true, false, nil)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	err = ch.QueueBind(q.Name, key, e.Config.Exchange, false, nil)
+	err = ch.QueueBind(q.Name, key, x.Config.Exchange, false, nil)
 	if err != nil && err.(*amqp.Error).Code == 404 {
-		ch, err = e.conn.Channel()
-		err = ch.ExchangeDeclare(e.Config.Exchange, e.Config.ExchangeType, e.Config.Durable, e.Config.AutoDelete, false, false, nil)
+		ch, err = conn.Channel()
+		err = ch.ExchangeDeclare(x.Config.Exchange, x.Config.ExchangeType, x.Config.Durable, x.Config.AutoDelete, false, false, nil)
 		if err != nil {
-			ch, err = e.conn.Channel()
+			ch, err = conn.Channel()
 		}
-		err = ch.QueueBind(q.Name, key, e.Config.Exchange, false, nil)
+		err = ch.QueueBind(q.Name, key, x.Config.Exchange, false, nil)
 	}
 	return ch, &q, err
 }
 
-func (e *RabbitMQ) handlerMsg(router endpointApi.Router, ch *amqp.Channel, msg amqp.Delivery) {
+func (x *RabbitMQ) handlerMsg(router endpointApi.Router, ch *amqp.Channel, msg amqp.Delivery) {
 	defer func() {
 		if err := recover(); err != nil {
-			e.Printf("rabbitmq endpoint handler err :\n%v", runtime.Stack())
+			x.Printf("rabbitmq endpoint handler err :\n%v", runtime.Stack())
 		}
 	}()
 	exchange := &endpointApi.Exchange{
 		In: &RequestMessage{
 			delivery: msg,
-			exchange: e.Config.Exchange,
+			exchange: x.Config.Exchange,
 			body:     msg.Body,
 		},
 		Out: &ResponseMessage{
 			channel:    ch,
-			exchange:   e.Config.Exchange,
+			exchange:   x.Config.Exchange,
 			routingKey: msg.RoutingKey,
 			log: func(format string, v ...interface{}) {
-				e.Printf(format, v...)
+				x.Printf(format, v...)
 			},
 		},
 	}
-	e.DoProcess(context.Background(), router, exchange)
+	x.DoProcess(context.Background(), router, exchange)
 }
 
 func getContentType(msg *types.RuleMsg) string {

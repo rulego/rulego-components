@@ -17,6 +17,7 @@
 package kafka
 
 import (
+	"errors"
 	"github.com/IBM/sarama"
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
@@ -24,6 +25,11 @@ import (
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/str"
 	"strconv"
+)
+
+const (
+	KeyPartition = "partition"
+	KeOffset     = "offset"
 )
 
 // 注册节点
@@ -44,8 +50,9 @@ type NodeConfiguration struct {
 }
 
 type ProducerNode struct {
-	Config        NodeConfiguration
-	kafkaProducer sarama.SyncProducer
+	base.SharedNode[sarama.SyncProducer]
+	Config NodeConfiguration
+	client sarama.SyncProducer
 	//topic 模板
 	topicTemplate str.Template
 	//key 模板
@@ -70,9 +77,13 @@ func (x *ProducerNode) New() types.Node {
 func (x *ProducerNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
-		config := sarama.NewConfig()
-		config.Producer.Return.Successes = true // 同步模式需要设置这个参数为true
-		x.kafkaProducer, err = sarama.NewSyncProducer(x.Config.Brokers, config)
+		if len(x.Config.Brokers) == 0 {
+			return errors.New("brokers is empty")
+		}
+		_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Brokers[0], true, func() (sarama.SyncProducer, error) {
+			return x.initClient()
+		})
+
 		x.topicTemplate = str.NewTemplate(x.Config.Topic)
 		x.keyTemplate = str.NewTemplate(x.Config.Key)
 	}
@@ -89,25 +100,47 @@ func (x *ProducerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		key = str.ExecuteTemplate(key, evn)
 	}
 
+	client, err := x.SharedNode.Get()
+	if err != nil {
+		ctx.TellFailure(msg, err)
+		return
+	}
 	message := &sarama.ProducerMessage{
 		Topic:     topic,
 		Partition: x.Config.Partition,
 		Key:       sarama.StringEncoder(key),
 		Value:     sarama.StringEncoder(msg.Data),
 	}
-	partition, offset, err := x.kafkaProducer.SendMessage(message)
+	partition, offset, err := client.SendMessage(message)
 	if err != nil {
 		ctx.TellFailure(msg, err)
 	} else {
-		msg.Metadata.PutValue("partition", strconv.Itoa(int(partition)))
-		msg.Metadata.PutValue("offset", strconv.Itoa(int(offset)))
+		msg.Metadata.PutValue(KeyPartition, strconv.Itoa(int(partition)))
+		msg.Metadata.PutValue(KeOffset, strconv.Itoa(int(offset)))
 		ctx.TellSuccess(msg)
 	}
 }
 
 // Destroy 销毁组件
 func (x *ProducerNode) Destroy() {
-	if x.kafkaProducer != nil {
-		_ = x.kafkaProducer.Close()
+	if x.client != nil {
+		_ = x.client.Close()
+	}
+}
+
+func (x *ProducerNode) initClient() (sarama.SyncProducer, error) {
+	if x.client != nil {
+		return x.client, nil
+	} else {
+		x.Locker.Lock()
+		defer x.Locker.Unlock()
+		if x.client != nil {
+			return x.client, nil
+		}
+		var err error
+		config := sarama.NewConfig()
+		config.Producer.Return.Successes = true // 同步模式需要设置这个参数为true
+		x.client, err = sarama.NewSyncProducer(x.Config.Brokers, config)
+		return x.client, err
 	}
 }

@@ -23,6 +23,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/rulego/rulego/api/types"
 	endpointApi "github.com/rulego/rulego/api/types/endpoint"
+	"github.com/rulego/rulego/components/base"
 	"github.com/rulego/rulego/endpoint"
 	"github.com/rulego/rulego/endpoint/impl"
 	"github.com/rulego/rulego/utils/maps"
@@ -185,6 +186,7 @@ type Config struct {
 // Nats NATS接收端端点
 type Nats struct {
 	impl.BaseEndpoint
+	base.SharedNode[*nats.Conn]
 	RuleConfig types.Config
 	//Config 配置
 	Config Config
@@ -195,15 +197,15 @@ type Nats struct {
 }
 
 // Type 组件类型
-func (n *Nats) Type() string {
+func (x *Nats) Type() string {
 	return Type
 }
 
-func (n *Nats) Id() string {
-	return n.Config.Server
+func (x *Nats) Id() string {
+	return x.Config.Server
 }
 
-func (n *Nats) New() types.Node {
+func (x *Nats) New() types.Node {
 	return &Nats{
 		Config: Config{
 			Server: "nats://127.0.0.1:4222",
@@ -212,48 +214,53 @@ func (n *Nats) New() types.Node {
 }
 
 // Init 初始化
-func (n *Nats) Init(ruleConfig types.Config, configuration types.Configuration) error {
-	err := maps.Map2Struct(configuration, &n.Config)
-	n.RuleConfig = ruleConfig
+func (x *Nats) Init(ruleConfig types.Config, configuration types.Configuration) error {
+	err := maps.Map2Struct(configuration, &x.Config)
+	x.RuleConfig = ruleConfig
+	_ = x.SharedNode.Init(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*nats.Conn, error) {
+		return x.initClient()
+	})
 	return err
 }
 
 // Destroy 销毁
-func (n *Nats) Destroy() {
-	_ = n.Close()
+func (x *Nats) Destroy() {
+	_ = x.Close()
 }
 
-func (n *Nats) Close() error {
-	if nil != n.conn {
-		n.conn.Close()
+func (x *Nats) Close() error {
+	if nil != x.conn {
+		x.conn.Close()
 	}
-	n.BaseEndpoint.Destroy()
+	x.BaseEndpoint.Destroy()
 	return nil
 }
 
-func (n *Nats) AddRouter(router endpointApi.Router, params ...interface{}) (string, error) {
+func (x *Nats) AddRouter(router endpointApi.Router, params ...interface{}) (string, error) {
 	if router == nil {
 		return "", errors.New("router cannot be nil")
 	}
-	// 初始化NATS客户端
-	if err := n.initNatsClient(); err != nil {
+	client, err := x.SharedNode.Get()
+	if err != nil {
 		return "", err
 	}
-
 	routerId := router.GetId()
 	if routerId == "" {
 		routerId = router.GetFrom().ToString()
 		router.SetId(routerId)
 	}
-	n.Lock()
-	defer n.Unlock()
-	if _, ok := n.subscriptions[routerId]; ok {
+	x.Lock()
+	defer x.Unlock()
+	if x.subscriptions == nil {
+		x.subscriptions = make(map[string]*nats.Subscription)
+	}
+	if _, ok := x.subscriptions[routerId]; ok {
 		return routerId, fmt.Errorf("routerId %s already exists", routerId)
 	}
-	subscription, err := n.conn.Subscribe(router.FromToString(), func(msg *nats.Msg) {
+	subscription, err := client.Subscribe(router.FromToString(), func(msg *nats.Msg) {
 		defer func() {
 			if e := recover(); e != nil {
-				n.Printf("nats endpoint handler err :\n%v", runtime.Stack())
+				x.Printf("nats endpoint handler err :\n%v", runtime.Stack())
 			}
 		}()
 		exchange := &endpointApi.Exchange{
@@ -262,50 +269,57 @@ func (n *Nats) AddRouter(router endpointApi.Router, params ...interface{}) (stri
 			},
 			Out: &ResponseMessage{
 				request:  msg,
-				response: n.conn,
+				response: client,
 				log: func(format string, v ...interface{}) {
-					n.Printf(format, v...)
+					x.Printf(format, v...)
 				},
 			},
 		}
-		n.DoProcess(context.Background(), router, exchange)
+		x.DoProcess(context.Background(), router, exchange)
 	})
 	if err != nil {
 		return "", err
 	}
-	n.subscriptions[routerId] = subscription
+	x.subscriptions[routerId] = subscription
 	return routerId, nil
 }
 
-func (n *Nats) RemoveRouter(routerId string, params ...interface{}) error {
-	n.Lock()
-	defer n.Unlock()
-	if subscription, ok := n.subscriptions[routerId]; ok {
-		delete(n.subscriptions, routerId)
+func (x *Nats) RemoveRouter(routerId string, params ...interface{}) error {
+	x.Lock()
+	defer x.Unlock()
+	if subscription, ok := x.subscriptions[routerId]; ok {
+		delete(x.subscriptions, routerId)
 		return subscription.Unsubscribe()
 	}
 	return errors.New("router not found")
 }
 
-func (n *Nats) Start() error {
-	return n.initNatsClient()
-}
-
-// initNatsClient 初始化NATS客户端
-func (n *Nats) initNatsClient() error {
-	if n.conn == nil {
-		conn, err := nats.Connect(n.Config.Server, nats.UserInfo(n.Config.Username, n.Config.Password))
-		if err != nil {
-			return err
-		}
-		n.conn = conn
-		n.subscriptions = make(map[string]*nats.Subscription)
+func (x *Nats) Start() error {
+	if !x.SharedNode.IsInit() {
+		return x.SharedNode.Init(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*nats.Conn, error) {
+			return x.initClient()
+		})
 	}
 	return nil
 }
 
-func (n *Nats) Printf(format string, v ...interface{}) {
-	if n.RuleConfig.Logger != nil {
-		n.RuleConfig.Logger.Printf(format, v...)
+func (x *Nats) Printf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Printf(format, v...)
+	}
+}
+
+func (x *Nats) initClient() (*nats.Conn, error) {
+	if x.conn != nil {
+		return x.conn, nil
+	} else {
+		x.Locker.Lock()
+		defer x.Locker.Unlock()
+		if x.conn != nil {
+			return x.conn, nil
+		}
+		var err error
+		x.conn, err = nats.Connect(x.Config.Server, nats.UserInfo(x.Config.Username, x.Config.Password))
+		return x.conn, err
 	}
 }
