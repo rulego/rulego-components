@@ -36,14 +36,14 @@ type QueryConfig struct {
 	Server string
 	// Database 数据库，允许使用 ${} 占位符变量
 	Database string
-	// 查询语句，允许使用 ${} 占位符变量
-	Command string
 	// Username 用户名
 	Username string
 	// Password 密码
 	Password string
 	// Token 如果token 不为空，则使用token认证，否则使用用户名密码认证
 	Token string
+	// 查询语句，允许使用 ${} 占位符变量
+	Command string
 }
 
 // QueryNode opengemini 查询节点

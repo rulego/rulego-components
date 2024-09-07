@@ -17,7 +17,6 @@
 package nats
 
 import (
-	"errors"
 	"github.com/nats-io/nats.go"
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
@@ -26,22 +25,19 @@ import (
 	"github.com/rulego/rulego/utils/str"
 )
 
-// ClientNotInitErr 表示NATS客户端未初始化的错误
-var ClientNotInitErr = errors.New("nats client not initialized")
-
 func init() {
 	_ = rulego.Registry.Register(&ClientNode{})
 }
 
 type ClientNodeConfiguration struct {
-	// 发布主题
-	Topic string
 	// NATS服务器地址
 	Server string
 	// NATS用户名
 	Username string
 	// NATS密码
 	Password string
+	// 发布主题
+	Topic string
 }
 
 type ClientNode struct {
