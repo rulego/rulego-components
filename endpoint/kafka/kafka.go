@@ -203,8 +203,8 @@ func (r *ResponseMessage) GetError() error {
 }
 
 type Config struct {
-	// Brokers kafka服务器地址列表
-	Brokers []string
+	// kafka服务器地址列表，多个与逗号隔开
+	Server string
 	// GroupId 消费者组Id
 	GroupId string
 }
@@ -215,6 +215,8 @@ type Kafka struct {
 	RuleConfig types.Config
 	//Config 配置
 	Config Config
+	// brokers kafka服务器地址列表
+	brokers []string
 	//消息生产者，用于响应
 	producer sarama.SyncProducer
 	// 主题和主题消费者映射关系，用于取消订阅
@@ -222,135 +224,150 @@ type Kafka struct {
 }
 
 // Type 组件类型
-func (k *Kafka) Type() string {
+func (x *Kafka) Type() string {
 	return Type
 }
 
-func (k *Kafka) New() types.Node {
+func (x *Kafka) New() types.Node {
 	return &Kafka{
 		Config: Config{
-			Brokers: []string{"127.0.0.1:9092"},
+			Server:  "127.0.0.1:9092",
 			GroupId: "rulego",
 		},
 	}
 }
 
-// Init 初始化
-func (k *Kafka) Init(ruleConfig types.Config, configuration types.Configuration) error {
-	err := maps.Map2Struct(configuration, &k.Config)
-	k.Config.GroupId = strings.TrimSpace(k.Config.GroupId)
-	if k.Config.GroupId == "" {
-		k.Config.GroupId = "rulego"
+func (x *Kafka) getBrokerFromOldVersion(configuration types.Configuration) []string {
+	if v, ok := configuration["brokers"]; ok {
+		return v.([]string)
+	} else {
+		return nil
 	}
-	k.RuleConfig = ruleConfig
+}
+
+// Init 初始化
+func (x *Kafka) Init(ruleConfig types.Config, configuration types.Configuration) error {
+	err := maps.Map2Struct(configuration, &x.Config)
+	x.Config.GroupId = strings.TrimSpace(x.Config.GroupId)
+	if x.Config.GroupId == "" {
+		x.Config.GroupId = "rulego"
+	}
+	x.brokers = x.getBrokerFromOldVersion(configuration)
+	if len(x.brokers) == 0 && x.Config.Server != "" {
+		x.brokers = strings.Split(x.Config.Server, ",")
+	}
+	if len(x.brokers) == 0 {
+		return errors.New("brokers is empty")
+	}
+	x.RuleConfig = ruleConfig
 	return err
 }
 
 // Destroy 销毁
-func (k *Kafka) Destroy() {
-	_ = k.Close()
+func (x *Kafka) Destroy() {
+	_ = x.Close()
 }
 
-func (k *Kafka) Close() error {
-	for _, v := range k.handlers {
-		v.Close()
+func (x *Kafka) Close() error {
+	for _, v := range x.handlers {
+		_ = v.Close()
 	}
 
-	k.handlers = nil
+	x.handlers = nil
 
-	if nil != k.producer {
-		return k.producer.Close()
+	if nil != x.producer {
+		return x.producer.Close()
 	}
-	k.BaseEndpoint.Destroy()
+	x.BaseEndpoint.Destroy()
 	return nil
 }
 
-func (k *Kafka) Id() string {
-	if len(k.Config.Brokers) > 0 {
-		return k.Config.Brokers[0]
+func (x *Kafka) Id() string {
+	if len(x.brokers) > 0 {
+		return x.brokers[0]
 	} else {
 		return ""
 	}
 }
 
-func (k *Kafka) AddRouter(router endpointApi.Router, params ...interface{}) (string, error) {
+func (x *Kafka) AddRouter(router endpointApi.Router, params ...interface{}) (string, error) {
 	if router == nil {
 		return "", errors.New("router can not nil")
 	}
 	//初始化kafka客户端
-	if err := k.initKafkaClient(); err != nil {
+	if err := x.initKafkaClient(); err != nil {
 		return "", err
 	}
 
 	if id := router.GetId(); id == "" {
 		router.SetId(router.GetFrom().ToString())
 	}
-	if err := k.createTopicConsumer(router); err != nil {
+	if err := x.createTopicConsumer(router); err != nil {
 		return "", err
 	}
 	return router.GetId(), nil
 }
 
-func (k *Kafka) RemoveRouter(routerId string, params ...interface{}) error {
-	k.Lock()
-	defer k.Unlock()
+func (x *Kafka) RemoveRouter(routerId string, params ...interface{}) error {
+	x.Lock()
+	defer x.Unlock()
 	//删除订阅
-	if v, ok := k.handlers[routerId]; ok {
-		delete(k.handlers, routerId)
+	if v, ok := x.handlers[routerId]; ok {
+		delete(x.handlers, routerId)
 		return v.Close()
 	}
 	return nil
 }
 
-func (k *Kafka) Start() error {
-	return k.initKafkaClient()
+func (x *Kafka) Start() error {
+	return x.initKafkaClient()
 }
 
 // initKafkaClient 初始化kafka客户端
-func (k *Kafka) initKafkaClient() error {
-	if k.producer == nil {
+func (x *Kafka) initKafkaClient() error {
+	if x.producer == nil {
 		config := sarama.NewConfig()
 		config.Producer.Return.Successes = true // 同步模式需要设置这个参数为true
-		producer, err := sarama.NewSyncProducer(k.Config.Brokers, config)
+		producer, err := sarama.NewSyncProducer(x.brokers, config)
 		if err != nil {
 			return err
 		}
-		k.producer = producer
+		x.producer = producer
 	}
 
 	return nil
 }
 
 // 创建kafka消费者
-func (k *Kafka) createTopicConsumer(router endpointApi.Router) error {
+func (x *Kafka) createTopicConsumer(router endpointApi.Router) error {
 	if form := router.GetFrom(); form != nil {
 		routerId := router.GetId()
 		if routerId == "" {
 			routerId = router.GetFrom().ToString()
 			router.SetId(routerId)
 		}
-		k.Lock()
-		if k.handlers == nil {
-			k.handlers = make(map[string]sarama.ConsumerGroup)
+		x.Lock()
+		if x.handlers == nil {
+			x.handlers = make(map[string]sarama.ConsumerGroup)
 		}
-		if _, ok := k.handlers[routerId]; ok {
+		if _, ok := x.handlers[routerId]; ok {
 			return fmt.Errorf("routerId %s already exists", routerId)
 		}
 		config := sarama.NewConfig()
-		consumer, err := sarama.NewConsumerGroup(k.Config.Brokers, k.Config.GroupId, config)
+		consumer, err := sarama.NewConsumerGroup(x.brokers, x.Config.GroupId, config)
 		if err != nil {
 			return err
 		}
-		k.handlers[routerId] = consumer
-		defer k.Unlock()
+		x.handlers[routerId] = consumer
+		defer x.Unlock()
 
 		topics := []string{form.ToString()}                // 订阅的主题列表
-		handler := &consumerHandler{router: router, ep: k} // 自定义的消费者处理程序
+		handler := &consumerHandler{router: router, ep: x} // 自定义的消费者处理程序
 
 		go func() {
 			defer consumer.Close()
 			if err := consumer.Consume(context.Background(), topics, handler); err != nil {
-				k.Printf("failed to start consumer for topic %s: %v", form.ToString(), err)
+				x.Printf("failed to start consumer for topic %s: %v", form.ToString(), err)
 			}
 		}()
 
@@ -358,9 +375,9 @@ func (k *Kafka) createTopicConsumer(router endpointApi.Router) error {
 	return nil
 }
 
-func (k *Kafka) Printf(format string, v ...interface{}) {
-	if k.RuleConfig.Logger != nil {
-		k.RuleConfig.Logger.Printf(format, v...)
+func (x *Kafka) Printf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Printf(format, v...)
 	}
 }
 

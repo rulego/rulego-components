@@ -25,6 +25,7 @@ import (
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/str"
 	"strconv"
+	"strings"
 )
 
 const (
@@ -39,8 +40,8 @@ func init() {
 
 // NodeConfiguration 节点配置
 type NodeConfiguration struct {
-	// Brokers kafka服务器地址列表
-	Brokers []string
+	// kafka服务器地址列表，多个与逗号隔开
+	Server string
 	// Topic 发布主题，可以使用 ${metadata.key} 读取元数据中的变量或者使用 ${msg.key} 读取消息负荷中的变量进行替换
 	Topic string
 	// Key 分区键，可以使用 ${metadata.key} 读取元数据中的变量或者使用 ${msg.key} 读取消息负荷中的变量进行替换
@@ -53,6 +54,8 @@ type ProducerNode struct {
 	base.SharedNode[sarama.SyncProducer]
 	Config NodeConfiguration
 	client sarama.SyncProducer
+	// brokers kafka服务器地址列表
+	brokers []string
 	//topic 模板
 	topicTemplate str.Template
 	//key 模板
@@ -67,7 +70,7 @@ func (x *ProducerNode) Type() string {
 func (x *ProducerNode) New() types.Node {
 	return &ProducerNode{
 		Config: NodeConfiguration{
-			Brokers:   []string{"127.0.0.1:9092"},
+			Server:    "127.0.0.1:9092",
 			Partition: 0,
 		},
 	}
@@ -77,10 +80,14 @@ func (x *ProducerNode) New() types.Node {
 func (x *ProducerNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
-		if len(x.Config.Brokers) == 0 {
+		x.brokers = x.getBrokerFromOldVersion(configuration)
+		if len(x.brokers) == 0 && x.Config.Server != "" {
+			x.brokers = strings.Split(x.Config.Server, ",")
+		}
+		if len(x.brokers) == 0 {
 			return errors.New("brokers is empty")
 		}
-		_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Brokers[0], true, func() (sarama.SyncProducer, error) {
+		_ = x.SharedNode.Init(ruleConfig, x.Type(), x.brokers[0], true, func() (sarama.SyncProducer, error) {
 			return x.initClient()
 		})
 
@@ -128,6 +135,14 @@ func (x *ProducerNode) Destroy() {
 	}
 }
 
+func (x *ProducerNode) getBrokerFromOldVersion(configuration types.Configuration) []string {
+	if v, ok := configuration["brokers"]; ok {
+		return v.([]string)
+	} else {
+		return nil
+	}
+}
+
 func (x *ProducerNode) initClient() (sarama.SyncProducer, error) {
 	if x.client != nil {
 		return x.client, nil
@@ -140,7 +155,7 @@ func (x *ProducerNode) initClient() (sarama.SyncProducer, error) {
 		var err error
 		config := sarama.NewConfig()
 		config.Producer.Return.Successes = true // 同步模式需要设置这个参数为true
-		x.client, err = sarama.NewSyncProducer(x.Config.Brokers, config)
+		x.client, err = sarama.NewSyncProducer(x.brokers, config)
 		return x.client, err
 	}
 }

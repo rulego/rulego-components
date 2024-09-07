@@ -31,6 +31,32 @@ import (
 
 var testdataFolder = "../../testdata"
 
+func TestKafkaEndpointInit(t *testing.T) {
+	config := rulego.NewConfig(types.WithDefaultPool())
+	_, err := endpoint.Registry.New(Type, config, Config{
+		Server:  "",
+		GroupId: "test01",
+	})
+	assert.Equal(t, "brokers is empty", err.Error())
+
+	ep, err := endpoint.Registry.New(Type, config, Config{
+		Server: "localhost:9092",
+	})
+	assert.Equal(t, "rulego", ep.(*Kafka).Config.GroupId)
+
+	ep, err = endpoint.Registry.New(Type, config, Config{
+		Server: "localhost:9092,localhost:9093",
+	})
+	assert.Equal(t, "localhost:9092", ep.(*Kafka).brokers[0])
+	assert.Equal(t, "localhost:9093", ep.(*Kafka).brokers[1])
+
+	ep, err = endpoint.Registry.New(Type, config, types.Configuration{
+		"brokers": []string{"localhost:9092", "localhost:9093"},
+	})
+	assert.Equal(t, "localhost:9092", ep.(*Kafka).brokers[0])
+	assert.Equal(t, "localhost:9093", ep.(*Kafka).brokers[1])
+}
+
 func TestKafkaEndpoint(t *testing.T) {
 
 	buf, err := os.ReadFile(testdataFolder + "/chain_msg_type_switch.json")
@@ -43,7 +69,7 @@ func TestKafkaEndpoint(t *testing.T) {
 
 	//启动kafka接收服务
 	kafkaEndpoint, err := endpoint.Registry.New(Type, config, Config{
-		Brokers: []string{"localhost:9092"},
+		Server:  "localhost:9092",
 		GroupId: "test01",
 	})
 	//路由1
