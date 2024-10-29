@@ -5,6 +5,7 @@ go 1.20
 require (
 	github.com/IBM/sarama v1.43.2
 	github.com/expr-lang/expr v1.16.0
+	github.com/fullstorydev/grpcurl v1.9.1
 	github.com/nats-io/nats.go v1.35.0
 	github.com/openGemini/opengemini-client-go v0.5.1
 	github.com/rabbitmq/amqp091-go v1.10.1-0.20240821123418-dc67c21576c2
@@ -12,7 +13,7 @@ require (
 	github.com/rulego/rulego v0.23.1-0.20240906092025-fda1952d9f9e
 	github.com/vadv/gopher-lua-libs v0.5.0
 	github.com/yuin/gopher-lua v1.1.1
-	github.com/fullstorydev/grpcurl v1.9.1
+	go.mongodb.org/mongo-driver v1.16.1
 )
 
 require (
@@ -62,7 +63,7 @@ require (
 	github.com/mattn/go-runewidth v0.0.7 // indirect
 	github.com/mattn/go-sqlite3 v1.14.7 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
-	github.com/montanaflynn/stats v0.6.3 // indirect
+	github.com/montanaflynn/stats v0.7.1 // indirect
 	github.com/nats-io/nkeys v0.4.7 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/pierrec/lz4/v4 v4.1.21 // indirect
@@ -75,6 +76,10 @@ require (
 	github.com/robfig/cron/v3 v3.0.0 // indirect
 	github.com/stretchr/testify v1.9.0 // indirect
 	github.com/technoweenie/multipartstreamer v1.0.1 // indirect
+	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
+	github.com/xdg-go/scram v1.1.2 // indirect
+	github.com/xdg-go/stringprep v1.0.4 // indirect
+	github.com/youmark/pkcs8 v0.0.0-20181117223130-1be2e3e5546d // indirect
 	github.com/yuin/gluamapper v0.0.0-20150323120927-d836955830e7 // indirect
 	golang.org/x/crypto v0.22.0 // indirect
 	golang.org/x/net v0.24.0 // indirect
