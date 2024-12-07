@@ -347,6 +347,7 @@ func (x *Kafka) createTopicConsumer(router endpointApi.Router) error {
 			router.SetId(routerId)
 		}
 		x.Lock()
+		defer x.Unlock()
 		if x.handlers == nil {
 			x.handlers = make(map[string]sarama.ConsumerGroup)
 		}
@@ -359,7 +360,6 @@ func (x *Kafka) createTopicConsumer(router endpointApi.Router) error {
 			return err
 		}
 		x.handlers[routerId] = consumer
-		defer x.Unlock()
 
 		topics := []string{form.ToString()}                // 订阅的主题列表
 		handler := &consumerHandler{router: router, ep: x} // 自定义的消费者处理程序
