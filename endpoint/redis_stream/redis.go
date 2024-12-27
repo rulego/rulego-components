@@ -447,6 +447,6 @@ func (x *Redis) handlerMsg(client *redis.Client, stream string, msg redis.XMessa
 	}
 	x.DoProcess(context.Background(), router, exchange)
 	// 确认消息处理完成
-	_ = client.XAck(context.Background(), router.GetFrom().ToString(), x.Config.GroupId, msg.ID).Err()
+	_ = client.XAck(context.Background(), stream, x.Config.GroupId, msg.ID).Err()
 	_ = client.XDel(context.Background(), stream, msg.ID).Err()
 }
