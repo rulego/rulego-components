@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package ble;
+
+option go_package = "github.com/rulego/rulego/endpoint/ble";
+
+service DataService {
+  rpc StreamData(StreamRequest) returns (stream DataResponse);
+}
+
+message StreamRequest {
+  string client_id = 1;
+}
+
+message DataResponse {
+  string type = 1;
+  bytes payload = 2;
+  int64 timestamp = 3;
+}
