@@ -26,11 +26,11 @@ type ClientNodeConfiguration struct {
 	// 登录密码
 	Token string
 	// 连接超时，单位秒，默认5秒
-	ConnectTimeout time.Duration
+	ConnectTimeout int64
 	// Proto版本
 	ProtoVersion int
 	// 心跳间隔,单位秒，默认30秒
-	PingInterval time.Duration
+	PingInterval int64
 	// 是否自动重连
 	Reconnect bool
 	// 是否自动ack
@@ -136,11 +136,11 @@ func (x *ClientNode) initClient() (*wksdk.Client, error) {
 			return x.client, nil
 		}
 		x.client = wksdk.NewClient(x.Config.Server,
-			wksdk.WithConnectTimeout(x.Config.ConnectTimeout),
+			wksdk.WithConnectTimeout(time.Duration(x.Config.ConnectTimeout)*time.Second),
 			wksdk.WithProtoVersion(x.Config.ProtoVersion),
 			wksdk.WithUID(x.Config.UID),
 			wksdk.WithToken(x.Config.Token),
-			wksdk.WithPingInterval(x.Config.PingInterval*time.Second ),
+			wksdk.WithPingInterval(time.Duration(x.Config.PingInterval)*time.Second),
 			wksdk.WithReconnect(x.Config.Reconnect),
 			wksdk.WithAutoAck(x.Config.AutoAck))
 		err := x.client.Connect()
