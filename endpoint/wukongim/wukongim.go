@@ -19,7 +19,6 @@ import (
 	"context"
 	"errors"
 	"net/textproto"
-	"time"
 
 	wkproto "github.com/WuKongIM/WuKongIMGoProto"
 	"github.com/WuKongIM/WuKongIMGoSDK/pkg/wksdk"
@@ -117,7 +116,7 @@ func (r *ResponseMessage) Headers() textproto.MIMEHeader {
 }
 
 func (r *ResponseMessage) From() string {
-	return ""
+	return "*"
 }
 
 func (r *ResponseMessage) GetParam(key string) string {
@@ -166,14 +165,12 @@ type Config struct {
 	UID string
 	// 登录密码
 	Token string
-	// 连接超时
-	ConnectTimeout int64
 	// Proto版本
-	ProtoVersion int
-	// 心跳间隔
-	PingInterval int64
+	ProtoVersion uint8
 	// 是否自动重连
-	Reconnect bool
+	AutoReconn bool
+	// 是否debug模式
+	IsDebug bool
 }
 
 // Wukongim 接收端端点
@@ -195,13 +192,12 @@ func (x *Wukongim) Type() string {
 func (x *Wukongim) New() types.Node {
 	return &Wukongim{
 		Config: Config{
-			Server:         "tcp://127.0.0.1:5100",
-			UID:            "test1",
-			Token:          "test1",
-			ConnectTimeout: 5,
-			ProtoVersion:   wkproto.LatestVersion,
-			PingInterval:   30,
-			Reconnect:      true,
+			Server:       "tcp://127.0.0.1:5100",
+			UID:          "test1",
+			Token:        "test1",
+			ProtoVersion: wkproto.LatestVersion,
+			AutoReconn:   true,
+			IsDebug:      true,
 		},
 	}
 }
@@ -219,7 +215,7 @@ func (x *Wukongim) Init(ruleConfig types.Config, configuration types.Configurati
 // Destroy 销毁组件
 func (x *Wukongim) Destroy() {
 	if x.client != nil {
-		_ = x.client.Disconnect()
+		x.client.Close()
 	}
 }
 
@@ -257,14 +253,16 @@ func (x *Wukongim) Start() error {
 			return x.initClient()
 		})
 	}
-	x.client.OnMessage(func(msg *wksdk.Message) {
+	x.client.SetOnRecv(func(recv *wkproto.RecvPacket) error {
 		exchange := &endpoint.Exchange{
-			In: &RequestMessage{body: []byte(string(msg.Payload))},
+			In: &RequestMessage{body: recv.Payload},
 			Out: &ResponseMessage{
-				body: []byte(string(msg.Payload)),
+				body: recv.Payload,
 			}}
 		x.DoProcess(context.Background(), x.Router, exchange)
+		return nil
 	})
+
 	return err
 }
 
@@ -283,13 +281,12 @@ func (x *Wukongim) initClient() (*wksdk.Client, error) {
 		if x.client != nil {
 			return x.client, nil
 		}
-		x.client = wksdk.NewClient(x.Config.Server,
-			wksdk.WithConnectTimeout(time.Duration(x.Config.ConnectTimeout)*time.Second),
+		x.client = wksdk.New(x.Config.Server,
 			wksdk.WithProtoVersion(x.Config.ProtoVersion),
 			wksdk.WithUID(x.Config.UID),
 			wksdk.WithToken(x.Config.Token),
-			wksdk.WithPingInterval(time.Duration(x.Config.PingInterval)*time.Second),
-			wksdk.WithReconnect(x.Config.Reconnect),
+			wksdk.WithAutoReconn(x.Config.AutoReconn),
+			wksdk.WithIsDebug(x.Config.IsDebug),
 		)
 		err := x.client.Connect()
 		return x.client, err

@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 The RuleGo Authors.
+ * Copyright 2024 The RuleGo Authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,8 @@ import (
 	_ "github.com/rulego/rulego-components/external/wukongim"
 )
 
-// 测试x/wukongimClient
+// 测试x/wukongimSender",
+
 func main() {
 
 	config := rulego.NewConfig()
@@ -37,7 +38,7 @@ func main() {
 		panic(err)
 	}
 
-	msg := types.NewMsg(0, "", types.JSON, types.NewMetadata(), "wukong,hello world!")
+	msg := types.NewMsg(0, "", types.JSON, types.NewMetadata(), `{"content":"wukong , hello world","type":1}`)
 
 	ruleEngine.OnMsg(msg, types.WithEndFunc(func(ctx types.RuleContext, msg types.RuleMsg, err error) {
 		fmt.Println("msg处理结果=====")
@@ -69,7 +70,7 @@ var chainJsonFile = `
 				"type": "x/wukongimSender",
 				"name": "发送节点",
 				"configuration": {
-					"server": "tcp://127.0.0.1:5100",
+					"server": "tcp://175.27.245.108:15100",
 					"uID": "test1",
 					"token": "test1",
 					"connectTimeout": "50",
