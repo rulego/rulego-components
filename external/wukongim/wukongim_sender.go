@@ -16,6 +16,7 @@
 package wukongim
 
 import (
+	"strconv"
 	"time"
 
 	wkproto "github.com/WuKongIM/WuKongIMGoProto"
@@ -50,10 +51,10 @@ type WukongimSenderConfiguration struct {
 	Reconnect bool
 	// 是否自动确认消息
 	AutoAck bool
-	// 频道ID
-	ChannelID string `json:"channel_id"`
-	// 频道类型
-	ChannelType uint8 `json:"channel_type"`
+	// 频道ID 允许使用 ${} 占位符变量
+	ChannelID string
+	// 频道类型 允许使用 ${} 占位符变量
+	ChannelType string
 	// 是否持久化，默认 false
 	NoPersist bool
 	// 是否同步一次(写模式)，默认 false
@@ -70,8 +71,10 @@ type WukongimSenderConfiguration struct {
 type WukongimSender struct {
 	base.SharedNode[*wksdk.Client]
 	//节点配置
-	Config WukongimSenderConfiguration
-	client *wksdk.Client
+	Config              WukongimSenderConfiguration
+	client              *wksdk.Client
+	channelIdTemplate   str.Template
+	channelTypeTemplate str.Template
 }
 
 // Type 返回组件类型
@@ -89,8 +92,8 @@ func (x *WukongimSender) New() types.Node {
 		PingInterval:   30,
 		Reconnect:      true,
 		AutoAck:        true,
-		ChannelID:      "test2",
-		ChannelType:    wkproto.ChannelTypePerson,
+		ChannelID:      "${channelId}",
+		ChannelType:    "${channelType}",
 		NoPersist:      false,
 		SyncOnce:       false,
 		RedDot:         true,
@@ -107,20 +110,36 @@ func (x *WukongimSender) Init(ruleConfig types.Config, configuration types.Confi
 			return x.initClient()
 		})
 	}
+	x.channelIdTemplate = str.NewTemplate(x.Config.ChannelID)
+	x.channelTypeTemplate = str.NewTemplate(x.Config.ChannelType)
 	return err
 }
 
 // OnMsg 处理消息
 func (x *WukongimSender) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
+	ctype := x.Config.ChannelType
+	cid := x.Config.ChannelID
+	var utype uint64 = 1
+	var err error
+	if !x.channelIdTemplate.IsNotVar() || !x.channelTypeTemplate.IsNotVar() {
+		evn := base.NodeUtils.GetEvnAndMetadata(ctx, msg)
+		ctype = x.channelTypeTemplate.Execute(evn)
+		cid = x.channelIdTemplate.Execute(evn)
+	}
 	client, err := x.SharedNode.Get()
+	if err != nil {
+		ctx.TellFailure(msg, err)
+		return
+	}
+	utype, err = strconv.ParseUint(ctype, 10, 8)
 	if err != nil {
 		ctx.TellFailure(msg, err)
 		return
 	}
 	packet, err := client.SendMessage([]byte(msg.Data),
 		wkproto.Channel{
-			ChannelType: x.Config.ChannelType,
-			ChannelID:   x.Config.ChannelID,
+			ChannelType: uint8(utype),
+			ChannelID:   cid,
 		},
 		wksdk.SendOptionWithNoPersist(x.Config.NoPersist),
 		wksdk.SendOptionWithSyncOnce(x.Config.SyncOnce),
