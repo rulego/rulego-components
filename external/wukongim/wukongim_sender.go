@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package wukongim
 
 import (
@@ -33,7 +34,7 @@ func init() {
 	_ = rulego.Registry.Register(&WukongimSender{})
 }
 
-// ClientNodeConfiguration 节点配置
+// WukongimSenderConfiguration 节点配置
 type WukongimSenderConfiguration struct {
 	// 服务器地址
 	Server string
@@ -41,27 +42,35 @@ type WukongimSenderConfiguration struct {
 	UID string
 	// 登录密码
 	Token string
-	// 连接超时
+	// 频道类型 允许使用 ${} 占位符变量
+	//	ChannelTypePerson uint8 = 1 // 个人频道
+	//	ChannelTypeGroup           uint8 = 2 // 群组频道
+	//	ChannelTypeCustomerService uint8 = 3 // 客服频道
+	//	ChannelTypeCommunity       uint8 = 4 // 社区频道
+	//	ChannelTypeCommunityTopic  uint8 = 5 // 社区话题频道
+	//	ChannelTypeInfo            uint8 = 6 // 资讯频道（有临时订阅者的概念，查看资讯的时候加入临时订阅，退出资讯的时候退出临时订阅）
+	//	ChannelTypeData            uint8 = 7 // 数据频道
+	ChannelType string
+	// 频道ID 允许使用 ${} 占位符变量
+	// 如果 ChannelType=1 则填写用户：UID
+	ChannelID string
+	// 连接超时，单位秒
 	ConnectTimeout int64
 	// Proto版本
 	ProtoVersion int
-	// 心跳间隔
+	// 心跳间隔，单位秒
 	PingInterval int64
 	// 是否自动重连
 	Reconnect bool
 	// 是否自动确认消息
 	AutoAck bool
-	// 频道ID 允许使用 ${} 占位符变量
-	ChannelID string
-	// 频道类型 允许使用 ${} 占位符变量
-	ChannelType string
-	// 是否持久化，默认 false
+	// 是否不存储，默认 false
 	NoPersist bool
 	// 是否同步一次(写模式)，默认 false
 	SyncOnce bool
 	// 是否显示红点，默认true
 	RedDot bool
-	// 是否需要加密，默认false
+	// 是否不需要加密，默认false
 	NoEncrypt bool
 }
 
@@ -92,8 +101,8 @@ func (x *WukongimSender) New() types.Node {
 		PingInterval:   30,
 		Reconnect:      true,
 		AutoAck:        true,
-		ChannelID:      "${channelId}",
-		ChannelType:    "${channelType}",
+		ChannelType:    "1",
+		ChannelID:      "test2",
 		NoPersist:      false,
 		SyncOnce:       false,
 		RedDot:         true,

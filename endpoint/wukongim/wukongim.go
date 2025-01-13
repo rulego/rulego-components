@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package wukongim
 
 import (
@@ -160,17 +161,17 @@ func (r *ResponseMessage) SetStatusCode(statusCode int) {
 }
 
 type Config struct {
-	// Wukongim服务器地址列表
+	// Wukongim服务器地址
 	Server string
 	// 用户UID
 	UID string
 	// 登录密码
 	Token string
-	// 连接超时
+	// 连接超时，单位秒
 	ConnectTimeout int64
 	// Proto版本
 	ProtoVersion int
-	// 心跳间隔
+	// 心跳间隔，单位秒
 	PingInterval int64
 	// 是否自动重连
 	Reconnect bool
