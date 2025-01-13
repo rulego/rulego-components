@@ -48,6 +48,8 @@ type WukongimSenderConfiguration struct {
 	PingInterval int64
 	// 是否自动重连
 	Reconnect bool
+	// 是否自动确认消息
+	AutoAck bool
 	// 频道ID
 	ChannelID string `json:"channel_id"`
 	// 频道类型
@@ -79,13 +81,14 @@ func (x *WukongimSender) Type() string {
 
 func (x *WukongimSender) New() types.Node {
 	return &WukongimSender{Config: WukongimSenderConfiguration{
-		Server:         "tcp://127.0.0.1:5100",
+		Server:         "tcp://175.27.245.108:15100",
 		UID:            "test1",
 		Token:          "test1",
 		ConnectTimeout: 5,
 		ProtoVersion:   wkproto.LatestVersion,
 		PingInterval:   30,
 		Reconnect:      true,
+		AutoAck:        true,
 		ChannelID:      "test2",
 		ChannelType:    wkproto.ChannelTypePerson,
 		NoPersist:      false,
@@ -154,6 +157,7 @@ func (x *WukongimSender) initClient() (*wksdk.Client, error) {
 			wksdk.WithToken(x.Config.Token),
 			wksdk.WithPingInterval(time.Duration(x.Config.PingInterval)*time.Second),
 			wksdk.WithReconnect(x.Config.Reconnect),
+			wksdk.WithAutoAck(x.Config.AutoAck),
 		)
 		err := x.client.Connect()
 		return x.client, err

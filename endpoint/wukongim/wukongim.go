@@ -174,6 +174,8 @@ type Config struct {
 	PingInterval int64
 	// 是否自动重连
 	Reconnect bool
+	// 是否自动确认
+	AutoAck bool
 }
 
 // Wukongim 接收端端点
@@ -195,13 +197,14 @@ func (x *Wukongim) Type() string {
 func (x *Wukongim) New() types.Node {
 	return &Wukongim{
 		Config: Config{
-			Server:         "tcp://127.0.0.1:5100",
+			Server:         "tcp://175.27.245.108:15100",
 			UID:            "test1",
 			Token:          "test1",
 			ConnectTimeout: 5,
 			ProtoVersion:   wkproto.LatestVersion,
 			PingInterval:   30,
 			Reconnect:      true,
+			AutoAck:        true,
 		},
 	}
 }
@@ -258,6 +261,12 @@ func (x *Wukongim) Start() error {
 		})
 	}
 	x.client.OnMessage(func(msg *wksdk.Message) {
+		if !x.Config.AutoAck {
+			err = msg.Ack()
+			if err != nil {
+				x.Printf("msg ack failed,msg: %v, err: %s", msg, err)
+			}
+		}
 		exchange := &endpoint.Exchange{
 			In: &RequestMessage{body: []byte(string(msg.Payload))},
 			Out: &ResponseMessage{
