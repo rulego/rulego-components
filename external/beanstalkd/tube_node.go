@@ -32,6 +32,7 @@ const (
 	DefaultDelay = time.Second * 0
 	DefaultTime  = time.Second * 5
 	DefaultBound = 10
+	DefaultTube  = "default"
 )
 
 // 注册节点
@@ -39,20 +40,32 @@ func init() {
 	_ = rulego.Registry.Register(&TubeNode{})
 }
 
+type TubeMsgParams struct {
+	Tube  string
+	Body  string
+	Pri   uint32
+	Delay time.Duration
+	Ttr   time.Duration
+	Pause time.Duration
+	Bound int
+}
+
 // TubeConfiguration 节点配置
 type TubeConfiguration struct {
 	// 服务器地址
 	Server string
-	// Tube名称
+	// Tube名称 允许使用 ${} 占位符变量
 	Tube string
-	// 命令：Put、PeekReady、PeekDelayed、PeekBuried、Kick、Stat、Pause
+	// 命令名称，支持Put、PeekReady、PeekDelayed、PeekBuried、Kick、Stat、Pause
 	Cmd string
-	// Put命令参数pri 允许使用 ${} 占位符变量
-	PutPri string
-	// Put命令参数delay 允许使用 ${} 占位符变量
-	PutDelay string
-	// Put命令参数ttr 允许使用 ${} 占位符变量
-	PutTTR string
+	// 消息内容：body 允许使用 ${} 占位符变量
+	Body string
+	// 优先级：pri 允许使用 ${} 占位符变量
+	Pri string
+	// 延迟时间：delay 允许使用 ${} 占位符变量
+	Delay string
+	// 最大执行秒数:ttr 允许使用 ${} 占位符变量
+	TTR string
 	// Kick命令参数bound 允许使用 ${} 占位符变量
 	KickBound string
 	// Pause命令参数time 允许使用 ${} 占位符变量
@@ -67,6 +80,8 @@ type TubeNode struct {
 	//节点配置
 	Config            TubeConfiguration
 	tube              *beanstalk.Tube
+	tubeTemplate      str.Template
+	putBodyTemplate   str.Template
 	putPriTemplate    str.Template
 	putDelayTemplate  str.Template
 	putTTRTemplate    str.Template
@@ -91,76 +106,49 @@ func (x *TubeNode) New() types.Node {
 // Init 初始化组件
 func (x *TubeNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
-	//初始化模板
-	x.putPriTemplate = str.NewTemplate(x.Config.PutPri)
-	x.putDelayTemplate = str.NewTemplate(x.Config.PutDelay)
-	x.putTTRTemplate = str.NewTemplate(x.Config.PutTTR)
-	x.kickBoundTemplate = str.NewTemplate(x.Config.KickBound)
-	x.pauseTimeTemplate = str.NewTemplate(x.Config.PauseTime)
 	if err == nil {
 		//初始化客户端
 		err = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, true, func() (*beanstalk.Tube, error) {
 			return x.initClient()
 		})
 	}
+	//初始化模板
+	x.tubeTemplate = str.NewTemplate(x.Config.Tube)
+	x.putBodyTemplate = str.NewTemplate(x.Config.Body)
+	x.putPriTemplate = str.NewTemplate(x.Config.Pri)
+	x.putDelayTemplate = str.NewTemplate(x.Config.Delay)
+	x.putTTRTemplate = str.NewTemplate(x.Config.TTR)
+	x.kickBoundTemplate = str.NewTemplate(x.Config.KickBound)
+	x.pauseTimeTemplate = str.NewTemplate(x.Config.PauseTime)
 	return err
 }
 
 // OnMsg 处理消息
 func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	var (
-		err   error
-		id    uint64
-		body  []byte
-		count int
-		data  map[string]any = make(map[string]any)
-		pri   uint32         = DefaultPri
-		delay time.Duration  = DefaultDelay
-		ttr   time.Duration  = DefaultTime
-		pause time.Duration  = DefaultTime
-		bound int            = DefaultBound
+		err    error
+		id     uint64
+		body   []byte
+		count  int
+		stat   map[string]string
+		data   map[string]any = make(map[string]any)
+		params *TubeMsgParams
 	)
-	evn := base.NodeUtils.GetEvnAndMetadata(ctx, msg)
+	params, err = x.getParams(ctx, msg)
+	// use tube
+	x.Use(params.Tube)
+	if err != nil {
+		ctx.TellFailure(msg, err)
+		return
+	}
 	switch x.Config.Cmd {
 	case Put:
-		if !x.putPriTemplate.IsNotVar() {
-			tmp := x.putPriTemplate.Execute(evn)
-			ti, err := strconv.Atoi(tmp)
-			if err != nil {
-				break
-			}
-			pri = uint32(ti)
-		} else if len(x.Config.PutPri) > 0 {
-			ti, err := strconv.Atoi(x.Config.PutPri)
-			if err != nil {
-				break
-			}
-			pri = uint32(ti)
-		}
-
-		if !x.putDelayTemplate.IsNotVar() {
-			tmp := x.putDelayTemplate.Execute(evn)
-			delay, err = time.ParseDuration(tmp)
-		} else if len(x.Config.PutDelay) > 0 {
-			delay, err = time.ParseDuration(x.Config.PutDelay)
-		}
-		if err != nil {
-			break
-		}
-		if !x.putTTRTemplate.IsNotVar() {
-			tmp := x.putTTRTemplate.Execute(evn)
-			ttr, err = time.ParseDuration(tmp)
-		} else if len(x.Config.PutTTR) > 0 {
-			ttr, err = time.ParseDuration(x.Config.PutTTR)
-		}
-		if err != nil {
-			break
-		}
-		id, err = x.tube.Put([]byte(msg.Data), pri, delay, ttr)
+		id, err = x.tube.Put([]byte(params.Body), params.Pri, params.Delay, params.Ttr)
 		if err != nil {
 			break
 		}
 		data["id"] = id
+		x.Printf("put job id:%d to %s  with err: %s", id, x.tube.Conn.Tube.Name, err)
 	case PeekReady:
 		id, body, err = x.tube.PeekReady()
 		if err != nil {
@@ -168,6 +156,7 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		}
 		data["id"] = id
 		data["body"] = string(body)
+		x.Printf("peek ready job id:%d  with err: %s", id, err)
 	case PeekDelayed:
 		id, body, err = x.tube.PeekDelayed()
 		if err != nil {
@@ -175,6 +164,7 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		}
 		data["id"] = id
 		data["body"] = string(body)
+		x.Printf("peek delayed job id:%d  with err: %s", id, err)
 	case PeekBuried:
 		id, body, err = x.tube.PeekBuried()
 		if err != nil {
@@ -182,38 +172,23 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		}
 		data["id"] = id
 		data["body"] = string(body)
+		x.Printf("peek bury job id:%d  with err: %s", id, err)
 	case Kick:
-		if !x.kickBoundTemplate.IsNotVar() {
-			tmp := x.kickBoundTemplate.Execute(evn)
-			bound, err = strconv.Atoi(tmp)
-		} else if len(x.Config.KickBound) > 0 {
-			bound, err = strconv.Atoi(x.Config.KickBound)
-		}
-		if err != nil {
-			break
-		}
-		count, err = x.tube.Kick(bound)
+		count, err = x.tube.Kick(params.Bound)
 		if err != nil {
 			break
 		}
 		data["count"] = count
+		x.Printf("kicked with err: %s", err)
 	case Stat:
-		if !x.pauseTimeTemplate.IsNotVar() {
-			tmp := x.pauseTimeTemplate.Execute(evn)
-			pause, err = time.ParseDuration(tmp)
-		} else if len(x.Config.PauseTime) > 0 {
-			pause, err = time.ParseDuration(x.Config.PauseTime)
-		}
-		if err != nil {
-			break
-		}
-		var stat map[string]string
 		stat, err = x.tube.Stats()
 		for k, v := range stat {
 			data[k] = v
 		}
+		x.Printf("tube stats:%v, err: %s", stat, err)
 	case Pause:
-		err = x.tube.Pause(pause)
+		err = x.tube.Pause(params.Pause)
+		x.Printf("pause with  err: %s", err)
 	default:
 		err = errors.New("Unknown Command")
 	}
@@ -228,6 +203,104 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		msg.Data = str.ToString(bytes)
 		ctx.TellSuccess(msg)
 	}
+}
+
+func (x *TubeNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*TubeMsgParams, error) {
+	var (
+		err    error
+		tube   string        = DefaultTube
+		body   string        = ""
+		pri    uint32        = DefaultPri
+		delay  time.Duration = DefaultDelay
+		ttr    time.Duration = DefaultTime
+		pause  time.Duration = DefaultTime
+		bound  int           = DefaultBound
+		params               = TubeMsgParams{
+			Tube:  tube,
+			Body:  body,
+			Pri:   DefaultPri,
+			Bound: DefaultBound,
+			Delay: DefaultDelay,
+			Ttr:   DefaultTime,
+			Pause: DefaultTime,
+		}
+	)
+	evn := base.NodeUtils.GetEvnAndMetadata(ctx, msg)
+	// 获取tube参数
+	if !x.tubeTemplate.IsNotVar() {
+		tube = x.tubeTemplate.Execute(evn)
+	} else if len(x.Config.Tube) > 0 {
+		tube = x.Config.Tube
+	}
+	// 获取body参数
+	if !x.putBodyTemplate.IsNotVar() {
+		body = x.putBodyTemplate.Execute(evn)
+	} else if len(x.Config.Body) > 0 {
+		body = x.Config.Body
+	} else {
+		body = msg.Data
+	}
+	// 获取优先级参数
+	var ti int
+	if !x.putPriTemplate.IsNotVar() {
+		tmp := x.putPriTemplate.Execute(evn)
+		ti, err = strconv.Atoi(tmp)
+		pri = uint32(ti)
+	} else if len(x.Config.Pri) > 0 {
+		ti, err = strconv.Atoi(x.Config.Pri)
+		pri = uint32(ti)
+	}
+	if err != nil {
+		return nil, err
+	}
+	// 获取延迟参数
+	if !x.putDelayTemplate.IsNotVar() {
+		tmp := x.putDelayTemplate.Execute(evn)
+		delay, err = time.ParseDuration(tmp)
+	} else if len(x.Config.Delay) > 0 {
+		delay, err = time.ParseDuration(x.Config.Delay)
+	}
+	if err != nil {
+		return nil, err
+	}
+	// 获取TTR参数
+	if !x.putTTRTemplate.IsNotVar() {
+		tmp := x.putTTRTemplate.Execute(evn)
+		ttr, err = time.ParseDuration(tmp)
+	} else if len(x.Config.TTR) > 0 {
+		ttr, err = time.ParseDuration(x.Config.TTR)
+	}
+	if err != nil {
+		return nil, err
+	}
+	// 获取Bound数量参数
+	if !x.kickBoundTemplate.IsNotVar() {
+		tmp := x.kickBoundTemplate.Execute(evn)
+		bound, err = strconv.Atoi(tmp)
+	} else if len(x.Config.KickBound) > 0 {
+		bound, err = strconv.Atoi(x.Config.KickBound)
+	}
+	if err != nil {
+		return nil, err
+	}
+	// 获取暂停时间参数
+	if !x.pauseTimeTemplate.IsNotVar() {
+		tmp := x.pauseTimeTemplate.Execute(evn)
+		pause, err = time.ParseDuration(tmp)
+	} else if len(x.Config.PauseTime) > 0 {
+		pause, err = time.ParseDuration(x.Config.PauseTime)
+	}
+	if err != nil {
+		return nil, err
+	}
+	params.Tube = tube
+	params.Body = body
+	params.Pri = pri
+	params.Bound = bound
+	params.Delay = delay
+	params.Ttr = ttr
+	params.Pause = pause
+	return &params, nil
 }
 
 // Destroy 销毁组件
@@ -256,7 +329,13 @@ func (x *TubeNode) initClient() (*beanstalk.Tube, error) {
 		}
 		var err error
 		conn, err := beanstalk.Dial("tcp", x.Config.Server)
-		x.tube = beanstalk.NewTube(conn, x.Config.Tube)
+		x.tube = beanstalk.NewTube(conn, DefaultTube)
 		return x.tube, err
 	}
+}
+
+// use tube
+func (x *TubeNode) Use(tube string) {
+	x.tube.Name = tube
+	x.tube.Conn.Tube.Name = tube
 }

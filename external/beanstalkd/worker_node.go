@@ -3,15 +3,16 @@ package beanstalkd
 import (
 	"encoding/json"
 	"errors"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/beanstalkd/go-beanstalk"
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/components/base"
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/str"
-	"strconv"
-	"strings"
-	"time"
 )
 
 const (
@@ -32,20 +33,30 @@ func init() {
 	_ = rulego.Registry.Register(&WorkerNode{})
 }
 
+type WorkerMsgParams struct {
+	Id    uint64
+	Tube  string
+	Pri   uint32
+	Delay time.Duration
+	Ttr   time.Duration
+	Pause time.Duration
+	Bound int
+}
+
 // WorkerConfiguration 节点配置
 type WorkerConfiguration struct {
 	// 服务器地址
 	Server string
-	// Tube名称
+	// Tube名称 允许使用 ${} 占位符变量
 	Tube string
-	// 命令：Delete Release Bury KickJob Touch Peek ReserveJob  StatsJob Stats  ListTubes
+	// 命令名称，支持Delete Release Bury KickJob Touch Peek ReserveJob  StatsJob Stats  ListTubes
 	Cmd string
 	// JobId  允许使用 ${} 占位符变量
 	JobId string
-	// Put命令参数pri 允许使用 ${} 占位符变量
-	PutPri string
-	// Put命令参数delay 允许使用 ${} 占位符变量
-	PutDelay string
+	// 优先级: pri 允许使用 ${} 占位符变量
+	Pri string
+	// 延迟时间: delay 允许使用 ${} 占位符变量
+	Delay string
 }
 
 // WorkerNode 客户端节点，
@@ -56,6 +67,7 @@ type WorkerNode struct {
 	//节点配置
 	Config           WorkerConfiguration
 	conn             *beanstalk.Conn
+	tubeTemplate     str.Template
 	jobIdTemplate    str.Template
 	putPriTemplate   str.Template
 	putDelayTemplate str.Template
@@ -78,129 +90,100 @@ func (x *WorkerNode) New() types.Node {
 // Init 初始化组件
 func (x *WorkerNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
-	//初始化模板
-	x.putPriTemplate = str.NewTemplate(x.Config.PutPri)
-	x.putDelayTemplate = str.NewTemplate(x.Config.PutDelay)
-	x.jobIdTemplate = str.NewTemplate(x.Config.JobId)
 	if err == nil {
 		//初始化客户端
 		err = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, true, func() (*beanstalk.Conn, error) {
 			return x.initClient()
 		})
 	}
+	//初始化模板
+	x.tubeTemplate = str.NewTemplate(x.Config.Tube)
+	x.putPriTemplate = str.NewTemplate(x.Config.Pri)
+	x.putDelayTemplate = str.NewTemplate(x.Config.Delay)
+	x.jobIdTemplate = str.NewTemplate(x.Config.JobId)
 	return err
 }
 
 // OnMsg 处理消息
 func (x *WorkerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
+	x.Locker.Lock()
+	defer x.Locker.Unlock()
 	var (
-		err   error
-		id    uint64 = 0
-		body  []byte
-		tubes []string          = make([]string, 0)
-		data  map[string]string = make(map[string]string)
-		pri                     = DefaultPri
-		delay time.Duration     = DefaultDelay
+		err    error
+		body   []byte
+		tubes  []string          = make([]string, 0)
+		data   map[string]string = make(map[string]string)
+		params *WorkerMsgParams
 	)
-	evn := base.NodeUtils.GetEvnAndMetadata(ctx, msg)
-	if !x.jobIdTemplate.IsNotVar() {
-		tmp := x.jobIdTemplate.Execute(evn)
-		id, err = strconv.ParseUint(tmp, 10, 64)
-	}
-
+	params, err = x.getParams(ctx, msg)
+	// use tube
+	x.Use(params.Tube)
 	switch x.Config.Cmd {
 	case Delete:
-		if id == 0 {
+		if params.Id == 0 {
 			err = errors.New("id is empty")
 			break
 		}
-		err = x.conn.Delete(id)
+		err = x.conn.Delete(params.Id)
+		x.Printf("delete job id:%d tube:%s with err: %s", params.Id, x.conn.Tube.Name, err)
 	case Release:
-		if id == 0 {
+		if params.Id == 0 {
 			err = errors.New("id is empty")
 			break
 		}
-		if !x.putPriTemplate.IsNotVar() {
-			tmp := x.putPriTemplate.Execute(evn)
-			ti, err := strconv.Atoi(tmp)
-			if err != nil {
-				break
-			}
-			pri = uint32(ti)
-		} else if len(x.Config.PutPri) > 0 {
-			ti, err := strconv.Atoi(x.Config.PutPri)
-			if err != nil {
-				break
-			}
-			pri = uint32(ti)
-		}
-		if !x.putDelayTemplate.IsNotVar() {
-			tmp := x.putDelayTemplate.Execute(evn)
-			delay, err = time.ParseDuration(tmp)
-		} else if len(x.Config.PutDelay) > 0 {
-			delay, err = time.ParseDuration(x.Config.PutDelay)
-		}
-		if err != nil {
-			break
-		}
-		err = x.conn.Release(id, pri, delay)
+		err = x.conn.Release(params.Id, params.Pri, params.Delay)
+		x.Printf("release job id:%d tube:%s with err: %s", params.Id, x.conn.Tube.Name, err)
 	case Bury:
-		if id == 0 {
+		if params.Id == 0 {
 			err = errors.New("id is empty")
 			break
 		}
-		if !x.putPriTemplate.IsNotVar() {
-			tmp := x.putPriTemplate.Execute(evn)
-			ti, err := strconv.Atoi(tmp)
-			if err != nil {
-				break
-			}
-			pri = uint32(ti)
-		} else if len(x.Config.PutPri) > 0 {
-			ti, err := strconv.Atoi(x.Config.PutPri)
-			if err != nil {
-				break
-			}
-			pri = uint32(ti)
-		}
-		err = x.conn.Bury(id, pri)
+		err = x.conn.Bury(params.Id, params.Pri)
+		x.Printf("bury job id:%d tube:%s with err: %s", params.Id, x.conn.Tube.Name, err)
 	case KickJob:
-		if id == 0 {
+		if params.Id == 0 {
 			err = errors.New("id is empty")
 			break
 		}
-		err = x.conn.KickJob(id)
+		err = x.conn.KickJob(params.Id)
+		x.Printf("kick job id:%d tube:%s with err: %s", params.Id, x.conn.Tube.Name, err)
 	case Touch:
-		if id == 0 {
+		if params.Id == 0 {
 			err = errors.New("id is empty")
 			break
 		}
-		err = x.conn.Touch(id)
+		err = x.conn.Touch(params.Id)
+		x.Printf("touch job id:%d tube:%s with err: %s", params.Id, x.conn.Tube.Name, err)
 	case Peek:
-		if id == 0 {
+		if params.Id == 0 {
 			err = errors.New("id is empty")
 			break
 		}
-		body, err = x.conn.Peek(id)
+		body, err = x.conn.Peek(params.Id)
 		data["body"] = string(body)
+		x.Printf("peek job id:%d tube:%s with err: %s", params.Id, x.conn.Tube.Name, err)
 	case ReserveJob:
-		if id == 0 {
+		if params.Id == 0 {
 			err = errors.New("id is empty")
 			break
 		}
-		body, err = x.conn.ReserveJob(id)
+		body, err = x.conn.ReserveJob(params.Id)
 		data["body"] = string(body)
+		x.Printf("reserve job id:%d tube:%s with err: %s", params.Id, x.conn.Tube.Name, err)
 	case StatsJob:
-		if id == 0 {
+		if params.Id == 0 {
 			err = errors.New("id is empty")
 			break
 		}
-		data, err = x.conn.StatsJob(id)
+		data, err = x.conn.StatsJob(params.Id)
+		x.Printf("stats job id:%d tube:%s with err: %s", params.Id, x.conn.Tube.Name, err)
 	case Stats:
 		data, err = x.conn.Stats()
+		x.Printf("stats :%v  with err: %s", data, err)
 	case ListTubes:
 		tubes, err = x.conn.ListTubes()
 		data["tubes"] = strings.Join(tubes, ",")
+		x.Printf("tubes :%v  with err: %s", tubes, err)
 	default:
 		err = errors.New("Unknown Command")
 	}
@@ -215,6 +198,64 @@ func (x *WorkerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		msg.Data = str.ToString(bytes)
 		ctx.TellSuccess(msg)
 	}
+}
+
+// getParams 获取参数
+func (x *WorkerNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*WorkerMsgParams, error) {
+	var (
+		err    error
+		id     uint64        = 0
+		tube   string        = DefaultTube
+		pri    uint32        = DefaultPri
+		delay  time.Duration = DefaultDelay
+		params               = WorkerMsgParams{
+			Id:    id,
+			Tube:  tube,
+			Pri:   DefaultPri,
+			Delay: DefaultDelay,
+		}
+	)
+	evn := base.NodeUtils.GetEvnAndMetadata(ctx, msg)
+	// 获取tube参数
+	if !x.tubeTemplate.IsNotVar() {
+		tube = x.tubeTemplate.Execute(evn)
+	} else if len(x.Config.Tube) > 0 {
+		tube = x.Config.Tube
+	}
+	// 获取jobId参数
+	if !x.jobIdTemplate.IsNotVar() {
+		tmp := x.jobIdTemplate.Execute(evn)
+		id, err = strconv.ParseUint(tmp, 10, 64)
+	}
+	// 获取优先级参数
+	var ti int
+	if !x.putPriTemplate.IsNotVar() {
+		tmp := x.putPriTemplate.Execute(evn)
+		ti, err = strconv.Atoi(tmp)
+		pri = uint32(ti)
+	} else if len(x.Config.Pri) > 0 {
+		ti, err = strconv.Atoi(x.Config.Pri)
+		pri = uint32(ti)
+	}
+	if err != nil {
+		return nil, err
+	}
+	// 获取延迟参数
+	if !x.putDelayTemplate.IsNotVar() {
+		tmp := x.putDelayTemplate.Execute(evn)
+		delay, err = time.ParseDuration(tmp)
+	} else if len(x.Config.Delay) > 0 {
+		delay, err = time.ParseDuration(x.Config.Delay)
+	}
+	if err != nil {
+		return nil, err
+	}
+	// 更新参数
+	params.Id = id
+	params.Tube = tube
+	params.Pri = pri
+	params.Delay = delay
+	return &params, nil
 }
 
 // Destroy 销毁组件
@@ -243,8 +284,13 @@ func (x *WorkerNode) initClient() (*beanstalk.Conn, error) {
 		}
 		var err error
 		conn, err := beanstalk.Dial("tcp", x.Config.Server)
-		conn.Tube = *beanstalk.NewTube(conn, x.Config.Tube)
+		conn.Tube = *beanstalk.NewTube(conn, DefaultTube)
 		x.conn = conn
 		return x.conn, err
 	}
+}
+
+// use tube
+func (x *WorkerNode) Use(tube string) {
+	x.conn.Tube.Name = tube
 }
