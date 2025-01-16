@@ -114,6 +114,7 @@ func (x *WorkerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		tubes  []string          = make([]string, 0)
 		data   map[string]string = make(map[string]string)
 		params *WorkerMsgParams
+		stat   map[string]string
 	)
 	params, err = x.getParams(ctx, msg)
 	// use tube
@@ -196,6 +197,15 @@ func (x *WorkerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 			return
 		}
 		msg.Data = str.ToString(bytes)
+		if params.Id > 0 {
+			stat, err = x.conn.StatsJob(params.Id)
+			if err != nil {
+				x.Printf("get job stats error %v ", err)
+				ctx.TellFailure(msg, err)
+				return
+			}
+			msg.Metadata = stat
+		}
 		ctx.TellSuccess(msg)
 	}
 }

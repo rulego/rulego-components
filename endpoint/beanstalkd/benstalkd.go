@@ -150,7 +150,7 @@ func (x *BeanstalkdTubeSet) Start() error {
 	x.cronTask = cron.New(cron.WithChain(cron.Recover(cron.DefaultLogger)), cron.WithLogger(cron.DefaultLogger))
 	eid, err := x.cronTask.AddFunc(x.Config.Interval, func() {
 		if x.Router != nil {
-			_ = x.reserve(x.Router)
+			_ = x.pop(x.Router)
 		}
 	})
 	x.taskId = eid
@@ -158,8 +158,10 @@ func (x *BeanstalkdTubeSet) Start() error {
 	return err
 }
 
-// reserve 预订Job
-func (x *BeanstalkdTubeSet) reserve(router endpointApi.Router) error {
+// pop job： Remove a job from a queue and pass it to next node with job stat as meta.
+func (x *BeanstalkdTubeSet) pop(router endpointApi.Router) error {
+	x.Lock()
+	defer x.Unlock()
 	ctx, cancel := context.WithTimeout(context.TODO(), 2*time.Second)
 	defer func() {
 		cancel()
@@ -177,6 +179,12 @@ func (x *BeanstalkdTubeSet) reserve(router endpointApi.Router) error {
 	stat, err := x.tubeset.Conn.StatsJob(id)
 	if err != nil {
 		x.Printf("get job stats error %v ", err)
+		return err
+	}
+	x.Use(stat["tube"])
+	err = x.tubeset.Conn.Delete(id)
+	if err != nil {
+		x.Printf("delete job error %v ", err)
 		return err
 	}
 	exchange := &endpoint.Exchange{
@@ -221,6 +229,11 @@ func (x *BeanstalkdTubeSet) initClient() (*beanstalk.TubeSet, error) {
 		x.tubeset = beanstalk.NewTubeSet(conn, x.Config.Tubesets...)
 		return x.tubeset, err
 	}
+}
+
+// use tube
+func (x *BeanstalkdTubeSet) Use(tube string) {
+	x.tubeset.Conn.Tube.Name = tube
 }
 
 type RequestMessage struct {

@@ -145,10 +145,11 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	case Put:
 		id, err = x.tube.Put([]byte(params.Body), params.Pri, params.Delay, params.Ttr)
 		if err != nil {
+			x.Printf("put job with err: %s", err)
 			break
 		}
 		data["id"] = id
-		x.Printf("put job id:%d to %s  with err: %s", id, x.tube.Conn.Tube.Name, err)
+		x.Printf("put job id:%d to %s ", id, x.tube.Conn.Tube.Name)
 	case PeekReady:
 		id, body, err = x.tube.PeekReady()
 		if err != nil {
@@ -201,6 +202,15 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 			return
 		}
 		msg.Data = str.ToString(bytes)
+		if id > 0 {
+			stat, err = x.tube.Conn.StatsJob(id)
+			if err != nil {
+				x.Printf("get job stats error %v ", err)
+				ctx.TellFailure(msg, err)
+				return
+			}
+			msg.Metadata = stat
+		}
 		ctx.TellSuccess(msg)
 	}
 }
