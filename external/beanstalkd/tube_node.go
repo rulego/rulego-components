@@ -65,7 +65,7 @@ type TubeConfiguration struct {
 	// 延迟时间：delay 允许使用 ${} 占位符变量
 	Delay string
 	// 最大执行秒数:ttr 允许使用 ${} 占位符变量
-	TTR string
+	Ttr string
 	// Kick命令参数bound 允许使用 ${} 占位符变量
 	KickBound string
 	// Pause命令参数time 允许使用 ${} 占位符变量
@@ -76,9 +76,10 @@ type TubeConfiguration struct {
 // 成功：转向Success链，发送消息执行结果存放在msg.Data
 // 失败：转向Failure链
 type TubeNode struct {
-	base.SharedNode[*beanstalk.Tube]
+	base.SharedNode[*beanstalk.Conn]
 	//节点配置
 	Config            TubeConfiguration
+	conn              *beanstalk.Conn
 	tube              *beanstalk.Tube
 	tubeTemplate      str.Template
 	putBodyTemplate   str.Template
@@ -108,7 +109,7 @@ func (x *TubeNode) Init(ruleConfig types.Config, configuration types.Configurati
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
 		//初始化客户端
-		err = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, true, func() (*beanstalk.Tube, error) {
+		err = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, false, func() (*beanstalk.Conn, error) {
 			return x.initClient()
 		})
 	}
@@ -117,7 +118,7 @@ func (x *TubeNode) Init(ruleConfig types.Config, configuration types.Configurati
 	x.putBodyTemplate = str.NewTemplate(x.Config.Body)
 	x.putPriTemplate = str.NewTemplate(x.Config.Pri)
 	x.putDelayTemplate = str.NewTemplate(x.Config.Delay)
-	x.putTTRTemplate = str.NewTemplate(x.Config.TTR)
+	x.putTTRTemplate = str.NewTemplate(x.Config.Ttr)
 	x.kickBoundTemplate = str.NewTemplate(x.Config.KickBound)
 	x.pauseTimeTemplate = str.NewTemplate(x.Config.PauseTime)
 	return err
@@ -125,6 +126,8 @@ func (x *TubeNode) Init(ruleConfig types.Config, configuration types.Configurati
 
 // OnMsg 处理消息
 func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
+	x.Locker.Lock()
+	defer x.Locker.Unlock()
 	var (
 		err    error
 		id     uint64
@@ -135,6 +138,7 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		params *TubeMsgParams
 	)
 	params, err = x.getParams(ctx, msg)
+
 	// use tube
 	x.Use(params.Tube)
 	if err != nil {
@@ -277,8 +281,8 @@ func (x *TubeNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*TubeMsg
 	if !x.putTTRTemplate.IsNotVar() {
 		tmp := x.putTTRTemplate.Execute(evn)
 		ttr, err = time.ParseDuration(tmp)
-	} else if len(x.Config.TTR) > 0 {
-		ttr, err = time.ParseDuration(x.Config.TTR)
+	} else if len(x.Config.Ttr) > 0 {
+		ttr, err = time.ParseDuration(x.Config.Ttr)
 	}
 	if err != nil {
 		return nil, err
@@ -328,24 +332,25 @@ func (x *TubeNode) Printf(format string, v ...interface{}) {
 }
 
 // 初始化连接
-func (x *TubeNode) initClient() (*beanstalk.Tube, error) {
-	if x.tube != nil {
-		return x.tube, nil
+func (x *TubeNode) initClient() (*beanstalk.Conn, error) {
+	if x.conn != nil {
+		return x.conn, nil
 	} else {
 		x.Locker.Lock()
 		defer x.Locker.Unlock()
-		if x.tube != nil {
-			return x.tube, nil
+		if x.conn != nil {
+			return x.conn, nil
 		}
 		var err error
-		conn, err := beanstalk.Dial("tcp", x.Config.Server)
-		x.tube = beanstalk.NewTube(conn, DefaultTube)
-		return x.tube, err
+		x.conn, err = beanstalk.Dial("tcp", x.Config.Server)
+		x.tube = beanstalk.NewTube(x.conn, DefaultTube)
+		return x.conn, err
 	}
 }
 
 // use tube
 func (x *TubeNode) Use(tube string) {
-	x.tube.Name = tube
-	x.tube.Conn.Tube.Name = tube
+	x.conn, _ = x.SharedNode.Get()
+	x.tube = beanstalk.NewTube(x.conn, tube)
+	x.conn.Tube.Name = tube
 }

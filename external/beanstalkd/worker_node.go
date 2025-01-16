@@ -92,7 +92,7 @@ func (x *WorkerNode) Init(ruleConfig types.Config, configuration types.Configura
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
 		//初始化客户端
-		err = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, true, func() (*beanstalk.Conn, error) {
+		err = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, false, func() (*beanstalk.Conn, error) {
 			return x.initClient()
 		})
 	}
@@ -117,6 +117,12 @@ func (x *WorkerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		stat   map[string]string
 	)
 	params, err = x.getParams(ctx, msg)
+	x.conn, err = x.SharedNode.Get()
+	if err != nil {
+		ctx.TellFailure(msg, err)
+		return
+	}
+	x.Printf("conn :%v ", x.conn)
 	// use tube
 	x.Use(params.Tube)
 	switch x.Config.Cmd {
@@ -199,12 +205,10 @@ func (x *WorkerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		msg.Data = str.ToString(bytes)
 		if params.Id > 0 {
 			stat, err = x.conn.StatsJob(params.Id)
-			if err != nil {
-				x.Printf("get job stats error %v ", err)
-				ctx.TellFailure(msg, err)
-				return
+			if err == nil {
+				msg.Metadata = stat
 			}
-			msg.Metadata = stat
+
 		}
 		ctx.TellSuccess(msg)
 	}
@@ -293,9 +297,8 @@ func (x *WorkerNode) initClient() (*beanstalk.Conn, error) {
 			return x.conn, nil
 		}
 		var err error
-		conn, err := beanstalk.Dial("tcp", x.Config.Server)
-		conn.Tube = *beanstalk.NewTube(conn, DefaultTube)
-		x.conn = conn
+		x.conn, err = beanstalk.Dial("tcp", x.Config.Server)
+		x.conn.Tube = *beanstalk.NewTube(x.conn, DefaultTube)
 		return x.conn, err
 	}
 }

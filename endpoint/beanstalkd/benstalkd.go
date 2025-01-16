@@ -9,8 +9,6 @@ import (
 
 	"errors"
 
-	"github.com/robfig/cron/v3"
-
 	"github.com/beanstalkd/go-beanstalk"
 	"github.com/rulego/rulego/api/types"
 	endpointApi "github.com/rulego/rulego/api/types/endpoint"
@@ -42,27 +40,22 @@ type TubesetConfig struct {
 	Server string
 	// tube 列表
 	Tubesets []string
-	//Interval to read, supports cron expressions
-	//example: @every 1m (every 1 minute) 0 0 0 * * * (triggers at midnight)
-	Interval string
 	// 超时参数
 	Timeout string
 }
 
 type BeanstalkdTubeSet struct {
 	impl.BaseEndpoint
-	base.SharedNode[*beanstalk.TubeSet]
+	base.SharedNode[*beanstalk.Conn]
 	RuleConfig types.Config
 	// beanstalk Tubeset 相关配置
 	Config TubesetConfig
 	// 路由实例
 	Router endpointApi.Router
+	// beanstalk 连接实例
+	conn *beanstalk.Conn
 	// beanstalk Tubesett实例
 	tubeset *beanstalk.TubeSet
-	// 定时任务实例
-	cronTask *cron.Cron
-	// 定时任务id
-	taskId cron.EntryID
 }
 
 // Type 组件类型
@@ -76,7 +69,6 @@ func (x *BeanstalkdTubeSet) New() types.Node {
 		Config: TubesetConfig{
 			Server:   "127.0.0.1:11300",
 			Tubesets: []string{DefaultTube},
-			Interval: "@every 5s",
 			Timeout:  "5m",
 		},
 	}
@@ -86,7 +78,7 @@ func (x *BeanstalkdTubeSet) New() types.Node {
 func (x *BeanstalkdTubeSet) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	x.RuleConfig = ruleConfig
-	_ = x.SharedNode.Init(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*beanstalk.TubeSet, error) {
+	_ = x.SharedNode.Init(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*beanstalk.Conn, error) {
 		return x.initClient()
 	})
 	return err
@@ -98,14 +90,8 @@ func (x *BeanstalkdTubeSet) Destroy() {
 }
 
 func (x *BeanstalkdTubeSet) Close() error {
-	if x.taskId != 0 && x.cronTask != nil {
-		x.cronTask.Remove(x.taskId)
-	}
-	if x.cronTask != nil {
-		x.cronTask.Stop()
-	}
 	if x.tubeset != nil && x.tubeset.Conn != nil {
-		_ = x.tubeset.Conn.Close()
+		_ = x.conn.Close()
 		x.tubeset = nil
 	}
 	return nil
@@ -140,49 +126,48 @@ func (x *BeanstalkdTubeSet) RemoveRouter(routerId string, params ...interface{})
 func (x *BeanstalkdTubeSet) Start() error {
 	var err error
 	if !x.SharedNode.IsInit() {
-		err = x.SharedNode.Init(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*beanstalk.TubeSet, error) {
+		err = x.SharedNode.Init(x.RuleConfig, x.Type(), x.Config.Server, false, func() (*beanstalk.Conn, error) {
 			return x.initClient()
 		})
-	}
-	if x.cronTask != nil {
-		x.cronTask.Stop()
-	}
-	x.cronTask = cron.New(cron.WithChain(cron.Recover(cron.DefaultLogger)), cron.WithLogger(cron.DefaultLogger))
-	eid, err := x.cronTask.AddFunc(x.Config.Interval, func() {
-		if x.Router != nil {
-			_ = x.pop(x.Router)
+		if err != nil {
+			return err
 		}
-	})
-	x.taskId = eid
-	x.cronTask.Start()
-	return err
+	}
+	go func(router endpointApi.Router) {
+		for {
+			_ = x.reserve(x.Router)
+			x.Printf("reserve job err: %s", err)
+		}
+	}(x.Router)
+	return nil
 }
 
 // pop job： Remove a job from a queue and pass it to next node with job stat as meta.
-func (x *BeanstalkdTubeSet) pop(router endpointApi.Router) error {
+func (x *BeanstalkdTubeSet) reserve(router endpointApi.Router) error {
 	x.Lock()
 	defer x.Unlock()
 	ctx, cancel := context.WithTimeout(context.TODO(), 2*time.Second)
 	defer func() {
 		cancel()
 	}()
+
 	timeout, err := time.ParseDuration(x.Config.Timeout)
 	if err != nil {
 		x.Printf("parse duration error %v ", err)
 		return err
 	}
+	x.conn, err = x.SharedNode.Get()
+	x.tubeset = beanstalk.NewTubeSet(x.conn, x.Config.Tubesets...)
 	id, data, err := x.tubeset.Reserve(timeout)
 	if err != nil {
 		x.Printf("reserve job error %v ", err)
 		return err
 	}
-	stat, err := x.tubeset.Conn.StatsJob(id)
+	stat, err := x.conn.StatsJob(id)
 	if err != nil {
 		x.Printf("get job stats error %v ", err)
 		return err
 	}
-	x.Use(stat["tube"])
-	err = x.tubeset.Conn.Delete(id)
 	if err != nil {
 		x.Printf("delete job error %v ", err)
 		return err
@@ -208,9 +193,9 @@ func (x *BeanstalkdTubeSet) Printf(format string, v ...interface{}) {
 }
 
 // initClient 初始化客户端
-func (x *BeanstalkdTubeSet) initClient() (*beanstalk.TubeSet, error) {
-	if x.tubeset != nil {
-		return x.tubeset, nil
+func (x *BeanstalkdTubeSet) initClient() (*beanstalk.Conn, error) {
+	if x.conn != nil {
+		return x.conn, nil
 	} else {
 		_, cancel := context.WithTimeout(context.TODO(), 4*time.Second)
 		x.Lock()
@@ -218,22 +203,22 @@ func (x *BeanstalkdTubeSet) initClient() (*beanstalk.TubeSet, error) {
 			cancel()
 			x.Unlock()
 		}()
-		if x.tubeset != nil {
-			return x.tubeset, nil
+		if x.conn != nil {
+			return x.conn, nil
 		}
-
-		conn, err := beanstalk.Dial("tcp", x.Config.Server)
+		var err error
+		x.conn, err = beanstalk.Dial("tcp", x.Config.Server)
 		if err != nil {
 			return nil, err
 		}
-		x.tubeset = beanstalk.NewTubeSet(conn, x.Config.Tubesets...)
-		return x.tubeset, err
+		x.tubeset = beanstalk.NewTubeSet(x.conn, x.Config.Tubesets...)
+		return x.conn, err
 	}
 }
 
 // use tube
 func (x *BeanstalkdTubeSet) Use(tube string) {
-	x.tubeset.Conn.Tube.Name = tube
+	x.conn.Tube.Name = tube
 }
 
 type RequestMessage struct {
