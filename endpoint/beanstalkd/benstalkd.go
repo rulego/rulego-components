@@ -157,6 +157,9 @@ func (x *BeanstalkdTubeSet) reserve(router endpointApi.Router) error {
 		return err
 	}
 	x.conn, err = x.SharedNode.Get()
+	if err != nil {
+		return err
+	}
 	x.tubeset = beanstalk.NewTubeSet(x.conn, x.Config.Tubesets...)
 	id, data, err := x.tubeset.Reserve(timeout)
 	if err != nil {
@@ -214,11 +217,6 @@ func (x *BeanstalkdTubeSet) initClient() (*beanstalk.Conn, error) {
 		x.tubeset = beanstalk.NewTubeSet(x.conn, x.Config.Tubesets...)
 		return x.conn, err
 	}
-}
-
-// use tube
-func (x *BeanstalkdTubeSet) Use(tube string) {
-	x.conn.Tube.Name = tube
 }
 
 type RequestMessage struct {

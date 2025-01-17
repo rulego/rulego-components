@@ -117,14 +117,14 @@ func (x *WorkerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		stat   map[string]string
 	)
 	params, err = x.getParams(ctx, msg)
+	// use tube
 	x.conn, err = x.SharedNode.Get()
 	if err != nil {
 		ctx.TellFailure(msg, err)
 		return
 	}
 	x.Printf("conn :%v ", x.conn)
-	// use tube
-	x.Use(params.Tube)
+	x.conn.Tube.Name = params.Tube
 	switch x.Config.Cmd {
 	case Delete:
 		if params.Id == 0 {
@@ -301,9 +301,4 @@ func (x *WorkerNode) initClient() (*beanstalk.Conn, error) {
 		x.conn.Tube = *beanstalk.NewTube(x.conn, DefaultTube)
 		return x.conn, err
 	}
-}
-
-// use tube
-func (x *WorkerNode) Use(tube string) {
-	x.conn.Tube.Name = tube
 }

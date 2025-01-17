@@ -140,7 +140,14 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	params, err = x.getParams(ctx, msg)
 
 	// use tube
-	x.Use(params.Tube)
+	x.conn, err = x.SharedNode.Get()
+	if err != nil {
+		ctx.TellFailure(msg, err)
+		return
+	}
+	x.Printf("conn :%v ", x.conn)
+	x.tube = beanstalk.NewTube(x.conn, params.Tube)
+	x.conn.Tube.Name = params.Tube
 	if err != nil {
 		ctx.TellFailure(msg, err)
 		return
@@ -346,11 +353,4 @@ func (x *TubeNode) initClient() (*beanstalk.Conn, error) {
 		x.tube = beanstalk.NewTube(x.conn, DefaultTube)
 		return x.conn, err
 	}
-}
-
-// use tube
-func (x *TubeNode) Use(tube string) {
-	x.conn, _ = x.SharedNode.Get()
-	x.tube = beanstalk.NewTube(x.conn, tube)
-	x.conn.Tube.Name = tube
 }
