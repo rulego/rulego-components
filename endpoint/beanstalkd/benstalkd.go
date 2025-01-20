@@ -41,7 +41,7 @@ type TubesetConfig struct {
 	// tube 列表
 	Tubesets []string
 	// 超时参数
-	Timeout string
+	Timeout int64
 }
 
 type BeanstalkdTubeSet struct {
@@ -69,7 +69,7 @@ func (x *BeanstalkdTubeSet) New() types.Node {
 		Config: TubesetConfig{
 			Server:   "127.0.0.1:11300",
 			Tubesets: []string{DefaultTube},
-			Timeout:  "5m",
+			Timeout:  300,
 		},
 	}
 }
@@ -151,11 +151,8 @@ func (x *BeanstalkdTubeSet) reserve(router endpointApi.Router) error {
 		cancel()
 	}()
 
-	timeout, err := time.ParseDuration(x.Config.Timeout)
-	if err != nil {
-		x.Printf("parse duration error %v ", err)
-		return err
-	}
+	var err error
+	timeout := time.Duration(x.Config.Timeout) * time.Second
 	x.conn, err = x.SharedNode.Get()
 	if err != nil {
 		return err
