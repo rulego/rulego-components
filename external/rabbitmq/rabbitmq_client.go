@@ -86,7 +86,7 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 	if err != nil {
 		return err
 	}
-	_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, true, func() (*amqp.Connection, error) {
+	_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*amqp.Connection, error) {
 		return x.initClient()
 	})
 	x.keyTemplate = str.NewTemplate(x.Config.Key)

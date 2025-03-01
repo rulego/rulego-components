@@ -204,7 +204,7 @@ func (x *OtelNode) Init(ruleConfig types.Config, configuration types.Configurati
 		x.Config.Protocol = "HTTP"
 	}
 	// 初始化共享MeterProvider
-	err = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, true, func() (*Client, error) {
+	err = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*Client, error) {
 		return x.initMeterProvider()
 	})
 

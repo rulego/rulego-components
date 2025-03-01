@@ -67,7 +67,7 @@ func (x *ClientNode) New() types.Node {
 func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
-		_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, true, func() (*nats.Conn, error) {
+		_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*nats.Conn, error) {
 			return x.initClient()
 		})
 		x.topicTemplate = str.NewTemplate(x.Config.Topic)

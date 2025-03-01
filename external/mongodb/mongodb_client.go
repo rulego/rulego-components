@@ -139,7 +139,7 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 		}
 	}
 	// 初始化客户端
-	_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, false, func() (*mongo.Client, error) {
+	_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*mongo.Client, error) {
 		return x.initClient()
 	})
 	return nil

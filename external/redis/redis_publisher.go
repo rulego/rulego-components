@@ -64,7 +64,7 @@ func (x *PublisherNode) Init(ruleConfig types.Config, configuration types.Config
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
 		//初始化客户端
-		_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, false, func() (*redis.Client, error) {
+		_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*redis.Client, error) {
 			return x.initClient()
 		})
 		x.channelTemplate = str.NewTemplate(strings.TrimSpace(x.Config.Channel))

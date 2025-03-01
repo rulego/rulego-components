@@ -15,7 +15,7 @@ require (
 	github.com/openGemini/opengemini-client-go v0.5.1
 	github.com/rabbitmq/amqp091-go v1.10.1-0.20240821123418-dc67c21576c2
 	github.com/redis/go-redis/v9 v9.5.2
-	github.com/rulego/rulego v0.27.1-0.20250104080653-1dec14655d35
+	github.com/rulego/rulego v0.28.1-0.20250303030309-8a606a85b652
 	github.com/vadv/gopher-lua-libs v0.5.0
 	github.com/yuin/gopher-lua v1.1.1
 	go.mongodb.org/mongo-driver v1.16.1

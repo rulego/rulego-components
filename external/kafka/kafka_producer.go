@@ -87,7 +87,7 @@ func (x *ProducerNode) Init(ruleConfig types.Config, configuration types.Configu
 		if len(x.brokers) == 0 {
 			return errors.New("brokers is empty")
 		}
-		_ = x.SharedNode.Init(ruleConfig, x.Type(), x.brokers[0], true, func() (sarama.SyncProducer, error) {
+		_ = x.SharedNode.Init(ruleConfig, x.Type(), x.brokers[0], ruleConfig.NodeClientInitNow, func() (sarama.SyncProducer, error) {
 			return x.initClient()
 		})
 

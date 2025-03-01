@@ -85,7 +85,7 @@ func (x *WriteNode) Init(ruleConfig types.Config, configuration types.Configurat
 		x.opengeminiConfig = opengeminiConfig
 	}
 	x.databaseTemplate = str.NewTemplate(x.Config.Database)
-	_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, true, func() (opengemini.Client, error) {
+	_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (opengemini.Client, error) {
 		return x.initClient()
 	})
 	return nil

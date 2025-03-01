@@ -93,7 +93,7 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
 		//初始化客户端
-		_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, true, func() (*redis.Client, error) {
+		_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*redis.Client, error) {
 			return x.initClient()
 		})
 

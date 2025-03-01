@@ -115,7 +115,7 @@ func (x *WukongimSender) Init(ruleConfig types.Config, configuration types.Confi
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
 		//初始化客户端
-		err = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, true, func() (*wksdk.Client, error) {
+		err = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*wksdk.Client, error) {
 			return x.initClient()
 		})
 	}

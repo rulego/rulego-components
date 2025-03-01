@@ -92,7 +92,7 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 	if err != nil {
 		return err
 	}
-	_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, true, func() (*Client, error) {
+	_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*Client, error) {
 		return x.initClient()
 	})
 	x.serviceTemplate = str.NewTemplate(x.Config.Service)
