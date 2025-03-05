@@ -4,7 +4,7 @@ go 1.22.7
 
 require (
 	github.com/IBM/sarama v1.43.2
-	github.com/WuKongIM/WuKongIMGoProto v1.0.21
+	github.com/WuKongIM/WuKongIMGoProto v1.0.8
 	github.com/WuKongIM/WuKongIMGoSDK v1.0.0
 	github.com/beanstalkd/go-beanstalk v0.2.0
 	github.com/expr-lang/expr v1.16.9
