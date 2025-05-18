@@ -17,6 +17,8 @@
 package luaEngine
 
 import (
+	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 
@@ -140,11 +142,33 @@ func (pl *LStatePool) New() *lua.LState {
 
 	//set global udf
 	for k, v := range pl.config.Udf {
+		funcName := strings.Replace(k, types.Lua+types.ScriptFuncSeparator, "", 1)
 		if globalScript, scriptOk := v.(types.Script); scriptOk {
-			if globalScript.Type == types.Lua {
-				funcName := strings.Replace(k, types.Lua+types.ScriptFuncSeparator, "", 1)
-				L.SetGlobal(funcName, L.NewFunction(globalScript.Content.(func(*lua.LState) int)))
+			if globalScript.Type == types.Lua || globalScript.Type == types.AllScript {
+				switch content := globalScript.Content.(type) {
+				case string:
+					script := content
+					trimmedContent := strings.TrimSpace(script)
+					if strings.HasPrefix(trimmedContent, "return ") {
+						script = strings.TrimSpace(strings.TrimPrefix(trimmedContent, "return "))
+					}
+					// Assign the script (which should be an expression evaluating to a function/table) to the funcName
+					assignmentScript := fmt.Sprintf("%s = (%s)", funcName, script)
+					if err := L.DoString(assignmentScript); err != nil {
+						// Log or handle error, for now, we skip this UDF
+						// Example: log.Printf("Error loading Lua UDF (string content) %s: %v. Script: %s", funcName, err, assignmentScript)
+						continue
+					}
+				case func(*lua.LState) int:
+					L.SetGlobal(funcName, L.NewFunction(content))
+				default:
+					// Attempt to register other Go functions or structs using reflection
+					registerGoTypeAsLuaUDF(L, funcName, content)
+				}
 			}
+		} else {
+			// Direct registration of Go functions or structs (not wrapped in types.Script)
+			registerGoTypeAsLuaUDF(L, funcName, v)
 		}
 	}
 	if pl.script != "" {
@@ -310,4 +334,166 @@ func RegisterContextMethods(L *lua.LState, config types.Config, chainId string) 
 }
 func loadLuaLibs(state *lua.LState) {
 	libs.Preload(state)
+}
+
+// registerGoTypeAsLuaUDF uses reflection to register Go functions or struct methods as Lua UDFs.
+func registerGoTypeAsLuaUDF(L *lua.LState, udfName string, udfContent interface{}) {
+	val := reflect.ValueOf(udfContent)
+	valType := val.Type()
+
+	if valType.Kind() == reflect.Func {
+		// Register a Go function
+		L.SetGlobal(udfName, L.NewFunction(func(ls *lua.LState) int {
+			numArgs := valType.NumIn()
+			// Check if the first argument is a receiver (for methods passed as functions)
+			// This basic example assumes non-method functions or methods already bound to an instance.
+			// For true method support on structs, we handle it in the struct registration part.
+
+			args := make([]reflect.Value, numArgs)
+			for i := 0; i < numArgs; i++ {
+				argType := valType.In(i)
+				// Lua arguments are 1-indexed
+				luaArg := ls.CheckAny(i + 1)
+				goArg := LuaToGo(luaArg) // LuaToGo needs to handle various types
+				// Ensure goArg is assignable to argType, might need more sophisticated conversion
+				if goArg == nil && argType.Kind() != reflect.Interface && argType.Kind() != reflect.Ptr && argType.Kind() != reflect.Slice && argType.Kind() != reflect.Map && argType.Kind() != reflect.Chan && argType.Kind() != reflect.Func {
+					ls.ArgError(i+1, "nil value not assignable to "+argType.String())
+					return 0
+				}
+				convertedArg, err := convertToType(goArg, argType)
+				if err != nil {
+					ls.ArgError(i+1, "cannot convert argument '"+luaArg.String()+"' to type "+argType.String()+": "+err.Error())
+					return 0
+				}
+				args[i] = convertedArg
+			} // closes: for i := 0; i < numArgs; i++
+
+			results := val.Call(args)
+
+			for _, result := range results {
+				ls.Push(GoToLua(ls, result.Interface()))
+			}
+			return len(results)
+		})) // closes: L.SetGlobal(udfName, L.NewFunction(func(ls *lua.LState) int {
+	} else if valType.Kind() == reflect.Ptr && valType.Elem().Kind() == reflect.Struct {
+		// Register a Go struct's methods
+		structTable := L.NewTable()
+		structInstance := val
+		for i := 0; i < valType.NumMethod(); i++ {
+			methodType := valType.Method(i)
+			if methodType.PkgPath != "" {
+				continue
+			}
+			methodValue := structInstance.MethodByName(methodType.Name)
+			// Capture methodType for the closure, as methodType changes in the loop
+			currentMethodName := methodType.Name
+
+			L.SetField(structTable, currentMethodName, L.NewFunction(func(ls *lua.LState) int {
+				// Diagnostic print
+				fmt.Printf("DEBUG: Lua wrapper entered for %s.%s\n", udfName, currentMethodName)
+
+				goMethodExpectedArgs := methodValue.Type().NumIn()
+				luaProvidedTotalArgs := ls.GetTop()
+				luaArgStartIndexForGoMethod := 1 // Default for '.' call (Lua arg 1 maps to Go arg 0)
+
+				// Check for ':' call: first Lua argument is the table itself
+				if luaProvidedTotalArgs > 0 && ls.Get(1).Type() == lua.LTTable && ls.ToTable(1) == structTable {
+					luaArgStartIndexForGoMethod = 2 // For ':' call, Lua arg 2 maps to Go arg 0
+					// Number of Lua args passed for the Go method's parameters
+					luaArgsForGoMethodCount := luaProvidedTotalArgs - 1
+					if luaArgsForGoMethodCount != goMethodExpectedArgs {
+						ls.RaiseError("method %s:%s expects %d arguments, got %d", udfName, currentMethodName, goMethodExpectedArgs, luaArgsForGoMethodCount)
+						return 0
+					}
+				} else {
+					// Assumed '.' call
+					if luaProvidedTotalArgs != goMethodExpectedArgs {
+						ls.RaiseError("method %s.%s expects %d arguments, got %d", udfName, currentMethodName, goMethodExpectedArgs, luaProvidedTotalArgs)
+						return 0
+					}
+				}
+
+				args := make([]reflect.Value, goMethodExpectedArgs)
+				for i := 0; i < goMethodExpectedArgs; i++ { // This i is for Go method args
+					luaArgActualIndex := i + luaArgStartIndexForGoMethod
+					if luaArgActualIndex > luaProvidedTotalArgs { // Safety check
+						ls.RaiseError("internal error: not enough arguments for %s.%s (expected %d, trying to access Lua arg %d)", udfName, currentMethodName, goMethodExpectedArgs, luaArgActualIndex)
+						return 0
+					}
+					luaArg := ls.CheckAny(luaArgActualIndex)
+					goArg := LuaToGo(luaArg)
+					argGoType := methodValue.Type().In(i)
+
+					if goArg == nil && !(argGoType.Kind() == reflect.Interface || argGoType.Kind() == reflect.Ptr || argGoType.Kind() == reflect.Slice || argGoType.Kind() == reflect.Map || argGoType.Kind() == reflect.Chan || argGoType.Kind() == reflect.Func) {
+						ls.ArgError(luaArgActualIndex, fmt.Sprintf("nil value not assignable to %s for argument %d of %s.%s", argGoType.String(), i+1, udfName, currentMethodName))
+						return 0
+					}
+					convertedArg, err := convertToType(goArg, argGoType)
+					if err != nil {
+						ls.ArgError(luaArgActualIndex, fmt.Sprintf("cannot convert argument '%s' (type %s) to type %s for argument %d of %s.%s: %s", luaArg.String(), luaArg.Type().String(), argGoType.String(), i+1, udfName, currentMethodName, err.Error()))
+						return 0
+					}
+					args[i] = convertedArg
+				}
+
+				results := methodValue.Call(args)
+				for _, result := range results {
+					ls.Push(GoToLua(ls, result.Interface()))
+				}
+				return len(results)
+			}))
+		}
+		L.SetGlobal(udfName, structTable)
+	}
+	// Else: unsupported type for UDF, maybe log a warning or L.RaiseError
+} // closes: func registerGoTypeAsLuaUDF
+
+// convertToType attempts to convert a value to the target reflect.Type.
+func convertToType(value interface{}, targetType reflect.Type) (reflect.Value, error) {
+	if value == nil {
+		switch targetType.Kind() {
+		case reflect.Ptr, reflect.Interface, reflect.Slice, reflect.Map, reflect.Chan, reflect.Func:
+			return reflect.Zero(targetType), nil
+		default:
+			return reflect.Value{}, fmt.Errorf("cannot convert nil to non-pointer/interface/slice/map/chan/func type %s", targetType)
+		}
+	}
+
+	val := reflect.ValueOf(value)
+
+	if val.Type().AssignableTo(targetType) {
+		return val, nil
+	}
+
+	if val.Type().ConvertibleTo(targetType) {
+		return val.Convert(targetType), nil
+	}
+
+	if val.Type().Kind() == reflect.Float64 {
+		f64 := val.Float()
+		switch targetType.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			return reflect.ValueOf(int64(f64)).Convert(targetType), nil
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			if f64 < 0 {
+				return reflect.Value{}, fmt.Errorf("cannot convert negative float %f to unsigned integer type %s", f64, targetType)
+			}
+			return reflect.ValueOf(uint64(f64)).Convert(targetType), nil
+		case reflect.Float32:
+			return reflect.ValueOf(float32(f64)).Convert(targetType), nil
+		}
+	}
+
+	if targetType.Kind() == reflect.Interface {
+		if val.Type().Implements(targetType) {
+			return val.Convert(targetType), nil
+		}
+		if val.Kind() == reflect.Ptr && val.Elem().IsValid() && val.Elem().Type().Implements(targetType) {
+			if val.Elem().CanInterface() {
+				return val.Elem().Convert(targetType), nil
+			}
+		}
+	}
+
+	return reflect.Value{}, fmt.Errorf("cannot convert %s (type %T) to %s", val.String(), value, targetType)
 }
