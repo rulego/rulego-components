@@ -7,7 +7,7 @@ require (
 	github.com/WuKongIM/WuKongIMGoProto v1.0.8
 	github.com/WuKongIM/WuKongIMGoSDK v1.0.0
 	github.com/beanstalkd/go-beanstalk v0.2.0
-	github.com/expr-lang/expr v1.16.9
+	github.com/expr-lang/expr v1.17.2
 	github.com/fullstorydev/grpcurl v1.9.1
 	github.com/golang/protobuf v1.5.4
 	github.com/jhump/protoreflect v1.16.0
@@ -15,7 +15,7 @@ require (
 	github.com/openGemini/opengemini-client-go v0.5.1
 	github.com/rabbitmq/amqp091-go v1.10.1-0.20240821123418-dc67c21576c2
 	github.com/redis/go-redis/v9 v9.5.2
-	github.com/rulego/rulego v0.28.1-0.20250303030309-8a606a85b652
+	github.com/rulego/rulego v0.31.0-alpha.2.0.20250518075805-97fc1cfd716e
 	github.com/vadv/gopher-lua-libs v0.5.0
 	github.com/yuin/gopher-lua v1.1.1
 	go.mongodb.org/mongo-driver v1.16.1

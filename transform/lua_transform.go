@@ -71,14 +71,14 @@ func (x *LuaTransform) Init(ruleConfig types.Config, configuration types.Configu
 				return err
 			}
 			// create a new LStatePool from file
-			x.pool = luaEngine.NewFileLStatePool(ruleConfig, x.Config.Script)
+			x.pool = luaEngine.NewFileLStatePool(ruleConfig, x.Config.Script, configuration)
 		} else {
 			script := fmt.Sprintf("function Transform(msg, metadata, msgType) %s \nend", x.Config.Script)
 			if err = luaEngine.ValidateLua(script); err != nil {
 				return err
 			}
 			// create a new LStatePool from script
-			x.pool = luaEngine.NewStringLStatePool(ruleConfig, script)
+			x.pool = luaEngine.NewStringLStatePool(ruleConfig, script, configuration)
 		}
 
 	}
