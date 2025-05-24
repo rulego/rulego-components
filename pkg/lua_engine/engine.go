@@ -389,9 +389,6 @@ func registerGoTypeAsLuaUDF(L *lua.LState, udfName string, udfContent interface{
 			currentMethodName := methodType.Name
 
 			L.SetField(structTable, currentMethodName, L.NewFunction(func(ls *lua.LState) int {
-				// Diagnostic print
-				fmt.Printf("DEBUG: Lua wrapper entered for %s.%s\n", udfName, currentMethodName)
-
 				goMethodExpectedArgs := methodValue.Type().NumIn()
 				luaProvidedTotalArgs := ls.GetTop()
 				luaArgStartIndexForGoMethod := 1 // Default for '.' call (Lua arg 1 maps to Go arg 0)
