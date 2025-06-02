@@ -257,10 +257,8 @@ github.com/robfig/cron/v3 v3.0.1/go.mod h1:eQICP3HwyT7UooqI/z+Ov+PtYAWygg1TEWWzG
 github.com/rogpeppe/go-internal v1.6.1/go.mod h1:xXDCJY+GAPziupqXw64V24skbSoqbTEfhy4qGm1nDQc=
 github.com/rogpeppe/go-internal v1.13.1 h1:KvO1DLK/DRN07sQ1LQKScxyZJuNnedQ5/wKSR38lUII=
 github.com/rogpeppe/go-internal v1.13.1/go.mod h1:uMEvuHeurkdAXX61udpOXGD/AzZDWNMNyH2VO9fmH0o=
-github.com/rulego/rulego v0.31.0 h1:FFbhrL6anl9BfR0wtor6XHU98yoofOhCMW+wtBHA7Hg=
-github.com/rulego/rulego v0.31.0/go.mod h1:5s8YeHGqy81chIXzYZNnQYt7nnxZTPLDVHGSRGHMIHo=
-github.com/rulego/rulego v0.31.2-0.20250602041604-4449d58c5c83 h1:Cx5H0BK4bbFHfzZDqkJMkrOi+Xc7BoXJTQkaM6pJtPU=
-github.com/rulego/rulego v0.31.2-0.20250602041604-4449d58c5c83/go.mod h1:5s8YeHGqy81chIXzYZNnQYt7nnxZTPLDVHGSRGHMIHo=
+github.com/rulego/rulego v0.31.2-0.20250602155557-dd600e38f329 h1:WJboFTP/UCo9+zZnH+yf675G5qOwsvGA8Lz8lQvxuMQ=
+github.com/rulego/rulego v0.31.2-0.20250602155557-dd600e38f329/go.mod h1:5s8YeHGqy81chIXzYZNnQYt7nnxZTPLDVHGSRGHMIHo=
 github.com/sirupsen/logrus v1.2.0/go.mod h1:LxeOpSwHxABJmUn/MG1IvRgCAasNZTLOkJPxbbu5VWo=
 github.com/sirupsen/logrus v1.4.2/go.mod h1:tLMulIdttU9McNUspp0xgXVQah82FyeX6MwdIuYE2rE=
 github.com/sirupsen/logrus v1.6.0/go.mod h1:7uNnSEd1DgxDLC74fIahvMZmmYsHGZGEOFrfsX/uA88=

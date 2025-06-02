@@ -104,9 +104,9 @@ func (x *WriteNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		if msg.DataType == types.JSON {
 			var point opengemini.Point
 			//首先解析是否是多条
-			if err := json.Unmarshal([]byte(msg.Data), &points); err != nil {
+			if err := json.Unmarshal([]byte(msg.GetData()), &points); err != nil {
 				//如果不是数组，则解析为单条
-				if err := json.Unmarshal([]byte(msg.Data), &point); err != nil {
+				if err := json.Unmarshal([]byte(msg.GetData()), &point); err != nil {
 					ctx.TellFailure(msg, err)
 					return
 				} else {
@@ -115,7 +115,7 @@ func (x *WriteNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 			}
 		} else {
 			//解析 Line Protocol
-			if points, err = parseMultiLineProtocol(msg.Data); err != nil {
+			if points, err = parseMultiLineProtocol(msg.GetData()); err != nil {
 				ctx.TellFailure(msg, err)
 				return
 			}

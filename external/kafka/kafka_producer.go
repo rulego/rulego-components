@@ -116,7 +116,7 @@ func (x *ProducerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		Topic:     topic,
 		Partition: x.Config.Partition,
 		Key:       sarama.StringEncoder(key),
-		Value:     sarama.StringEncoder(msg.Data),
+		Value:     sarama.StringEncoder(msg.GetData()),
 	}
 	partition, offset, err := client.SendMessage(message)
 	if err != nil {

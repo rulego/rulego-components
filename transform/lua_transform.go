@@ -100,7 +100,7 @@ func (x *LuaTransform) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	//var data interface{} = msg.Data
 	var dataMap map[string]interface{}
 	if msg.DataType == types.JSON {
-		_ = json.Unmarshal([]byte(msg.Data), &dataMap)
+		_ = json.Unmarshal([]byte(msg.GetData()), &dataMap)
 	}
 	var err error
 	transform := L.GetGlobal("Transform")
@@ -114,7 +114,7 @@ func (x *LuaTransform) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		err = L.CallByParam(p, luaEngine.MapToLTable(L, dataMap), luaEngine.StringMapToLTable(L, msg.Metadata.Values()), lua.LString(msg.Type))
 	} else {
 		// Call the Transform function, passing in msg, metadata, msgType as arguments.
-		err = L.CallByParam(p, lua.LString(msg.Data), luaEngine.StringMapToLTable(L, msg.Metadata.Values()), lua.LString(msg.Type))
+		err = L.CallByParam(p, lua.LString(msg.GetData()), luaEngine.StringMapToLTable(L, msg.Metadata.Values()), lua.LString(msg.Type))
 	}
 
 	if err != nil {
@@ -139,12 +139,12 @@ func (x *LuaTransform) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 			ctx.TellFailure(msg, err)
 			return
 		} else {
-			msg.Data = string(b)
+			msg.SetData(string(b))
 		}
 	} else if newMsgString, ok := ret1.(lua.LString); ok {
 		// If newMsg is not a lua.LTable type value, it means a normal string
 		//Directly convert newMsg to a string type value and assign it to msg.Data
-		msg.Data = string(newMsgString)
+		msg.SetData(string(newMsgString))
 	}
 
 	// If newMetadata is a lua.LTable type value, it means a metadata table

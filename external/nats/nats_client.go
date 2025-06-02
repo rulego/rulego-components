@@ -85,7 +85,7 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		ctx.TellFailure(msg, err)
 		return
 	}
-	if err := client.Publish(topic, []byte(msg.Data)); err != nil {
+	if err := client.Publish(topic, []byte(msg.GetData())); err != nil {
 		ctx.TellFailure(msg, err)
 	} else {
 		ctx.TellSuccess(msg)

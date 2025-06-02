@@ -251,7 +251,7 @@ func (x *ClientNode) query(ctx types.RuleContext, evn map[string]interface{}, co
 			if err := collection.FindOne(ctx.GetContext(), filter).Decode(&result); err != nil {
 				ctx.TellFailure(msg, err)
 			} else {
-				msg.Data = str.ToString(result)
+				msg.SetData(str.ToString(result))
 				ctx.TellSuccess(msg)
 			}
 		} else {
@@ -266,7 +266,7 @@ func (x *ClientNode) query(ctx types.RuleContext, evn map[string]interface{}, co
 			if err = cursor.All(ctx.GetContext(), &results); err != nil {
 				ctx.TellFailure(msg, err)
 			} else {
-				msg.Data = str.ToString(results)
+				msg.SetData(str.ToString(results))
 				ctx.TellSuccess(msg)
 			}
 		}

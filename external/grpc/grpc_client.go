@@ -131,7 +131,7 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	method := x.methodTemplate.Execute(evn)
 	request := x.requestTemplate.Execute(evn)
 	if request == "" {
-		request = msg.Data
+		request = msg.GetData()
 	}
 	serviceAndMethod := service + SeparatorService + method
 	var responseBuffer bytes.Buffer
@@ -174,7 +174,7 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		ctx.TellFailure(msg, err)
 		return
 	} else {
-		msg.Data = responseBuffer.String()
+		msg.SetData(responseBuffer.String())
 		ctx.TellSuccess(msg)
 	}
 }

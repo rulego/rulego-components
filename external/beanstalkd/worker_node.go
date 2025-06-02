@@ -202,7 +202,7 @@ func (x *WorkerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 			ctx.TellFailure(msg, err)
 			return
 		}
-		msg.Data = str.ToString(bytes)
+		msg.SetData(str.ToString(bytes))
 		if params.Id > 0 {
 			stat, err = x.conn.StatsJob(params.Id)
 			if err == nil {

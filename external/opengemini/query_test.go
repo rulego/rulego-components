@@ -100,7 +100,7 @@ func TestQueryNode(t *testing.T) {
 				Node:    node3,
 				MsgList: msgList,
 				Callback: func(msg types.RuleMsg, relationType string, err error) {
-					assert.True(t, strings.Contains(msg.Data, "measurement not found"))
+					assert.True(t, strings.Contains(msg.GetData(), "measurement not found"))
 					assert.Equal(t, types.Failure, relationType)
 				},
 			},

@@ -145,7 +145,7 @@ func (x *WukongimSender) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		ctx.TellFailure(msg, err)
 		return
 	}
-	packet, err := client.SendMessage([]byte(msg.Data),
+	packet, err := client.SendMessage([]byte(msg.GetData()),
 		wkproto.Channel{
 			ChannelType: uint8(utype),
 			ChannelID:   cid,
@@ -157,7 +157,7 @@ func (x *WukongimSender) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	if err != nil {
 		ctx.TellFailure(msg, err)
 	} else {
-		msg.Data = str.ToString(packet)
+		msg.SetData(str.ToString(packet))
 		ctx.TellSuccess(msg)
 	}
 }

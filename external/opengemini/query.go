@@ -104,7 +104,7 @@ func (x *QueryNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 			ctx.TellFailure(msg, err)
 		} else {
 			msg.DataType = types.JSON
-			msg.Data = str.ToString(res)
+			msg.SetData(str.ToString(res))
 			if err := hasError(res); err != nil {
 				ctx.TellFailure(msg, err)
 			} else {

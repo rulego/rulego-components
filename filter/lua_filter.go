@@ -100,7 +100,7 @@ func (x *LuaFilter) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	//var data interface{} = msg.Data
 	var dataMap map[string]interface{}
 	if msg.DataType == types.JSON {
-		_ = json.Unmarshal([]byte(msg.Data), &dataMap)
+		_ = json.Unmarshal([]byte(msg.GetData()), &dataMap)
 	}
 	var err error
 	filter := L.GetGlobal("Filter")
@@ -114,7 +114,7 @@ func (x *LuaFilter) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		err = L.CallByParam(p, luaEngine.MapToLTable(L, dataMap), luaEngine.StringMapToLTable(L, msg.Metadata.Values()), lua.LString(msg.Type))
 	} else {
 		// Call the Filter function, passing in msg, metadata, msgType as arguments.
-		err = L.CallByParam(p, lua.LString(msg.Data), luaEngine.StringMapToLTable(L, msg.Metadata.Values()), lua.LString(msg.Type))
+		err = L.CallByParam(p, lua.LString(msg.GetData()), luaEngine.StringMapToLTable(L, msg.Metadata.Values()), lua.LString(msg.Type))
 	}
 
 	if err != nil {

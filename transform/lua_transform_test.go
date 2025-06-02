@@ -200,8 +200,8 @@ func TestLuaTransform(t *testing.T) {
 		})
 		assert.Nil(t, err)
 		var i = 0
-		msg1 := types.NewMsg(time.Now().UnixMilli(), "ACTIVITY_EVENT", types.JSON, make(types.Metadata), "{\"name\":\"aa\",\"temperature\":60,\"humidity\":30}")
-		msg2 := types.NewMsg(time.Now().UnixMilli(), "ACTIVITY_EVENT", types.JSON, make(types.Metadata), "{\"name\":\"aa\",\"temperature\":70,\"humidity\":30}")
+		msg1 := types.NewMsg(time.Now().UnixMilli(), "ACTIVITY_EVENT", types.JSON, types.NewMetadata(), "{\"name\":\"aa\",\"temperature\":60,\"humidity\":30}")
+		msg2 := types.NewMsg(time.Now().UnixMilli(), "ACTIVITY_EVENT", types.JSON, types.NewMetadata(), "{\"name\":\"aa\",\"temperature\":70,\"humidity\":30}")
 
 		var wg = sync.WaitGroup{}
 		wg.Add(100)

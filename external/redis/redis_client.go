@@ -179,7 +179,7 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	if err != nil {
 		ctx.TellFailure(msg, err)
 	} else {
-		msg.Data = str.ToString(data)
+		msg.SetData(str.ToString(data))
 		ctx.TellSuccess(msg)
 	}
 }

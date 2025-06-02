@@ -107,7 +107,7 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 			amqp.Publishing{
 				ContentType:     x.getContentType(msg),
 				ContentEncoding: KeyUTF8,
-				Body:            []byte(msg.Data),
+				Body:            []byte(msg.GetData()),
 			})
 	}
 

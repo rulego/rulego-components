@@ -212,7 +212,7 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 			ctx.TellFailure(msg, err)
 			return
 		}
-		msg.Data = str.ToString(bytes)
+		msg.SetData(str.ToString(bytes))
 		if id > 0 {
 			stat, err = x.tube.Conn.StatsJob(id)
 			if err != nil {
@@ -259,7 +259,7 @@ func (x *TubeNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*TubeMsg
 	} else if len(x.Config.Body) > 0 {
 		body = x.Config.Body
 	} else {
-		body = msg.Data
+		body = msg.GetData()
 	}
 	// 获取优先级参数
 	var ti int
