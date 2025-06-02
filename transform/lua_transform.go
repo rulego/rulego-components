@@ -111,10 +111,10 @@ func (x *LuaTransform) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	}
 	if dataMap != nil {
 		// Call the Transform function, passing in msg, metadata, msgType as arguments.
-		err = L.CallByParam(p, luaEngine.MapToLTable(L, dataMap), luaEngine.StringMapToLTable(L, msg.Metadata), lua.LString(msg.Type))
+		err = L.CallByParam(p, luaEngine.MapToLTable(L, dataMap), luaEngine.StringMapToLTable(L, msg.Metadata.Values()), lua.LString(msg.Type))
 	} else {
 		// Call the Transform function, passing in msg, metadata, msgType as arguments.
-		err = L.CallByParam(p, lua.LString(msg.Data), luaEngine.StringMapToLTable(L, msg.Metadata), lua.LString(msg.Type))
+		err = L.CallByParam(p, lua.LString(msg.Data), luaEngine.StringMapToLTable(L, msg.Metadata.Values()), lua.LString(msg.Type))
 	}
 
 	if err != nil {
@@ -150,7 +150,7 @@ func (x *LuaTransform) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	// If newMetadata is a lua.LTable type value, it means a metadata table
 	if newMetadata, ok := ret2.(*lua.LTable); ok {
 		// Convert newMetadata to a map[string]string type value and assign it to msg.Metadata
-		msg.Metadata = luaEngine.LTableToStringMap(newMetadata)
+		msg.Metadata.ReplaceAll(luaEngine.LTableToStringMap(newMetadata))
 	} else {
 		// If newMetadata is not a lua.LTable type value, it means a nil value
 		// Do not modify the value of msg.Metadata

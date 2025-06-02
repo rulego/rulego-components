@@ -206,7 +206,7 @@ func (x *WorkerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		if params.Id > 0 {
 			stat, err = x.conn.StatsJob(params.Id)
 			if err == nil {
-				msg.Metadata = stat
+				msg.Metadata.ReplaceAll(stat)
 			}
 
 		}

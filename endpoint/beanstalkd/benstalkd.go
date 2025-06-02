@@ -251,7 +251,7 @@ func (r *RequestMessage) SetMsg(msg *types.RuleMsg) {
 func (r *RequestMessage) GetMsg() *types.RuleMsg {
 	if r.msg == nil {
 		//默认指定是JSON格式，如果不是该类型，请在process函数中修改
-		ruleMsg := types.NewMsg(0, BEANSTALKD_DATA_MSG_TYPE, types.JSON, r.stats, string(r.Body()))
+		ruleMsg := types.NewMsg(0, BEANSTALKD_DATA_MSG_TYPE, types.JSON, types.BuildMetadata(r.stats), string(r.Body()))
 		r.msg = &ruleMsg
 	}
 	return r.msg
@@ -313,7 +313,7 @@ func (r *ResponseMessage) SetMsg(msg *types.RuleMsg) {
 func (r *ResponseMessage) GetMsg() *types.RuleMsg {
 	if r.msg == nil {
 		//默认指定是JSON格式，如果不是该类型，请在process函数中修改
-		ruleMsg := types.NewMsg(0, BEANSTALKD_DATA_MSG_TYPE, types.JSON, r.stats, string(r.Body()))
+		ruleMsg := types.NewMsg(0, BEANSTALKD_DATA_MSG_TYPE, types.JSON, types.BuildMetadata(r.stats), string(r.Body()))
 		r.msg = &ruleMsg
 	}
 	return r.msg

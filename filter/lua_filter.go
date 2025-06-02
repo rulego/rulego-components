@@ -111,10 +111,10 @@ func (x *LuaFilter) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	}
 	if dataMap != nil {
 		// Call the Filter function, passing in msg, metadata, msgType as arguments.
-		err = L.CallByParam(p, luaEngine.MapToLTable(L, dataMap), luaEngine.StringMapToLTable(L, msg.Metadata), lua.LString(msg.Type))
+		err = L.CallByParam(p, luaEngine.MapToLTable(L, dataMap), luaEngine.StringMapToLTable(L, msg.Metadata.Values()), lua.LString(msg.Type))
 	} else {
 		// Call the Filter function, passing in msg, metadata, msgType as arguments.
-		err = L.CallByParam(p, lua.LString(msg.Data), luaEngine.StringMapToLTable(L, msg.Metadata), lua.LString(msg.Type))
+		err = L.CallByParam(p, lua.LString(msg.Data), luaEngine.StringMapToLTable(L, msg.Metadata.Values()), lua.LString(msg.Type))
 	}
 
 	if err != nil {

@@ -220,7 +220,7 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 				ctx.TellFailure(msg, err)
 				return
 			}
-			msg.Metadata = stat
+			msg.Metadata.ReplaceAll(stat)
 		}
 		ctx.TellSuccess(msg)
 	}
