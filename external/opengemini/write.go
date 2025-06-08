@@ -162,7 +162,7 @@ func (x *WriteNode) initClient() (opengemini.Client, error) {
 }
 
 func (x *WriteNode) createOpengeminiConfig() (*opengemini.Config, error) {
-	var addresses []*opengemini.Address
+	var addresses []opengemini.Address
 	servers := strings.Split(x.Config.Server, ",")
 	for _, server := range servers {
 		addr := strings.Split(server, ":")
@@ -173,7 +173,7 @@ func (x *WriteNode) createOpengeminiConfig() (*opengemini.Config, error) {
 		if port, err := strconv.ParseInt(addr[1], 10, 64); err != nil {
 			return nil, err
 		} else {
-			addresses = append(addresses, &opengemini.Address{
+			addresses = append(addresses, opengemini.Address{
 				Host: host,
 				Port: int(port),
 			})
