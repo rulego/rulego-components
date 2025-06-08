@@ -18,6 +18,7 @@ package kafka
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"github.com/IBM/sarama"
@@ -205,9 +206,33 @@ func (r *ResponseMessage) GetError() error {
 
 type Config struct {
 	// kafka服务器地址列表，多个与逗号隔开
-	Server string
+	Server string `json:"server"`
 	// GroupId 消费者组Id
-	GroupId string
+	GroupId string `json:"groupId"`
+	// SASL认证配置
+	SASL SASLConfig `json:"sasl"`
+	// TLS配置
+	TLS TLSConfig `json:"tls"`
+}
+
+// SASLConfig SASL认证配置
+type SASLConfig struct {
+	// Enable 是否启用SASL认证
+	Enable bool `json:"enable"`
+	// Mechanism 认证机制，支持 PLAIN, SCRAM-SHA-256, SCRAM-SHA-512
+	Mechanism string `json:"mechanism"`
+	// Username 用户名
+	Username string `json:"username"`
+	// Password 密码
+	Password string `json:"password"`
+}
+
+// TLSConfig TLS配置
+type TLSConfig struct {
+	// Enable 是否启用TLS
+	Enable bool `json:"enable"`
+	// InsecureSkipVerify 是否跳过证书验证
+	InsecureSkipVerify bool `json:"insecureSkipVerify"`
 }
 
 // Kafka Kafka 接收端端点
@@ -235,6 +260,9 @@ func (x *Kafka) New() types.Node {
 		Config: Config{
 			Server:  "127.0.0.1:9092",
 			GroupId: "rulego",
+			SASL: SASLConfig{
+				Mechanism: "PLAIN",
+			},
 		},
 	}
 }
@@ -297,7 +325,7 @@ func (x *Kafka) AddRouter(router endpointApi.Router, params ...interface{}) (str
 		return "", errors.New("router can not nil")
 	}
 	//初始化kafka客户端
-	if err := x.initKafkaClient(); err != nil {
+	if err := x.initKafkaProducer(); err != nil {
 		return "", err
 	}
 
@@ -322,14 +350,41 @@ func (x *Kafka) RemoveRouter(routerId string, params ...interface{}) error {
 }
 
 func (x *Kafka) Start() error {
-	return x.initKafkaClient()
+	return x.initKafkaProducer()
 }
 
-// initKafkaClient 初始化kafka客户端
-func (x *Kafka) initKafkaClient() error {
+// initKafkaProducer 初始化kafka生产者，用于响应
+func (x *Kafka) initKafkaProducer() error {
 	if x.producer == nil {
 		config := sarama.NewConfig()
 		config.Producer.Return.Successes = true // 同步模式需要设置这个参数为true
+
+		// 配置SASL认证
+		if x.Config.SASL.Enable {
+			config.Net.SASL.Enable = true
+			config.Net.SASL.User = x.Config.SASL.Username
+			config.Net.SASL.Password = x.Config.SASL.Password
+
+			switch strings.ToUpper(x.Config.SASL.Mechanism) {
+			case "PLAIN":
+				config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
+			case "SCRAM-SHA-256":
+				config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA256
+			case "SCRAM-SHA-512":
+				config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA512
+			default:
+				config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
+			}
+		}
+
+		// 配置TLS
+		if x.Config.TLS.Enable {
+			config.Net.TLS.Enable = true
+			if x.Config.TLS.InsecureSkipVerify {
+				config.Net.TLS.Config = &tls.Config{InsecureSkipVerify: true}
+			}
+		}
+
 		producer, err := sarama.NewSyncProducer(x.brokers, config)
 		if err != nil {
 			return err
@@ -362,6 +417,33 @@ func (x *Kafka) createTopicConsumer(router endpointApi.Router) error {
 		config.Metadata.Retry.Max = 3
 		config.Metadata.Retry.Backoff = 250 * 1000000 // 250ms
 		config.Consumer.Offsets.Initial = sarama.OffsetNewest
+
+		// 配置SASL认证
+		if x.Config.SASL.Enable {
+			config.Net.SASL.Enable = true
+			config.Net.SASL.User = x.Config.SASL.Username
+			config.Net.SASL.Password = x.Config.SASL.Password
+
+			switch strings.ToUpper(x.Config.SASL.Mechanism) {
+			case "PLAIN":
+				config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
+			case "SCRAM-SHA-256":
+				config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA256
+			case "SCRAM-SHA-512":
+				config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA512
+			default:
+				config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
+			}
+		}
+
+		// 配置TLS
+		if x.Config.TLS.Enable {
+			config.Net.TLS.Enable = true
+			if x.Config.TLS.InsecureSkipVerify {
+				config.Net.TLS.Config = &tls.Config{InsecureSkipVerify: true}
+			}
+		}
+
 		consumer, err := sarama.NewConsumerGroup(x.brokers, x.Config.GroupId, config)
 		if err != nil {
 			return err

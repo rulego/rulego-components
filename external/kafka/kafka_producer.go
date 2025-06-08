@@ -17,6 +17,7 @@
 package kafka
 
 import (
+	"crypto/tls"
 	"errors"
 	"strconv"
 	"strings"
@@ -42,13 +43,37 @@ func init() {
 // NodeConfiguration 节点配置
 type NodeConfiguration struct {
 	// kafka服务器地址列表，多个与逗号隔开
-	Server string
+	Server string `json:"server"`
 	// Topic 发布主题，可以使用 ${metadata.key} 读取元数据中的变量或者使用 ${msg.key} 读取消息负荷中的变量进行替换
-	Topic string
+	Topic string `json:"topic"`
 	// Key 分区键，可以使用 ${metadata.key} 读取元数据中的变量或者使用 ${msg.key} 读取消息负荷中的变量进行替换
-	Key string
+	Key string `json:"key"`
 	//Partition 分区编号
-	Partition int32
+	Partition int32 `json:"partition"`
+	// SASL认证配置
+	SASL SASLConfig `json:"sasl"`
+	// TLS配置
+	TLS TLSConfig `json:"tls"`
+}
+
+// SASLConfig SASL认证配置
+type SASLConfig struct {
+	// Enable 是否启用SASL认证
+	Enable bool `json:"enable"`
+	// Mechanism 认证机制，支持 PLAIN, SCRAM-SHA-256, SCRAM-SHA-512
+	Mechanism string `json:"mechanism"`
+	// Username 用户名
+	Username string `json:"username"`
+	// Password 密码
+	Password string `json:"password"`
+}
+
+// TLSConfig TLS配置
+type TLSConfig struct {
+	// Enable 是否启用TLS
+	Enable bool `json:"enable"`
+	// InsecureSkipVerify 是否跳过证书验证
+	InsecureSkipVerify bool `json:"insecureSkipVerify"`
 }
 
 type ProducerNode struct {
@@ -73,6 +98,9 @@ func (x *ProducerNode) New() types.Node {
 		Config: NodeConfiguration{
 			Server:    "127.0.0.1:9092",
 			Partition: 0,
+			SASL: SASLConfig{
+				Mechanism: "PLAIN",
+			},
 		},
 	}
 }
@@ -176,6 +204,33 @@ func (x *ProducerNode) initClient() (sarama.SyncProducer, error) {
 		config.Metadata.Retry.Backoff = 250 * 1000000 // 250ms
 		config.Producer.Retry.Max = 3
 		config.Producer.Retry.Backoff = 100 * 1000000 // 100ms
+
+		// 配置SASL认证
+		if x.Config.SASL.Enable {
+			config.Net.SASL.Enable = true
+			config.Net.SASL.User = x.Config.SASL.Username
+			config.Net.SASL.Password = x.Config.SASL.Password
+
+			switch strings.ToUpper(x.Config.SASL.Mechanism) {
+			case "PLAIN":
+				config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
+			case "SCRAM-SHA-256":
+				config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA256
+			case "SCRAM-SHA-512":
+				config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA512
+			default:
+				config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
+			}
+		}
+
+		// 配置TLS
+		if x.Config.TLS.Enable {
+			config.Net.TLS.Enable = true
+			if x.Config.TLS.InsecureSkipVerify {
+				config.Net.TLS.Config = &tls.Config{InsecureSkipVerify: true}
+			}
+		}
+
 		x.client, err = sarama.NewSyncProducer(x.brokers, config)
 		return x.client, err
 	}
