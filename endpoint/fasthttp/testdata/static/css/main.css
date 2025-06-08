@@ -1,0 +1,21 @@
+/* Main CSS file for testing nested static file serving */
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.header {
+    background-color: #007bff;
+    color: white;
+    padding: 15px;
+    border-radius: 5px;
+}
+
+.content {
+    margin-top: 20px;
+    padding: 15px;
+    background-color: white;
+    border-radius: 5px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}

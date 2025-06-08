@@ -1,0 +1,9 @@
+{
+    "message": "Hello from static JSON file",
+    "timestamp": "2023-01-01T00:00:00Z",
+    "status": "success",
+    "data": {
+        "server": "fasthttp",
+        "version": "1.0.0"
+    }
+}
