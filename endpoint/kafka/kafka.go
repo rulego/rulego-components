@@ -30,6 +30,7 @@ import (
 	"net/textproto"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Type 组件类型
@@ -221,6 +222,7 @@ type Kafka struct {
 	producer sarama.SyncProducer
 	// 主题和主题消费者映射关系，用于取消订阅
 	handlers map[string]sarama.ConsumerGroup
+	closed   bool
 }
 
 // Type 组件类型
@@ -274,7 +276,7 @@ func (x *Kafka) Close() error {
 	}
 
 	x.handlers = nil
-
+	x.closed = true
 	if nil != x.producer {
 		return x.producer.Close()
 	}
@@ -355,6 +357,11 @@ func (x *Kafka) createTopicConsumer(router endpointApi.Router) error {
 			return fmt.Errorf("routerId %s already exists", routerId)
 		}
 		config := sarama.NewConfig()
+		// 设置重连相关配置
+		config.Consumer.Return.Errors = true
+		config.Metadata.Retry.Max = 3
+		config.Metadata.Retry.Backoff = 250 * 1000000 // 250ms
+		config.Consumer.Offsets.Initial = sarama.OffsetNewest
 		consumer, err := sarama.NewConsumerGroup(x.brokers, x.Config.GroupId, config)
 		if err != nil {
 			return err
@@ -364,15 +371,79 @@ func (x *Kafka) createTopicConsumer(router endpointApi.Router) error {
 		topics := []string{form.ToString()}                // 订阅的主题列表
 		handler := &consumerHandler{router: router, ep: x} // 自定义的消费者处理程序
 
-		go func() {
-			defer consumer.Close()
-			if err := consumer.Consume(context.Background(), topics, handler); err != nil {
-				x.Printf("failed to start consumer for topic %s: %v", form.ToString(), err)
-			}
-		}()
+		// 启动消费者goroutine，带重连机制
+		go x.startConsumerWithRetry(consumer, topics, handler, routerId)
 
 	}
 	return nil
+}
+
+// 带重连机制的消费者启动函数
+func (x *Kafka) startConsumerWithRetry(consumer sarama.ConsumerGroup, topics []string, handler *consumerHandler, routerId string) {
+	defer func() {
+		if consumer != nil {
+			_ = consumer.Close()
+		}
+		// 从handlers中移除已关闭的消费者
+		x.Lock()
+		if x.handlers != nil {
+			delete(x.handlers, routerId)
+		}
+		x.Unlock()
+	}()
+
+	ctx := context.Background()
+	for {
+		// 检查消费者是否已关闭
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		// 检查消费者组是否仍在handlers中（用于判断是否被手动移除）
+		x.Lock()
+		_, exists := x.handlers[routerId]
+		x.Unlock()
+		if !exists {
+			x.Printf("Consumer for routerId %s has been removed, stopping", routerId)
+			return
+		}
+		if x.closed {
+			return
+		}
+		err := consumer.Consume(ctx, topics, handler)
+		if err != nil {
+			x.Printf("Consumer error for topic %s: %v, will retry...", topics[0], err)
+			// 如果是致命错误，重新创建消费者
+			if err == sarama.ErrClosedConsumerGroup {
+				x.Printf("Consumer group closed, recreating consumer for topic %s", topics[0])
+				// 重新创建消费者
+				config := sarama.NewConfig()
+				config.Consumer.Return.Errors = true
+				config.Metadata.Retry.Max = 3
+				config.Metadata.Retry.Backoff = 250 * 1000000 // 250ms
+				config.Consumer.Offsets.Initial = sarama.OffsetNewest
+				newConsumer, createErr := sarama.NewConsumerGroup(x.brokers, x.Config.GroupId, config)
+				if createErr != nil {
+					x.Printf("Failed to recreate consumer for topic %s: %v", topics[0], createErr)
+					return
+				}
+				// 更新handlers中的消费者引用
+				x.Lock()
+				if x.handlers != nil {
+					_ = consumer.Close() // 关闭旧的消费者
+					x.handlers[routerId] = newConsumer
+					consumer = newConsumer
+				}
+				x.Unlock()
+				x.Printf("Successfully recreated consumer for topic %s", topics[0])
+			}
+		} else {
+			x.Printf("Consumer for topic %s stopped normally", topics[0])
+			time.Sleep(5 * time.Second)
+		}
+	}
 }
 
 func (x *Kafka) Printf(format string, v ...interface{}) {

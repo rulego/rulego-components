@@ -75,7 +75,7 @@ func TestKafkaEndpoint(t *testing.T) {
 	//路由1
 	router1 := endpoint.NewRouter().From("device.msg.request").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		//fmt.Println("接收到数据：device.msg.request", exchange.In.GetMsg())
-		assert.Equal(t, "test message", exchange.In.GetMsg().Data)
+		assert.Equal(t, "test message", exchange.In.GetMsg().GetData())
 		return true
 	}).To("chain:default").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		//往指定主题发送数据，用于响应
@@ -87,13 +87,13 @@ func TestKafkaEndpoint(t *testing.T) {
 	//模拟获取响应
 	router2 := endpoint.NewRouter().From("device.msg.response").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		//fmt.Println("接收到数据：device.msg.response", exchange.In.GetMsg())
-		assert.Equal(t, "this is response", exchange.In.GetMsg().Data)
+		assert.Equal(t, "this is response", exchange.In.GetMsg().GetData())
 		return true
 	}).End()
 
 	router3 := endpoint.NewRouter().From("device.msg.response").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		//fmt.Println("接收到数据：device.msg.response", exchange.In.GetMsg())
-		assert.Equal(t, "this is response", exchange.In.GetMsg().Data)
+		assert.Equal(t, "this is response", exchange.In.GetMsg().GetData())
 		return true
 	}).End()
 

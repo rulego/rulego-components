@@ -18,14 +18,15 @@ package kafka
 
 import (
 	"errors"
+	"strconv"
+	"strings"
+
 	"github.com/IBM/sarama"
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/components/base"
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/str"
-	"strconv"
-	"strings"
 )
 
 const (
@@ -120,6 +121,21 @@ func (x *ProducerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	}
 	partition, offset, err := client.SendMessage(message)
 	if err != nil {
+		// 检查是否是网络连接错误，如果是则重置客户端连接
+		if x.isNetworkError(err) {
+			x.resetClient()
+			// 重试一次
+			client, retryErr := x.SharedNode.Get()
+			if retryErr == nil {
+				partition, offset, err = client.SendMessage(message)
+				if err == nil {
+					msg.Metadata.PutValue(KeyPartition, strconv.Itoa(int(partition)))
+					msg.Metadata.PutValue(KeOffset, strconv.Itoa(int(offset)))
+					ctx.TellSuccess(msg)
+					return
+				}
+			}
+		}
 		ctx.TellFailure(msg, err)
 	} else {
 		msg.Metadata.PutValue(KeyPartition, strconv.Itoa(int(partition)))
@@ -155,7 +171,44 @@ func (x *ProducerNode) initClient() (sarama.SyncProducer, error) {
 		var err error
 		config := sarama.NewConfig()
 		config.Producer.Return.Successes = true // 同步模式需要设置这个参数为true
+		// 设置重连相关配置
+		config.Metadata.Retry.Max = 3
+		config.Metadata.Retry.Backoff = 250 * 1000000 // 250ms
+		config.Producer.Retry.Max = 3
+		config.Producer.Retry.Backoff = 100 * 1000000 // 100ms
 		x.client, err = sarama.NewSyncProducer(x.brokers, config)
 		return x.client, err
+	}
+}
+
+// isNetworkError 判断是否是网络连接错误
+func (x *ProducerNode) isNetworkError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if err == sarama.ErrOutOfBrokers {
+		return true
+	}
+	errorStr := err.Error()
+	// 检查常见的网络错误
+	return strings.Contains(errorStr, sarama.ErrOutOfBrokers.Error()) ||
+		strings.Contains(errorStr, sarama.ErrClosedClient.Error()) ||
+		strings.Contains(errorStr, sarama.ErrNotConnected.Error()) ||
+		strings.Contains(errorStr, "connection refused") ||
+		strings.Contains(errorStr, "no route to host") ||
+		strings.Contains(errorStr, "network is unreachable") ||
+		strings.Contains(errorStr, "connection reset") ||
+		strings.Contains(errorStr, "broken pipe") ||
+		strings.Contains(errorStr, "EOF") ||
+		err == sarama.ErrOutOfBrokers
+}
+
+// resetClient 重置客户端连接
+func (x *ProducerNode) resetClient() {
+	x.Locker.Lock()
+	defer x.Locker.Unlock()
+	if x.client != nil {
+		_ = x.client.Close()
+		x.client = nil
 	}
 }
