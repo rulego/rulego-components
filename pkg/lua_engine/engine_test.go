@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rulego/rulego/components/js"
+	"github.com/rulego/rulego/utils/js"
 
 	"github.com/rulego/rulego/engine"
 

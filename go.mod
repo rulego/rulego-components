@@ -19,7 +19,7 @@ require (
 	github.com/openGemini/opengemini-client-go v0.9.0
 	github.com/rabbitmq/amqp091-go v1.10.1-0.20240821123418-dc67c21576c2
 	github.com/redis/go-redis/v9 v9.10.0
-	github.com/rulego/rulego v0.31.2-0.20250608125024-ce39f3a58adb
+	github.com/rulego/rulego v0.31.2-0.20250612094750-983c0c1a3a48
 	github.com/vadv/gopher-lua-libs v0.5.0
 	github.com/valyala/fasthttp v1.58.0
 	github.com/yuin/gopher-lua v1.1.1
