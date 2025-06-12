@@ -488,7 +488,7 @@ func (x *Kafka) startConsumerWithRetry(consumer sarama.ConsumerGroup, topics []s
 		_, exists := x.handlers[routerId]
 		x.Unlock()
 		if !exists {
-			x.Printf("Consumer for routerId %s has been removed, stopping", routerId)
+			x.Printf("Consumer for routerId %s topic %s has been removed, stopping", routerId, topics[0])
 			return
 		}
 		if x.closed {
@@ -522,7 +522,7 @@ func (x *Kafka) startConsumerWithRetry(consumer sarama.ConsumerGroup, topics []s
 				x.Printf("Successfully recreated consumer for topic %s", topics[0])
 			}
 		} else {
-			x.Printf("Consumer for topic %s stopped normally", topics[0])
+			x.Printf("Consumer for topic %s stopped normally, retry after 5s", topics[0])
 			time.Sleep(5 * time.Second)
 		}
 	}
