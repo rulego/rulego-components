@@ -99,8 +99,16 @@ func (x *LuaFilter) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 
 	//var data interface{} = msg.Data
 	var dataMap map[string]interface{}
+	var dataSlice []interface{}
+	var isArray bool
 	if msg.DataType == types.JSON {
-		_ = json.Unmarshal([]byte(msg.GetData()), &dataMap)
+		// Try to unmarshal as object first
+		if err := json.Unmarshal([]byte(msg.GetData()), &dataMap); err != nil {
+			// If object unmarshal fails, try as array
+			if err := json.Unmarshal([]byte(msg.GetData()), &dataSlice); err == nil {
+				isArray = true
+			}
+		}
 	}
 	var err error
 	filter := L.GetGlobal("Filter")
@@ -109,7 +117,10 @@ func (x *LuaFilter) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		NRet:    1,
 		Protect: true,
 	}
-	if dataMap != nil {
+	if isArray {
+		// Call the Filter function with array data
+		err = L.CallByParam(p, luaEngine.SliceToLTable(L, dataSlice), luaEngine.StringMapToLTable(L, msg.Metadata.Values()), lua.LString(msg.Type))
+	} else if dataMap != nil {
 		// Call the Filter function, passing in msg, metadata, msgType as arguments.
 		err = L.CallByParam(p, luaEngine.MapToLTable(L, dataMap), luaEngine.StringMapToLTable(L, msg.Metadata.Values()), lua.LString(msg.Type))
 	} else {

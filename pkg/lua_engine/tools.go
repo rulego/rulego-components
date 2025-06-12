@@ -54,6 +54,24 @@ func MapToLTable(L *lua.LState, m map[string]interface{}) *lua.LTable {
 	return table
 }
 
+// SliceToLTable converts a slice to a lua.LTable
+func SliceToLTable(L *lua.LState, slice interface{}) *lua.LTable {
+	// create a new lua.LTable
+	table := L.NewTable()
+	// get the slice value using reflection
+	v := reflect.ValueOf(slice)
+	// iterate over the slice
+	for i := 0; i < v.Len(); i++ {
+		// get the element at index i
+		elem := v.Index(i).Interface()
+		// convert the element to a lua.LValue
+		lv := GoToLua(L, elem)
+		// set the element to the table (Lua arrays are 1-indexed)
+		table.RawSetInt(i+1, lv)
+	}
+	return table
+}
+
 // GoToLua converts a Go value to a lua.LValue
 func GoToLua(L *lua.LState, v interface{}) lua.LValue {
 	// get the value's type and kind
@@ -76,9 +94,9 @@ func GoToLua(L *lua.LState, v interface{}) lua.LValue {
 	case reflect.Bool:
 		// convert bool to lua.LBool
 		return lua.LBool(v.(bool))
-	//case reflect.Slice:
-	//	// convert slice to lua.LTable
-	//	return SliceToLTable(L, v)
+	case reflect.Slice, reflect.Array:
+		// convert slice/array to lua.LTable
+		return SliceToLTable(L, v)
 	case reflect.Map:
 		// convert map to lua.LTable
 		return MapToLTable(L, v.(map[string]interface{}))
@@ -145,6 +163,35 @@ func LuaToGo(value lua.LValue) interface{} {
 		// return nil for unsupported types
 		return nil
 	}
+}
+
+// IsLuaArray checks if a lua table is array-like
+func IsLuaArray(table *lua.LTable) bool {
+	maxN := table.MaxN()
+	if maxN == 0 {
+		return false
+	}
+	
+	// Check if all keys are consecutive numbers
+	for i := 1; i <= maxN; i++ {
+		if table.RawGetInt(i) == lua.LNil {
+			return false
+		}
+	}
+	return true
+}
+
+// LuaTableToSlice converts a lua table to a slice
+func LuaTableToSlice(table *lua.LTable) []interface{} {
+	maxN := table.MaxN()
+	slice := make([]interface{}, maxN)
+	
+	for i := 1; i <= maxN; i++ {
+		value := table.RawGetInt(i)
+		slice[i-1] = LuaToGo(value)
+	}
+	
+	return slice
 }
 
 // ValidateLua 验证脚本是否正确

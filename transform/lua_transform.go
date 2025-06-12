@@ -99,8 +99,16 @@ func (x *LuaTransform) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 
 	//var data interface{} = msg.Data
 	var dataMap map[string]interface{}
+	var dataSlice []interface{}
+	var isArray bool
 	if msg.DataType == types.JSON {
-		_ = json.Unmarshal([]byte(msg.GetData()), &dataMap)
+		// Try to unmarshal as object first
+		if err := json.Unmarshal([]byte(msg.GetData()), &dataMap); err != nil {
+			// If object unmarshal fails, try as array
+			if err := json.Unmarshal([]byte(msg.GetData()), &dataSlice); err == nil {
+				isArray = true
+			}
+		}
 	}
 	var err error
 	transform := L.GetGlobal("Transform")
@@ -109,7 +117,10 @@ func (x *LuaTransform) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		NRet:    3, // Specify the number of return values
 		Protect: true,
 	}
-	if dataMap != nil {
+	if isArray {
+		// Call the Transform function with array data
+		err = L.CallByParam(p, luaEngine.SliceToLTable(L, dataSlice), luaEngine.StringMapToLTable(L, msg.Metadata.Values()), lua.LString(msg.Type))
+	} else if dataMap != nil {
 		// Call the Transform function, passing in msg, metadata, msgType as arguments.
 		err = L.CallByParam(p, luaEngine.MapToLTable(L, dataMap), luaEngine.StringMapToLTable(L, msg.Metadata.Values()), lua.LString(msg.Type))
 	} else {
@@ -132,19 +143,39 @@ func (x *LuaTransform) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	// update the msg fields with the new values
 	// if newMsg is a lua.LTable type value, it means a JSON string
 	if newMsg, ok := ret1.(*lua.LTable); ok {
-		// Convert newMsg to a map[string]interface{} type value
-		newMsgMap := luaEngine.LTableToMap(newMsg)
-		// Convert dataMap to a JSON format string and assign it to msg.Data
-		if b, err := json.Marshal(newMsgMap); err != nil {
+		// Check if it's an array-like table
+		if luaEngine.IsLuaArray(newMsg) {
+			// Handle array type
+			newMsgSlice := luaEngine.LuaTableToSlice(newMsg)
+			if b, err := json.Marshal(newMsgSlice); err != nil {
+				ctx.TellFailure(msg, err)
+				return
+			} else {
+				msg.SetData(string(b))
+			}
+		} else {
+			// Handle object type
+			newMsgMap := luaEngine.LTableToMap(newMsg)
+			if b, err := json.Marshal(newMsgMap); err != nil {
+				ctx.TellFailure(msg, err)
+				return
+			} else {
+				msg.SetData(string(b))
+			}
+		}
+	} else if newMsgString, ok := ret1.(lua.LString); ok {
+		// If newMsg is not a lua.LTable type value, it means a normal string
+		// Directly convert newMsg to a string type value and assign it to msg.Data
+		msg.SetData(string(newMsgString))
+	} else {
+		// Handle primitive data types (number, boolean, etc.)
+		convertedValue := luaEngine.LuaToGo(ret1)
+		if b, err := json.Marshal(convertedValue); err != nil {
 			ctx.TellFailure(msg, err)
 			return
 		} else {
 			msg.SetData(string(b))
 		}
-	} else if newMsgString, ok := ret1.(lua.LString); ok {
-		// If newMsg is not a lua.LTable type value, it means a normal string
-		//Directly convert newMsg to a string type value and assign it to msg.Data
-		msg.SetData(string(newMsgString))
 	}
 
 	// If newMetadata is a lua.LTable type value, it means a metadata table
