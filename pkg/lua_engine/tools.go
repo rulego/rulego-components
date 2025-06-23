@@ -17,9 +17,11 @@
 package luaEngine
 
 import (
-	"github.com/yuin/gopher-lua"
 	"reflect"
 	"strings"
+
+	"github.com/rulego/rulego/api/types"
+	lua "github.com/yuin/gopher-lua"
 )
 
 // StringMapToLTable converts a map to a lua.LTable
@@ -171,7 +173,7 @@ func IsLuaArray(table *lua.LTable) bool {
 	if maxN == 0 {
 		return false
 	}
-	
+
 	// Check if all keys are consecutive numbers
 	for i := 1; i <= maxN; i++ {
 		if table.RawGetInt(i) == lua.LNil {
@@ -185,12 +187,12 @@ func IsLuaArray(table *lua.LTable) bool {
 func LuaTableToSlice(table *lua.LTable) []interface{} {
 	maxN := table.MaxN()
 	slice := make([]interface{}, maxN)
-	
+
 	for i := 1; i <= maxN; i++ {
 		value := table.RawGetInt(i)
 		slice[i-1] = LuaToGo(value)
 	}
-	
+
 	return slice
 }
 
@@ -201,5 +203,64 @@ func ValidateLua(script string) error {
 		return L.DoFile(script)
 	} else {
 		return L.DoString(script)
+	}
+}
+
+// BytesToLuaTable converts byte array to Lua table where each element is a byte value (0-255)
+// Lua arrays are 1-indexed, so byte at index 0 in Go becomes index 1 in Lua
+func BytesToLuaTable(L *lua.LState, data []byte) *lua.LTable {
+	table := L.NewTable()
+	for i, b := range data {
+		table.RawSetInt(i+1, lua.LNumber(b)) // Lua arrays are 1-indexed
+	}
+	return table
+}
+
+// LuaTableToBytes converts Lua table (byte array) back to []byte
+// Assumes the Lua table contains numeric values representing bytes (0-255)
+func LuaTableToBytes(table *lua.LTable) []byte {
+	maxN := table.MaxN()
+	bytes := make([]byte, maxN)
+	for i := 1; i <= maxN; i++ {
+		value := table.RawGetInt(i)
+		if num, ok := value.(lua.LNumber); ok {
+			bytes[i-1] = byte(num)
+		}
+	}
+	return bytes
+}
+
+// PrepareMessageData prepares message data for Lua processing based on the message data type
+// This function handles the conversion from Go message data to appropriate Lua types:
+// - JSON: Converts to Lua table (object or array)
+// - BINARY: Converts to Lua table representing byte array
+// - Others: Keeps as Lua string
+func PrepareMessageData(L *lua.LState, msg types.RuleMsg) lua.LValue {
+	switch string(msg.DataType) {
+	case "JSON":
+		// Use GetJsonData method to get cached JSON data (supports both objects and arrays)
+		if jsonData, err := msg.GetJsonData(); err == nil {
+			// Check the type of parsed JSON data
+			switch data := jsonData.(type) {
+			case map[string]interface{}:
+				// JSON object
+				return MapToLTable(L, data)
+			case []interface{}:
+				// JSON array
+				return SliceToLTable(L, data)
+			default:
+				// Other types (string, number, boolean, null)
+				return lua.LString(msg.GetData())
+			}
+		} else {
+			// JSON parsing failed, treat as string
+			return lua.LString(msg.GetData())
+		}
+	case "BINARY":
+		// Convert binary data to Lua table (byte array)
+		return BytesToLuaTable(L, msg.GetBytes())
+	default:
+		// For TEXT and other types, use string
+		return lua.LString(msg.GetData())
 	}
 }

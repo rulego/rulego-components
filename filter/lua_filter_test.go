@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 The RuleGo Authors.
+ * Copyright 2024 The RuleGo Authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,11 +17,12 @@
 package filter
 
 import (
+	"testing"
+	"time"
+
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/test"
 	"github.com/rulego/rulego/test/assert"
-	"testing"
-	"time"
 )
 
 func TestLuaFilter(t *testing.T) {
@@ -464,6 +465,68 @@ func TestLuaFilterArrayWithMetadata(t *testing.T) {
 				MsgList: []test.Msg{msg12},
 				Callback: func(msg types.RuleMsg, relationType string, err error) {
 					assert.Equal(t, types.False, relationType)
+				},
+			},
+		}
+		for _, item := range nodeList {
+			test.NodeOnMsgWithChildren(t, item.Node, item.MsgList, item.ChildrenNodes, item.Callback)
+		}
+		time.Sleep(time.Millisecond * 20)
+	})
+}
+
+// Simple test for dataType parameter support
+func TestLuaFilterWithDataType(t *testing.T) {
+	var targetNodeType = "x/luaFilter"
+	var registry = &types.SafeComponentSlice{}
+	registry.Add(&LuaFilter{})
+
+	t.Run("DataTypeTest", func(t *testing.T) {
+		// Test JSON data type
+		node1, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
+			"script": `return dataType == "JSON" and msg.temperature > 50`,
+		}, registry)
+		assert.Nil(t, err)
+
+		// Test BINARY data type
+		node2, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
+			"script": `return dataType == "BINARY" and #msg == 4`,
+		}, registry)
+		assert.Nil(t, err)
+
+		metaData := types.BuildMetadata(make(map[string]string))
+
+		// Test JSON message
+		msg1 := test.Msg{
+			MetaData:   metaData,
+			MsgType:    "TEST",
+			Data:       `{"temperature": 60}`,
+			DataType:   types.JSON,
+			AfterSleep: time.Millisecond * 200,
+		}
+
+		// Test BINARY message
+		msg2 := test.Msg{
+			MetaData:   metaData,
+			MsgType:    "TEST",
+			Data:       string([]byte{0x01, 0x02, 0x03, 0x04}),
+			DataType:   types.BINARY,
+			AfterSleep: time.Millisecond * 200,
+		}
+
+		var nodeList = []test.NodeAndCallback{
+			{
+				Node:    node1,
+				MsgList: []test.Msg{msg1},
+				Callback: func(msg types.RuleMsg, relationType string, err error) {
+					assert.Equal(t, types.True, relationType)
+				},
+			},
+			{
+				Node:    node2,
+				MsgList: []test.Msg{msg2},
+				Callback: func(msg types.RuleMsg, relationType string, err error) {
+					assert.Equal(t, types.True, relationType)
 				},
 			},
 		}

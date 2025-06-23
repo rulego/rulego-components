@@ -17,14 +17,14 @@
 package filter
 
 import (
-	"encoding/json"
 	"fmt"
+	"strings"
+
 	"github.com/rulego/rulego"
-	"github.com/rulego/rulego-components/pkg/lua_engine"
+	luaEngine "github.com/rulego/rulego-components/pkg/lua_engine"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/utils/maps"
 	lua "github.com/yuin/gopher-lua"
-	"strings"
 )
 
 // init registers the component to rulego
@@ -32,13 +32,17 @@ func init() {
 	_ = rulego.Registry.Register(&LuaFilter{})
 }
 
+// FunctionNameFilter is the name of the function to be called in the script
+const FunctionNameFilter = "Filter"
+
 // LuaFilterConfiguration node configuration
 type LuaFilterConfiguration struct {
 	//Script configures the function body content or the script file path with `.lua` as the suffix
 	//Only need to provide the function body content, if it is a file path, then need to provide the complete script function:
-	//function Filter(msg, metadata, msgType) ${Script} \n end
+	//function Filter(msg, metadata, msgType, dataType) ${Script} \n end
 	//return bool
 	//The parameter msg, if the data type of msg is JSON, then it will be converted to the Lua table type before calling the function
+	//If the data type of msg is BINARY, then it will be converted to a Lua userdata (byte array) before calling the function
 	Script string
 }
 
@@ -73,7 +77,7 @@ func (x *LuaFilter) Init(ruleConfig types.Config, configuration types.Configurat
 			// create a new LStatePool from file
 			x.pool = luaEngine.NewFileLStatePool(ruleConfig, x.Config.Script, configuration)
 		} else {
-			script := fmt.Sprintf("function Filter(msg, metadata, msgType) %s \nend", x.Config.Script)
+			script := fmt.Sprintf("function Filter(msg, metadata, msgType, dataType) %s \nend", x.Config.Script)
 			if err = luaEngine.ValidateLua(script); err != nil {
 				return err
 			}
@@ -97,36 +101,17 @@ func (x *LuaFilter) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	// defer putting back the *lua.LState to the pool
 	defer x.pool.Put(L)
 
-	//var data interface{} = msg.Data
-	var dataMap map[string]interface{}
-	var dataSlice []interface{}
-	var isArray bool
-	if msg.DataType == types.JSON {
-		// Try to unmarshal as object first
-		if err := json.Unmarshal([]byte(msg.GetData()), &dataMap); err != nil {
-			// If object unmarshal fails, try as array
-			if err := json.Unmarshal([]byte(msg.GetData()), &dataSlice); err == nil {
-				isArray = true
-			}
-		}
-	}
-	var err error
-	filter := L.GetGlobal("Filter")
+	// Use common function to prepare message data
+	msgData := luaEngine.PrepareMessageData(L, msg)
+
+	// Call the Filter function with msg, metadata, msgType, dataType
+	filter := L.GetGlobal(FunctionNameFilter)
 	p := lua.P{
 		Fn:      filter,
 		NRet:    1,
 		Protect: true,
 	}
-	if isArray {
-		// Call the Filter function with array data
-		err = L.CallByParam(p, luaEngine.SliceToLTable(L, dataSlice), luaEngine.StringMapToLTable(L, msg.Metadata.Values()), lua.LString(msg.Type))
-	} else if dataMap != nil {
-		// Call the Filter function, passing in msg, metadata, msgType as arguments.
-		err = L.CallByParam(p, luaEngine.MapToLTable(L, dataMap), luaEngine.StringMapToLTable(L, msg.Metadata.Values()), lua.LString(msg.Type))
-	} else {
-		// Call the Filter function, passing in msg, metadata, msgType as arguments.
-		err = L.CallByParam(p, lua.LString(msg.GetData()), luaEngine.StringMapToLTable(L, msg.Metadata.Values()), lua.LString(msg.Type))
-	}
+	err := L.CallByParam(p, msgData, luaEngine.StringMapToLTable(L, msg.Metadata.Values()), lua.LString(msg.Type), lua.LString(string(msg.DataType)))
 
 	if err != nil {
 		// if there is an error, tell the next node to fail

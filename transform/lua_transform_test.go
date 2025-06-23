@@ -18,15 +18,16 @@ package transform
 
 import (
 	"encoding/json"
+	"sync"
+	"testing"
+	"time"
+
 	luaEngine "github.com/rulego/rulego-components/pkg/lua_engine"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/components/transform"
 	"github.com/rulego/rulego/test"
 	"github.com/rulego/rulego/test/assert"
 	lua "github.com/yuin/gopher-lua"
-	"sync"
-	"testing"
-	"time"
 )
 
 func TestLuaTransform(t *testing.T) {
@@ -703,6 +704,203 @@ func TestLuaTransformWithNonJSONData(t *testing.T) {
 					assert.Equal(t, "hello world", result["original"])
 					assert.Equal(t, "HELLO WORLD", result["upper"])
 					assert.Equal(t, float64(11), result["length"])
+				},
+			},
+		}
+		for _, item := range nodeList {
+			test.NodeOnMsgWithChildren(t, item.Node, item.MsgList, item.ChildrenNodes, item.Callback)
+		}
+		time.Sleep(time.Millisecond * 20)
+	})
+}
+
+// Simple test for dataType parameter support
+func TestLuaTransformWithDataType(t *testing.T) {
+	var targetNodeType = "x/luaTransform"
+	var registry = &types.SafeComponentSlice{}
+	registry.Add(&LuaTransform{})
+
+	t.Run("DataTypeTest", func(t *testing.T) {
+		// Test dataType parameter and binary processing
+		node1, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
+			"script": `
+				metadata.originalType = dataType
+				if dataType == "BINARY" then
+					local result = {0xAA, 0xBB}
+					for i = 1, #msg do
+						table.insert(result, msg[i])
+					end
+					return result, metadata, msgType
+				end
+				return msg, metadata, msgType
+			`,
+		}, registry)
+		assert.Nil(t, err)
+
+		metaData := types.BuildMetadata(make(map[string]string))
+
+		// Test BINARY message - add header
+		msg1 := test.Msg{
+			MetaData:   metaData,
+			MsgType:    "TEST",
+			Data:       string([]byte{0x01, 0x02}),
+			DataType:   types.BINARY,
+			AfterSleep: time.Millisecond * 200,
+		}
+
+		var nodeList = []test.NodeAndCallback{
+			{
+				Node:    node1,
+				MsgList: []test.Msg{msg1},
+				Callback: func(msg types.RuleMsg, relationType string, err error) {
+					assert.Equal(t, types.Success, relationType)
+					assert.Equal(t, "BINARY", msg.Metadata.GetValue("originalType"))
+					result := []byte(msg.GetData())
+					expected := []byte{0xAA, 0xBB, 0x01, 0x02}
+					assert.Equal(t, expected, result)
+				},
+			},
+		}
+		for _, item := range nodeList {
+			test.NodeOnMsgWithChildren(t, item.Node, item.MsgList, item.ChildrenNodes, item.Callback)
+		}
+		time.Sleep(time.Millisecond * 20)
+	})
+}
+
+// Test binary data header addition
+func TestLuaTransformBinaryHeader(t *testing.T) {
+	var targetNodeType = "x/luaTransform"
+	var registry = &types.SafeComponentSlice{}
+	registry.Add(&LuaTransform{})
+
+	t.Run("BinaryHeaderAddition", func(t *testing.T) {
+		// Test adding 4-byte header to binary data
+		node1, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
+			"script": `
+				-- 示例：添加4字节头部
+				if dataType == "BINARY" then
+					local result = {0xAA, 0xBB, 0xCC, 0xDD}  -- 新头部
+					for i = 1, #msg do
+						table.insert(result, msg[i])          -- 追加原始数据
+					end
+					return result, metadata, msgType
+				end
+				-- 非二进制数据直接返回
+				return msg, metadata, msgType
+			`,
+		}, registry)
+		assert.Nil(t, err)
+
+		metaData := types.BuildMetadata(make(map[string]string))
+		metaData.PutValue("device", "sensor01")
+
+		// Test with binary data - should add header
+		msg1 := test.Msg{
+			MetaData:   metaData,
+			MsgType:    "SENSOR_DATA",
+			Data:       string([]byte{0x01, 0x02, 0x03}), // 原始数据
+			DataType:   types.BINARY,
+			AfterSleep: time.Millisecond * 200,
+		}
+
+		// Test with non-binary data - should pass through unchanged
+		msg2 := test.Msg{
+			MetaData:   metaData,
+			MsgType:    "TEXT_DATA",
+			Data:       "hello world",
+			DataType:   types.TEXT,
+			AfterSleep: time.Millisecond * 200,
+		}
+
+		var nodeList = []test.NodeAndCallback{
+			{
+				Node:    node1,
+				MsgList: []test.Msg{msg1},
+				Callback: func(msg types.RuleMsg, relationType string, err error) {
+					assert.Equal(t, types.Success, relationType)
+					result := []byte(msg.GetData())
+					// 期望结果：4字节头部 + 3字节原始数据
+					expected := []byte{0xAA, 0xBB, 0xCC, 0xDD, 0x01, 0x02, 0x03}
+					assert.Equal(t, expected, result)
+					assert.Equal(t, 7, len(result)) // 验证总长度
+				},
+			},
+			{
+				Node:    node1,
+				MsgList: []test.Msg{msg2},
+				Callback: func(msg types.RuleMsg, relationType string, err error) {
+					assert.Equal(t, types.Success, relationType)
+					// 非二进制数据应该原样返回
+					assert.Equal(t, "hello world", msg.GetData())
+				},
+			},
+		}
+		for _, item := range nodeList {
+			test.NodeOnMsgWithChildren(t, item.Node, item.MsgList, item.ChildrenNodes, item.Callback)
+		}
+		time.Sleep(time.Millisecond * 20)
+	})
+
+	t.Run("BinaryDataProtocolProcessing", func(t *testing.T) {
+		// Test more complex binary protocol processing
+		node2, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
+			"script": `
+				if dataType == "BINARY" then
+					-- 协议格式：[长度][命令][数据][校验和]
+					local dataLen = #msg
+					local command = 0x10  -- 命令码
+					local checksum = 0
+					
+					-- 构建协议包
+					local result = {dataLen, command}
+					
+					-- 添加原始数据
+					for i = 1, #msg do
+						table.insert(result, msg[i])
+						checksum = checksum + msg[i]
+					end
+					
+					-- 添加校验和（简单累加）
+					table.insert(result, checksum % 256)
+					
+					metadata.protocol = "custom"
+					metadata.originalLength = tostring(dataLen)
+					
+					return result, metadata, msgType
+				end
+				return msg, metadata, msgType
+			`,
+		}, registry)
+		assert.Nil(t, err)
+
+		metaData := types.BuildMetadata(make(map[string]string))
+		metaData.PutValue("device", "controller")
+
+		// Test protocol encapsulation
+		msg := test.Msg{
+			MetaData:   metaData,
+			MsgType:    "PROTOCOL_DATA",
+			Data:       string([]byte{0x01, 0x02, 0x03}),
+			DataType:   types.BINARY,
+			AfterSleep: time.Millisecond * 200,
+		}
+
+		var nodeList = []test.NodeAndCallback{
+			{
+				Node:    node2,
+				MsgList: []test.Msg{msg},
+				Callback: func(msg types.RuleMsg, relationType string, err error) {
+					assert.Equal(t, types.Success, relationType)
+					result := []byte(msg.GetData())
+
+					// 期望格式：[长度=3][命令=0x10][0x01,0x02,0x03][校验和=(1+2+3)%256=6]
+					expected := []byte{0x03, 0x10, 0x01, 0x02, 0x03, 0x06}
+					assert.Equal(t, expected, result)
+
+					// 验证元数据
+					assert.Equal(t, "custom", msg.Metadata.GetValue("protocol"))
+					assert.Equal(t, "3", msg.Metadata.GetValue("originalLength"))
 				},
 			},
 		}

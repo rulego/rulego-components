@@ -19,12 +19,13 @@ package transform
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+
 	"github.com/rulego/rulego"
-	"github.com/rulego/rulego-components/pkg/lua_engine"
+	luaEngine "github.com/rulego/rulego-components/pkg/lua_engine"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/utils/maps"
-	"github.com/yuin/gopher-lua"
-	"strings"
+	lua "github.com/yuin/gopher-lua"
 )
 
 // init registers the component to rulego
@@ -32,13 +33,17 @@ func init() {
 	_ = rulego.Registry.Register(&LuaTransform{})
 }
 
+// FunctionNameTransform is the name of the function to be called in the script
+const FunctionNameTransform = "Transform"
+
 // LuaTransformConfiguration node configuration
 type LuaTransformConfiguration struct {
 	//Script configures the function body content or the script file path with `.lua` as the suffix
 	//Only need to provide the function body content, if it is a file path, then need to provide the complete script function:
-	//function Transform(msg, metadata, msgType) ${Script} \n end
+	//function Transform(msg, metadata, msgType, dataType) ${Script} \n end
 	//return msg, metadata, msgType
 	//The parameter msg, if the data type of msg is JSON, then it will be converted to the Lua table type before calling the function
+	//If the data type of msg is BINARY, then it will be converted to a Lua table (byte array) before calling the function
 	Script string
 }
 
@@ -73,7 +78,7 @@ func (x *LuaTransform) Init(ruleConfig types.Config, configuration types.Configu
 			// create a new LStatePool from file
 			x.pool = luaEngine.NewFileLStatePool(ruleConfig, x.Config.Script, configuration)
 		} else {
-			script := fmt.Sprintf("function Transform(msg, metadata, msgType) %s \nend", x.Config.Script)
+			script := fmt.Sprintf("function Transform(msg, metadata, msgType, dataType) %s \nend", x.Config.Script)
 			if err = luaEngine.ValidateLua(script); err != nil {
 				return err
 			}
@@ -97,36 +102,17 @@ func (x *LuaTransform) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	// defer putting back the *lua.LState to the pool
 	defer x.pool.Put(L)
 
-	//var data interface{} = msg.Data
-	var dataMap map[string]interface{}
-	var dataSlice []interface{}
-	var isArray bool
-	if msg.DataType == types.JSON {
-		// Try to unmarshal as object first
-		if err := json.Unmarshal([]byte(msg.GetData()), &dataMap); err != nil {
-			// If object unmarshal fails, try as array
-			if err := json.Unmarshal([]byte(msg.GetData()), &dataSlice); err == nil {
-				isArray = true
-			}
-		}
-	}
-	var err error
-	transform := L.GetGlobal("Transform")
+	// Use common function to prepare message data
+	msgData := luaEngine.PrepareMessageData(L, msg)
+
+	// Call the Transform function with msg, metadata, msgType, dataType
+	transform := L.GetGlobal(FunctionNameTransform)
 	p := lua.P{
 		Fn:      transform,
 		NRet:    3, // Specify the number of return values
 		Protect: true,
 	}
-	if isArray {
-		// Call the Transform function with array data
-		err = L.CallByParam(p, luaEngine.SliceToLTable(L, dataSlice), luaEngine.StringMapToLTable(L, msg.Metadata.Values()), lua.LString(msg.Type))
-	} else if dataMap != nil {
-		// Call the Transform function, passing in msg, metadata, msgType as arguments.
-		err = L.CallByParam(p, luaEngine.MapToLTable(L, dataMap), luaEngine.StringMapToLTable(L, msg.Metadata.Values()), lua.LString(msg.Type))
-	} else {
-		// Call the Transform function, passing in msg, metadata, msgType as arguments.
-		err = L.CallByParam(p, lua.LString(msg.GetData()), luaEngine.StringMapToLTable(L, msg.Metadata.Values()), lua.LString(msg.Type))
-	}
+	err := L.CallByParam(p, msgData, luaEngine.StringMapToLTable(L, msg.Metadata.Values()), lua.LString(msg.Type), lua.LString(string(msg.DataType)))
 
 	if err != nil {
 		// if there is an error, tell the next node to fail
@@ -141,26 +127,48 @@ func (x *LuaTransform) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	L.Pop(3)
 
 	// update the msg fields with the new values
-	// if newMsg is a lua.LTable type value, it means a JSON string
+	// if newMsg is a lua.LTable type value, it could be JSON object/array or binary data
 	if newMsg, ok := ret1.(*lua.LTable); ok {
 		// Check if it's an array-like table
 		if luaEngine.IsLuaArray(newMsg) {
-			// Handle array type
-			newMsgSlice := luaEngine.LuaTableToSlice(newMsg)
-			if b, err := json.Marshal(newMsgSlice); err != nil {
-				ctx.TellFailure(msg, err)
-				return
+			// Check if this is a byte array (all values are numbers 0-255)
+			isByteArray := true
+			maxN := newMsg.MaxN()
+			for i := 1; i <= maxN; i++ {
+				value := newMsg.RawGetInt(i)
+				if num, ok := value.(lua.LNumber); ok {
+					if num < 0 || num > 255 {
+						isByteArray = false
+						break
+					}
+				} else {
+					isByteArray = false
+					break
+				}
+			}
+
+			if isByteArray && msg.DataType == types.BINARY {
+				// Handle as binary data using common function
+				bytes := luaEngine.LuaTableToBytes(newMsg)
+				msg.SetBytes(bytes)
 			} else {
-				msg.SetData(string(b))
+				// Handle as JSON array
+				newMsgSlice := luaEngine.LuaTableToSlice(newMsg)
+				if b, err := json.Marshal(newMsgSlice); err != nil {
+					ctx.TellFailure(msg, err)
+					return
+				} else {
+					msg.SetBytes(b)
+				}
 			}
 		} else {
-			// Handle object type
+			// Handle as JSON object
 			newMsgMap := luaEngine.LTableToMap(newMsg)
 			if b, err := json.Marshal(newMsgMap); err != nil {
 				ctx.TellFailure(msg, err)
 				return
 			} else {
-				msg.SetData(string(b))
+				msg.SetBytes(b)
 			}
 		}
 	} else if newMsgString, ok := ret1.(lua.LString); ok {
@@ -174,7 +182,7 @@ func (x *LuaTransform) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 			ctx.TellFailure(msg, err)
 			return
 		} else {
-			msg.SetData(string(b))
+			msg.SetBytes(b)
 		}
 	}
 
