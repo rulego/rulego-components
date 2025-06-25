@@ -111,7 +111,7 @@ func (x *LuaFilter) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		NRet:    1,
 		Protect: true,
 	}
-	err := L.CallByParam(p, msgData, luaEngine.StringMapToLTable(L, msg.Metadata.Values()), lua.LString(msg.Type), lua.LString(string(msg.DataType)))
+	err := L.CallByParam(p, msgData, luaEngine.StringMapToLTable(L, msg.Metadata.GetReadOnlyValues()), lua.LString(msg.Type), lua.LString(string(msg.DataType)))
 
 	if err != nil {
 		// if there is an error, tell the next node to fail
