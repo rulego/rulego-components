@@ -273,8 +273,8 @@ github.com/robfig/cron/v3 v3.0.1/go.mod h1:eQICP3HwyT7UooqI/z+Ov+PtYAWygg1TEWWzG
 github.com/rogpeppe/go-internal v1.6.1/go.mod h1:xXDCJY+GAPziupqXw64V24skbSoqbTEfhy4qGm1nDQc=
 github.com/rogpeppe/go-internal v1.13.1 h1:KvO1DLK/DRN07sQ1LQKScxyZJuNnedQ5/wKSR38lUII=
 github.com/rogpeppe/go-internal v1.13.1/go.mod h1:uMEvuHeurkdAXX61udpOXGD/AzZDWNMNyH2VO9fmH0o=
-github.com/rulego/rulego v0.31.4-0.20250624063917-ebd3bc160395 h1:HAvtHYBnxB1EOzNyN+DDw267GWsyv7R/ivf82NAenMQ=
-github.com/rulego/rulego v0.31.4-0.20250624063917-ebd3bc160395/go.mod h1:rG+UAVIHH1I7UZkDoG3R6fbDoPGImvIHOFqb9V91Sqk=
+github.com/rulego/rulego v0.31.4-0.20250625042504-ed6666e30453 h1:V5UTy0dvSrGsOTwHfW5ebxWRuuiThgTPWNsRxwxG+RY=
+github.com/rulego/rulego v0.31.4-0.20250625042504-ed6666e30453/go.mod h1:rG+UAVIHH1I7UZkDoG3R6fbDoPGImvIHOFqb9V91Sqk=
 github.com/savsgio/gotils v0.0.0-20240704082632-aef3928b8a38 h1:D0vL7YNisV2yqE55+q0lFuGse6U8lxlg7fYTctlT5Gc=
 github.com/savsgio/gotils v0.0.0-20240704082632-aef3928b8a38/go.mod h1:sM7Mt7uEoCeFSCBM+qBrqvEo+/9vdmj19wzp3yzUhmg=
 github.com/sirupsen/logrus v1.2.0/go.mod h1:LxeOpSwHxABJmUn/MG1IvRgCAasNZTLOkJPxbbu5VWo=
