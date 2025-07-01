@@ -322,7 +322,6 @@ func (x *Kafka) Close() error {
 	// 设置关闭状态，阻止新的consumer启动和新的消息处理
 	x.closed = true
 	atomic.StoreInt32(&x.isShuttingDown, 1)
-	x.Printf("Kafka endpoint starting graceful shutdown...")
 
 	// 获取当前handlers的副本，避免在关闭过程中修改map
 	handlersToClose := make(map[string]sarama.ConsumerGroup)
@@ -332,7 +331,6 @@ func (x *Kafka) Close() error {
 	x.Unlock()
 
 	// 阶段1：停止接收新消息 - 关闭所有consumer
-	x.Printf("Kafka endpoint closing %d consumers...", len(handlersToClose))
 	for routerId, consumer := range handlersToClose {
 		if consumer != nil {
 			if err := consumer.Close(); err != nil {
@@ -342,7 +340,6 @@ func (x *Kafka) Close() error {
 	}
 
 	// 阶段2：等待活跃消息处理完成
-	x.Printf("Kafka endpoint waiting for active messages to complete...")
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -352,44 +349,30 @@ func (x *Kafka) Close() error {
 	for {
 		activeCount := atomic.LoadInt64(&x.activeMessages)
 		if activeCount == 0 {
-			x.Printf("All active messages completed")
 			break
 		}
 
 		select {
 		case <-timeout.C:
-			x.Printf("Shutdown timeout reached, forcing close with %d active messages", activeCount)
 			goto forceClose
 		case <-ticker.C:
-			x.Printf("Waiting for %d active messages to complete...", activeCount)
+			// 继续等待
 		}
 	}
 
 forceClose:
 	// 阶段3：关闭producer
 	x.Lock()
-	defer x.Unlock()
-
 	x.handlers = nil
 
+	var err error
 	if x.producer != nil {
-		x.Printf("Kafka endpoint closing producer...")
-		err := x.producer.Close()
+		err = x.producer.Close()
 		x.producer = nil
-		x.BaseEndpoint.Destroy()
-
-		// 通知关闭完成
-		select {
-		case <-x.shutdownComplete:
-			// 已经关闭
-		default:
-			close(x.shutdownComplete)
-		}
-
-		x.Printf("Kafka endpoint shutdown completed")
-		return err
 	}
+	x.Unlock()
 
+	// 在释放锁后调用BaseEndpoint.Destroy()以避免死锁
 	x.BaseEndpoint.Destroy()
 
 	// 通知关闭完成
@@ -400,8 +383,7 @@ forceClose:
 		close(x.shutdownComplete)
 	}
 
-	x.Printf("Kafka endpoint shutdown completed")
-	return nil
+	return err
 }
 
 func (x *Kafka) Id() string {
@@ -447,42 +429,45 @@ func (x *Kafka) Start() error {
 
 // initKafkaProducer 初始化kafka生产者，用于响应
 func (x *Kafka) initKafkaProducer() error {
-	if x.producer == nil {
-		config := sarama.NewConfig()
-		config.Producer.Return.Successes = true // 同步模式需要设置这个参数为true
-
-		// 配置SASL认证
-		if x.Config.SASL.Enable {
-			config.Net.SASL.Enable = true
-			config.Net.SASL.User = x.Config.SASL.Username
-			config.Net.SASL.Password = x.Config.SASL.Password
-
-			switch strings.ToUpper(x.Config.SASL.Mechanism) {
-			case "PLAIN":
-				config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
-			case "SCRAM-SHA-256":
-				config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA256
-			case "SCRAM-SHA-512":
-				config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA512
-			default:
-				config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
-			}
-		}
-
-		// 配置TLS
-		if x.Config.TLS.Enable {
-			config.Net.TLS.Enable = true
-			if x.Config.TLS.InsecureSkipVerify {
-				config.Net.TLS.Config = &tls.Config{InsecureSkipVerify: true}
-			}
-		}
-
-		producer, err := sarama.NewSyncProducer(x.brokers, config)
-		if err != nil {
-			return err
-		}
-		x.producer = producer
+	x.Lock()
+	defer x.Unlock()
+	if x.producer != nil {
+		return nil
 	}
+	config := sarama.NewConfig()
+	config.Producer.Return.Successes = true // 同步模式需要设置这个参数为true
+
+	// 配置SASL认证
+	if x.Config.SASL.Enable {
+		config.Net.SASL.Enable = true
+		config.Net.SASL.User = x.Config.SASL.Username
+		config.Net.SASL.Password = x.Config.SASL.Password
+
+		switch strings.ToUpper(x.Config.SASL.Mechanism) {
+		case "PLAIN":
+			config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
+		case "SCRAM-SHA-256":
+			config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA256
+		case "SCRAM-SHA-512":
+			config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA512
+		default:
+			config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
+		}
+	}
+
+	// 配置TLS
+	if x.Config.TLS.Enable {
+		config.Net.TLS.Enable = true
+		if x.Config.TLS.InsecureSkipVerify {
+			config.Net.TLS.Config = &tls.Config{InsecureSkipVerify: true}
+		}
+	}
+
+	producer, err := sarama.NewSyncProducer(x.brokers, config)
+	if err != nil {
+		return err
+	}
+	x.producer = producer
 
 	return nil
 }
@@ -542,8 +527,8 @@ func (x *Kafka) createTopicConsumer(router endpointApi.Router) error {
 		}
 		x.handlers[routerId] = consumer
 
-		topics := []string{form.ToString()}                // 订阅的主题列表
-		handler := &consumerHandler{router: router, ep: x} // 自定义的消费者处理程序
+		topics := []string{form.ToString()}                                          // 订阅的主题列表
+		handler := &consumerHandler{router: router, ep: x, ruleConfig: x.RuleConfig} // 自定义的消费者处理程序
 
 		// 启动消费者goroutine，带重连机制
 		go x.startConsumerWithRetry(consumer, topics, handler, routerId)
@@ -552,83 +537,9 @@ func (x *Kafka) createTopicConsumer(router endpointApi.Router) error {
 	return nil
 }
 
-// 带重连机制的消费者启动函数
-func (x *Kafka) startConsumerWithRetry(consumer sarama.ConsumerGroup, topics []string, handler *consumerHandler, routerId string) {
-	defer func() {
-		if consumer != nil {
-			_ = consumer.Close()
-		}
-		// 从handlers中移除已关闭的消费者
-		x.Lock()
-		if x.handlers != nil {
-			delete(x.handlers, routerId)
-		}
-		x.Unlock()
-	}()
-
-	ctx := context.Background()
-	for {
-		// 检查消费者是否已关闭
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		// 检查消费者组是否仍在handlers中（用于判断是否被手动移除）
-		x.Lock()
-		_, exists := x.handlers[routerId]
-		x.Unlock()
-		if !exists {
-			x.Printf("Consumer for routerId %s topic %s has been removed, stopping", routerId, topics[0])
-			return
-		}
-		if x.closed {
-			return
-		}
-		err := consumer.Consume(ctx, topics, handler)
-		if err != nil {
-			x.Printf("Consumer error for topic %s: %v, will retry...", topics[0], err)
-			// 如果是致命错误，重新创建消费者
-			if err == sarama.ErrClosedConsumerGroup {
-				x.Printf("Consumer group closed, recreating consumer for topic %s", topics[0])
-				// 重新创建消费者
-				config := sarama.NewConfig()
-				config.Consumer.Return.Errors = true
-				config.Metadata.Retry.Max = 3
-				config.Metadata.Retry.Backoff = 250 * 1000000 // 250ms
-				config.Consumer.Offsets.Initial = sarama.OffsetNewest
-				newConsumer, createErr := sarama.NewConsumerGroup(x.brokers, x.Config.GroupId, config)
-				if createErr != nil {
-					x.Printf("Failed to recreate consumer for topic %s: %v", topics[0], createErr)
-					return
-				}
-				// 更新handlers中的消费者引用
-				x.Lock()
-				if x.handlers != nil {
-					_ = consumer.Close() // 关闭旧的消费者
-					x.handlers[routerId] = newConsumer
-					consumer = newConsumer
-				}
-				x.Unlock()
-				x.Printf("Successfully recreated consumer for topic %s", topics[0])
-			}
-		} else {
-			x.Printf("Consumer for topic %s stopped normally, retry after 5s", topics[0])
-			time.Sleep(5 * time.Second)
-		}
-	}
-}
-
-func (x *Kafka) Printf(format string, v ...interface{}) {
-	if x.RuleConfig.Logger != nil {
-		x.RuleConfig.Logger.Printf(format, v...)
-	}
-}
-
 // 自定义消费者处理程序
 type consumerHandler struct {
-	ep         *Endpoint
+	ep         *Kafka
 	router     endpointApi.Router
 	ruleConfig types.Config
 }
@@ -645,13 +556,14 @@ func (h *consumerHandler) ConsumeClaim(session sarama.ConsumerGroupSession, clai
 			if err != nil {
 				h.ep.Printf("kafka consumer handler err :%v", err)
 			}
-			return err
+			// 不要立即返回错误，继续处理下一条消息
 		} else {
 			go h.handlerMsg(session, msg)
 		}
 	}
 	return nil
 }
+
 func (h *consumerHandler) handlerMsg(session sarama.ConsumerGroupSession, msg *sarama.ConsumerMessage) {
 	defer func() {
 		// 减少活跃消息计数
@@ -667,7 +579,6 @@ func (h *consumerHandler) handlerMsg(session sarama.ConsumerGroupSession, msg *s
 
 	// 检查是否正在关闭，如果是则拒绝处理新消息
 	if h.ep.IsShuttingDown() {
-		h.ep.Printf("Kafka endpoint is shutting down, rejecting message processing")
 		session.MarkMessage(msg, "") // 仍然标记消息已处理，避免重复
 		return
 	}
@@ -692,12 +603,108 @@ func (h *consumerHandler) handlerMsg(session sarama.ConsumerGroupSession, msg *s
 	session.MarkMessage(msg, "") // 标记消息已处理
 }
 
+// startConsumerWithRetry 带重连机制的消费者启动函数
+func (x *Kafka) startConsumerWithRetry(consumer sarama.ConsumerGroup, topics []string, handler *consumerHandler, routerId string) {
+	defer func() {
+		if consumer != nil {
+			_ = consumer.Close()
+		}
+		// 从handlers中移除已关闭的消费者 - 使用安全的清理方式
+		x.Lock()
+		if x.handlers != nil {
+			// 只有当当前consumer确实是我们要删除的consumer时才删除
+			if currentConsumer, exists := x.handlers[routerId]; exists && currentConsumer == consumer {
+				delete(x.handlers, routerId)
+			}
+		}
+		x.Unlock()
+	}()
+
+	ctx := context.Background()
+	for {
+		// 检查消费者是否已关闭
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		// 检查消费者组是否仍在handlers中（用于判断是否被手动移除）
+		x.Lock()
+		_, exists := x.handlers[routerId]
+		closed := x.closed
+		x.Unlock()
+		if !exists || closed {
+			return
+		}
+
+		err := consumer.Consume(ctx, topics, handler)
+		if err != nil {
+			// 如果是致命错误，重新创建消费者
+			if err == sarama.ErrClosedConsumerGroup {
+				// 重新创建消费者，使用完整的配置
+				config := sarama.NewConfig()
+				config.Consumer.Return.Errors = true
+				config.Metadata.Retry.Max = 3
+				config.Metadata.Retry.Backoff = 250 * 1000000 // 250ms
+				config.Consumer.Offsets.Initial = sarama.OffsetNewest
+
+				// 配置SASL认证
+				if x.Config.SASL.Enable {
+					config.Net.SASL.Enable = true
+					config.Net.SASL.User = x.Config.SASL.Username
+					config.Net.SASL.Password = x.Config.SASL.Password
+
+					switch strings.ToUpper(x.Config.SASL.Mechanism) {
+					case "PLAIN":
+						config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
+					case "SCRAM-SHA-256":
+						config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA256
+					case "SCRAM-SHA-512":
+						config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA512
+					default:
+						config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
+					}
+				}
+
+				// 配置TLS
+				if x.Config.TLS.Enable {
+					config.Net.TLS.Enable = true
+					if x.Config.TLS.InsecureSkipVerify {
+						config.Net.TLS.Config = &tls.Config{InsecureSkipVerify: true}
+					}
+				}
+
+				newConsumer, createErr := sarama.NewConsumerGroup(x.brokers, x.Config.GroupId, config)
+				if createErr != nil {
+					x.Printf("Failed to recreate consumer for topic %s: %v", topics[0], createErr)
+					return
+				}
+				// 更新handlers中的消费者引用
+				x.Lock()
+				oldConsumer := consumer
+				if x.handlers != nil {
+					x.handlers[routerId] = newConsumer
+					consumer = newConsumer
+				}
+				x.Unlock()
+				// 在释放锁后关闭旧的消费者
+				_ = oldConsumer.Close()
+			} else {
+				// 其他错误，等待一段时间后重试
+				time.Sleep(5 * time.Second)
+			}
+		} else {
+			// 正常结束，等待一段时间后重试连接
+			time.Sleep(1 * time.Second)
+		}
+	}
+}
+
 // BeginShutdown 实现 GracefulShutdown 接口，开始优雅关闭过程
 func (x *Kafka) BeginShutdown(ctx context.Context) error {
 	// 设置关闭状态，防止接受新的连接和消息
 	atomic.StoreInt32(&x.isShuttingDown, 1)
-
-	x.Printf("Kafka endpoint beginning graceful shutdown...")
 
 	// 不立即关闭资源，而是标记状态，让正在处理的消息完成
 	// 实际的资源关闭会在Destroy()中进行
@@ -713,4 +720,10 @@ func (x *Kafka) IsShuttingDown() bool {
 func (x *Kafka) GetShutdownTimeout() time.Duration {
 	// Kafka组件需要较长的时间来优雅关闭所有consumer和producer
 	return 30 * time.Second
+}
+
+func (x *Kafka) Printf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Printf(format, v...)
+	}
 }

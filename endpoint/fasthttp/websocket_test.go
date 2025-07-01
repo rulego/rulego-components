@@ -19,6 +19,7 @@ package fasthttp
 import (
 	"fmt"
 	"net/url"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -53,7 +54,7 @@ func TestFastHttpWebsocketEndpoint(t *testing.T) {
 		// 处理websocket消息
 		msg := exchange.In.GetMsg()
 		msg.Type = "TEST"
-		msg.SetData(fmt.Sprintf("echo: %s", msg.Data))
+		msg.SetData(fmt.Sprintf("echo: %s", msg.GetData()))
 		exchange.Out.SetBody([]byte(msg.GetData()))
 		return true
 	}).To("chain:rule01").End()
@@ -119,8 +120,8 @@ func TestFastHttpWebsocketEndpointWithEvents(t *testing.T) {
 	_, err := rulego.New("rule01", []byte(ruleChainFile))
 	assert.Nil(t, err)
 
-	// 事件计数器
-	var connectCount, disconnectCount int
+	// 事件计数器 - 使用原子操作避免数据竞争
+	var connectCount, disconnectCount int64
 
 	// 创建websocket端点配置
 	config := WebsocketConfig{
@@ -138,9 +139,9 @@ func TestFastHttpWebsocketEndpointWithEvents(t *testing.T) {
 	websocketEndpoint.OnEvent = func(eventType string, params ...interface{}) {
 		switch eventType {
 		case endpointApi.EventConnect:
-			connectCount++
+			atomic.AddInt64(&connectCount, 1)
 		case endpointApi.EventDisconnect:
-			disconnectCount++
+			atomic.AddInt64(&disconnectCount, 1)
 		}
 	}
 
@@ -148,7 +149,7 @@ func TestFastHttpWebsocketEndpointWithEvents(t *testing.T) {
 	router := endpoint.NewRouter().From("/ws").Transform(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		msg := exchange.In.GetMsg()
 		msg.Type = "TEST"
-		msg.SetData(fmt.Sprintf("processed: %s", msg.Data))
+		msg.SetData(fmt.Sprintf("processed: %s", msg.GetData()))
 		exchange.Out.SetBody([]byte(msg.GetData()))
 		return true
 	}).To("chain:rule01").End()
@@ -185,8 +186,8 @@ func TestFastHttpWebsocketEndpointWithEvents(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 
 		// 验证事件计数
-		assert.Equal(t, 1, connectCount)
-		assert.Equal(t, 1, disconnectCount)
+		assert.Equal(t, int64(1), atomic.LoadInt64(&connectCount))
+		assert.Equal(t, int64(1), atomic.LoadInt64(&disconnectCount))
 	})
 
 	// 清理
@@ -219,7 +220,7 @@ func TestFastHttpWebsocketEndpointParams(t *testing.T) {
 		// 获取路径参数
 		roomId := msg.Metadata.GetValue("roomId")
 		userId := msg.Metadata.GetValue("userId")
-		msg.SetData(fmt.Sprintf("room:%s,user:%s,data:%s", roomId, userId, msg.Data))
+		msg.SetData(fmt.Sprintf("room:%s,user:%s,data:%s", roomId, userId, msg.GetData()))
 		exchange.Out.SetBody([]byte(msg.GetData()))
 		return true
 	}).To("chain:rule01").End()

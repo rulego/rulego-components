@@ -18,12 +18,14 @@ package kafka
 
 import (
 	"errors"
+	"os"
+	"testing"
+	"time"
+
 	"github.com/IBM/sarama"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/test"
 	"github.com/rulego/rulego/test/assert"
-	"testing"
-	"time"
 )
 
 func TestKafkaProducer(t *testing.T) {
@@ -63,11 +65,22 @@ func TestKafkaProducer(t *testing.T) {
 
 }
 func TestKafkaProducerNodeOnMsg(t *testing.T) {
+	// 如果设置了跳过 Kafka 测试，则跳过
+	if os.Getenv("SKIP_KAFKA_TESTS") == "true" {
+		t.Skip("Skipping Kafka tests")
+	}
+
+	// 检查是否有可用的 Kafka 服务器
+	kafkaBrokers := os.Getenv("KAFKA_BROKERS")
+	if kafkaBrokers == "" {
+		kafkaBrokers = "localhost:9092"
+	}
+
 	var node ProducerNode
 	var configuration = make(types.Configuration)
 	configuration["topic"] = "device.msg.request"
 	configuration["key"] = "${metadata.id}"
-	configuration["server"] = "localhost:9092"
+	configuration["server"] = kafkaBrokers
 	config := types.NewConfig()
 	err := node.Init(config, configuration)
 	if err != nil {

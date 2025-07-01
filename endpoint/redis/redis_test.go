@@ -18,13 +18,14 @@ package redis
 
 import (
 	"context"
-	"github.com/redis/go-redis/v9"
-	"github.com/rulego/rulego"
-	"github.com/rulego/rulego/test/assert"
 	"os"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/redis/go-redis/v9"
+	"github.com/rulego/rulego"
+	"github.com/rulego/rulego/test/assert"
 
 	"github.com/rulego/rulego/api/types"
 	endpointApi "github.com/rulego/rulego/api/types/endpoint"
@@ -34,6 +35,17 @@ import (
 var testdataFolder = "../../testdata"
 
 func TestRedisEndpoint(t *testing.T) {
+	// 检查是否有可用的 Redis 服务器
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL == "" {
+		redisURL = "127.0.0.1:6379"
+	}
+
+	// 如果设置了跳过 Redis 测试，则跳过
+	if os.Getenv("SKIP_REDIS_TESTS") == "true" {
+		t.Skip("Skipping Redis tests")
+	}
+
 	buf, err := os.ReadFile(testdataFolder + "/chain_msg_type_switch.json")
 	if err != nil {
 		t.Fatal(err)
@@ -44,20 +56,20 @@ func TestRedisEndpoint(t *testing.T) {
 
 	// 启动redis接收服务
 	ep, err := endpoint.Registry.New(Type, config, Config{
-		Server: "127.0.0.1:6379",
+		Server: redisURL,
 	})
 	if err != nil {
-		t.Fatal(err)
+		t.Skipf("Failed to create Redis endpoint (Redis may not be available): %v", err)
 	}
 	count := int32(0)
 	// 路由1
 	router1 := endpoint.NewRouter().SetId("router1").From("device.msg.request,device.msg.response").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		atomic.AddInt32(&count, 1)
 		if exchange.In.Headers().Get("topic") == "device.msg.response" {
-			assert.Equal(t, "this is response", exchange.In.GetMsg().Data)
+			assert.Equal(t, "this is response", exchange.In.GetMsg().GetData())
 			return false
 		}
-		assert.Equal(t, "test message", exchange.In.GetMsg().Data)
+		assert.Equal(t, "test message", exchange.In.GetMsg().GetData())
 		return true
 	}).To("chain:default").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		// 往指定主题发送数据，用于响应
@@ -69,10 +81,10 @@ func TestRedisEndpoint(t *testing.T) {
 	router2 := endpoint.NewRouter().SetId("router1").From("device.msg.request,device.msg.response").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		atomic.AddInt32(&count, 1)
 		if exchange.In.Headers().Get("topic") == "device.msg.response" {
-			assert.Equal(t, "this is response", exchange.In.GetMsg().Data)
+			assert.Equal(t, "this is response", exchange.In.GetMsg().GetData())
 			return false
 		}
-		assert.Equal(t, "test message", exchange.In.GetMsg().Data)
+		assert.Equal(t, "test message", exchange.In.GetMsg().GetData())
 		return true
 	}).To("chain:default").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		// 往指定主题发送数据，用于响应
@@ -91,29 +103,31 @@ func TestRedisEndpoint(t *testing.T) {
 	// 启动服务
 	err = ep.Start()
 	if err != nil {
-		t.Fatal(err)
+		t.Skipf("Failed to start Redis endpoint: %v", err)
 	}
 
 	// 测试发布和订阅
 	redisClient := redis.NewClient(&redis.Options{
-		Addr: "127.0.0.1:6379",
+		Addr: redisURL,
 	})
 	err = redisClient.Ping(context.Background()).Err()
-	assert.Nil(t, err)
+	if err != nil {
+		t.Skipf("Redis server not available: %v", err)
+	}
 	// 发布消息到device.msg.request
 	redisClient.Publish(context.TODO(), "device.msg.request", "test message")
 	// 等待消息处理
 	time.Sleep(time.Millisecond * 200)
-	assert.Equal(t, int32(2), count)
+	assert.Equal(t, int32(2), atomic.LoadInt32(&count))
 	atomic.StoreInt32(&count, 0)
 
 	router3 := endpoint.NewRouter().SetId("router3").From("device.msg.request").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		atomic.AddInt32(&count, 1)
 		if exchange.In.Headers().Get("topic") == "device.msg.response" {
-			assert.Equal(t, "this is response", exchange.In.GetMsg().Data)
+			assert.Equal(t, "this is response", exchange.In.GetMsg().GetData())
 			return false
 		}
-		assert.Equal(t, "test message", exchange.In.GetMsg().Data)
+		assert.Equal(t, "test message", exchange.In.GetMsg().GetData())
 		return true
 	}).To("chain:default").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		// 往指定主题发送数据，用于响应
@@ -130,7 +144,7 @@ func TestRedisEndpoint(t *testing.T) {
 	redisClient.Publish(context.TODO(), "device.msg.request", "test message")
 	// 等待消息处理
 	time.Sleep(time.Millisecond * 200)
-	assert.Equal(t, int32(4), count)
+	assert.Equal(t, int32(4), atomic.LoadInt32(&count))
 	atomic.StoreInt32(&count, 0)
 
 	_ = ep.RemoveRouter("router3")
@@ -138,7 +152,7 @@ func TestRedisEndpoint(t *testing.T) {
 	redisClient.Publish(context.TODO(), "device.msg.request", "test message")
 	// 等待消息处理
 	time.Sleep(time.Millisecond * 200)
-	assert.Equal(t, int32(2), count)
+	assert.Equal(t, int32(2), atomic.LoadInt32(&count))
 	atomic.StoreInt32(&count, 0)
 
 	_ = ep.RemoveRouter("router1")
@@ -146,7 +160,7 @@ func TestRedisEndpoint(t *testing.T) {
 	redisClient.Publish(context.TODO(), "device.msg.request", "test message")
 	// 等待消息处理
 	time.Sleep(time.Millisecond * 200)
-	assert.Equal(t, int32(0), count)
+	assert.Equal(t, int32(0), atomic.LoadInt32(&count))
 	atomic.StoreInt32(&count, 0)
 
 	_, _ = ep.AddRouter(router1)
@@ -154,6 +168,6 @@ func TestRedisEndpoint(t *testing.T) {
 	redisClient.Publish(context.TODO(), "device.msg.request", "test message")
 	// 等待消息处理
 	time.Sleep(time.Millisecond * 200)
-	assert.Equal(t, int32(2), count)
+	assert.Equal(t, int32(2), atomic.LoadInt32(&count))
 	atomic.StoreInt32(&count, 0)
 }

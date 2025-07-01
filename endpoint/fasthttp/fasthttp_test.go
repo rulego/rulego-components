@@ -199,8 +199,8 @@ func TestFastHttpStaticFiles(t *testing.T) {
 	assert.Nil(t, err)
 	time.Sleep(time.Millisecond * 200)
 
-	// 配置静态文件映射 - 使用绝对路径
-	resourceMapping := "/static=d:/github/rulego-components/endpoint/fasthttp/testdata/static,/assets=d:/github/rulego-components/endpoint/fasthttp/testdata/static/css"
+	// 配置静态文件映射 - 使用相对路径
+	resourceMapping := "/static=testdata/static,/assets=testdata/static/css"
 	fasthttpEndpoint.RegisterStaticFiles(resourceMapping)
 
 	time.Sleep(time.Millisecond * 100)

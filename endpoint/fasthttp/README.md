@@ -51,7 +51,7 @@ func main() {
     
     // 添加路由
     router := impl.NewRouter().From("/api/test").Transform(func(ctx types.RuleContext, msg types.RuleMsg) types.RuleMsg {
-        msg.Data = `{"status":"success","data":` + msg.Data + `}`
+        msg.SetData(`{"status":"success","data":` + msg.Data + `}`)
         return msg
     }).End()
     

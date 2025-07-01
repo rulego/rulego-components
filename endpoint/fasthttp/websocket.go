@@ -496,16 +496,24 @@ func (ws *FastHttpWebsocket) handler(router endpointApi.Router) func(ctx *fastht
 				},
 			}
 
-			if ws.OnEvent != nil {
-				ws.OnEvent(endpointApi.EventConnect, connectExchange)
+			// 安全地调用OnEvent
+			ws.RLock()
+			onEvent := ws.OnEvent
+			ws.RUnlock()
+			if onEvent != nil {
+				onEvent(endpointApi.EventConnect, connectExchange)
 			}
 
 			defer func() {
 				_ = conn.Close()
 				//捕捉异常
 				if e := recover(); e != nil {
-					if ws.OnEvent != nil {
-						ws.OnEvent(endpointApi.EventDisconnect, connectExchange)
+					// 安全地调用OnEvent
+					ws.RLock()
+					onEvent := ws.OnEvent
+					ws.RUnlock()
+					if onEvent != nil {
+						onEvent(endpointApi.EventDisconnect, connectExchange)
 					}
 					ws.Printf("fasthttp websocket endpoint handler err :\n%v", runtime.Stack())
 				}
@@ -514,15 +522,23 @@ func (ws *FastHttpWebsocket) handler(router endpointApi.Router) func(ctx *fastht
 			for {
 				mt, message, err := conn.ReadMessage()
 				if err != nil {
-					if ws.OnEvent != nil {
-						ws.OnEvent(endpointApi.EventDisconnect, connectExchange, ctx)
+					// 安全地调用OnEvent
+					ws.RLock()
+					onEvent := ws.OnEvent
+					ws.RUnlock()
+					if onEvent != nil {
+						onEvent(endpointApi.EventDisconnect, connectExchange, ctx)
 					}
 					break
 				}
 
 				if router.IsDisable() {
-					if ws.OnEvent != nil {
-						ws.OnEvent(endpointApi.EventDisconnect, connectExchange, ctx)
+					// 安全地调用OnEvent
+					ws.RLock()
+					onEvent := ws.OnEvent
+					ws.RUnlock()
+					if onEvent != nil {
+						onEvent(endpointApi.EventDisconnect, connectExchange, ctx)
 					}
 					ctx.SetStatusCode(fasthttp.StatusNotFound)
 					break

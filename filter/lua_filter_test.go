@@ -17,6 +17,7 @@
 package filter
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -26,6 +27,11 @@ import (
 )
 
 func TestLuaFilter(t *testing.T) {
+	// 如果设置了跳过 Lua 测试，则跳过
+	if os.Getenv("SKIP_LUA_TESTS") == "true" {
+		t.Skip("Skipping Lua filter tests")
+	}
+
 	var targetNodeType = "x/luaFilter"
 	var registry = &types.SafeComponentSlice{}
 	registry.Add(&LuaFilter{})
@@ -122,6 +128,11 @@ func TestLuaFilter(t *testing.T) {
 }
 
 func TestLuaFilterWithArray(t *testing.T) {
+	// 如果设置了跳过 Lua 测试，则跳过
+	if os.Getenv("SKIP_LUA_TESTS") == "true" {
+		t.Skip("Skipping Lua filter tests")
+	}
+
 	// Test with JSON array data
 	var targetNodeType = "x/luaFilter"
 	var registry = &types.SafeComponentSlice{}
@@ -356,6 +367,11 @@ func TestLuaFilterWithArray(t *testing.T) {
 }
 
 func TestLuaFilterWithNonJSONData(t *testing.T) {
+	// 如果设置了跳过 Lua 测试，则跳过
+	if os.Getenv("SKIP_LUA_TESTS") == "true" {
+		t.Skip("Skipping Lua filter tests")
+	}
+
 	// Test with non-JSON data (should be passed as string)
 	var targetNodeType = "x/luaFilter"
 	var registry = &types.SafeComponentSlice{}
@@ -415,6 +431,11 @@ func TestLuaFilterWithNonJSONData(t *testing.T) {
 }
 
 func TestLuaFilterArrayWithMetadata(t *testing.T) {
+	// 如果设置了跳过 Lua 测试，则跳过
+	if os.Getenv("SKIP_LUA_TESTS") == "true" {
+		t.Skip("Skipping Lua filter tests")
+	}
+
 	// Test filtering array with metadata access
 	var targetNodeType = "x/luaFilter"
 	var registry = &types.SafeComponentSlice{}
@@ -477,6 +498,11 @@ func TestLuaFilterArrayWithMetadata(t *testing.T) {
 
 // Simple test for dataType parameter support
 func TestLuaFilterWithDataType(t *testing.T) {
+	// 如果设置了跳过 Lua 测试，则跳过
+	if os.Getenv("SKIP_LUA_TESTS") == "true" {
+		t.Skip("Skipping Lua filter tests")
+	}
+
 	var targetNodeType = "x/luaFilter"
 	var registry = &types.SafeComponentSlice{}
 	registry.Add(&LuaFilter{})

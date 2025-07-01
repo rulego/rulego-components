@@ -1,0 +1,190 @@
+name: Test
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      kafka:
+        image: confluentinc/cp-kafka:7.4.0
+        ports:
+          - 9092:9092
+        env:
+          KAFKA_BROKER_ID: 1
+          KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+          KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+          KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+          KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+        options: >-
+          --health-cmd "kafka-topics --bootstrap-server localhost:9092 --list"
+          --health-interval 30s
+          --health-timeout 10s
+          --health-retries 5
+
+      zookeeper:
+        image: confluentinc/cp-zookeeper:7.4.0
+        ports:
+          - 2181:2181
+        env:
+          ZOOKEEPER_CLIENT_PORT: 2181
+          ZOOKEEPER_TICK_TIME: 2000
+
+      nats:
+        image: nats:2.10-alpine
+        ports:
+          - 4222:4222
+
+      rabbitmq:
+        image: rabbitmq:3.12-management-alpine
+        ports:
+          - 5672:5672
+          - 15672:15672
+        env:
+          RABBITMQ_DEFAULT_USER: guest
+          RABBITMQ_DEFAULT_PASS: guest
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 30s
+          --health-timeout 10s
+          --health-retries 5
+
+      mongodb:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+        env:
+          MONGO_INITDB_ROOT_USERNAME: root
+          MONGO_INITDB_ROOT_PASSWORD: password
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand(\"ping\")'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      beanstalkd:
+        image: schickling/beanstalkd:latest
+        ports:
+          - 11300:11300
+
+    strategy:
+      matrix:
+        go-version: [1.23, 1.24]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ matrix.go-version }}
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-${{ matrix.go-version }}-
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Verify dependencies
+      run: go mod verify
+
+    - name: Wait for services to be ready
+      run: |
+        echo "Waiting for services to be ready..."
+        # Wait for Redis
+        timeout 60 sh -c 'until nc -z localhost 6379; do echo "Waiting for Redis..."; sleep 2; done'
+        
+        # Wait for NATS
+        timeout 60 sh -c 'until nc -z localhost 4222; do echo "Waiting for NATS..."; sleep 2; done'
+        
+        # Wait for RabbitMQ
+        timeout 60 sh -c 'until nc -z localhost 5672; do echo "Waiting for RabbitMQ..."; sleep 2; done'
+        
+        # Wait for MongoDB
+        timeout 60 sh -c 'until nc -z localhost 27017; do echo "Waiting for MongoDB..."; sleep 2; done'
+        
+        # Wait for Beanstalkd
+        timeout 60 sh -c 'until nc -z localhost 11300; do echo "Waiting for Beanstalkd..."; sleep 2; done'
+        
+        # Wait for Kafka (takes longer to start)
+        echo "Waiting for Kafka to be ready..."
+        for i in {1..30}; do
+          if docker exec ${{ job.services.kafka.id }} kafka-topics --bootstrap-server localhost:9092 --list &>/dev/null; then
+            echo "Kafka is ready!"
+            break
+          fi
+          echo "Attempt $i: Kafka not ready yet..."
+          sleep 5
+        done
+
+    - name: Run tests with coverage
+      env:
+        # Enable integration tests
+        INTEGRATION_TESTS: true
+        # Middleware connection settings
+        REDIS_URL: localhost:6379
+        KAFKA_BROKERS: localhost:9092
+        NATS_URL: nats://localhost:4222
+        RABBITMQ_URL: amqp://guest:guest@localhost:5672/
+        MONGODB_URL: mongodb://root:password@localhost:27017/
+        BEANSTALKD_URL: localhost:11300
+        # Skip tests that require external services not available in CI
+        SKIP_GRPC_TESTS: true
+        SKIP_WUKONGIM_TESTS: true
+        SKIP_OPENGEMINI_TESTS: true
+        SKIP_OTEL_TESTS: true
+        # Test timeout
+        TEST_TIMEOUT: 30s
+      run: |
+        go test -v -race -timeout=5m -coverprofile=coverage.out -covermode=atomic ./...
+
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.out
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+#  lint:
+#    runs-on: ubuntu-latest
+#    steps:
+#    - uses: actions/checkout@v4
+#
+#    - name: Set up Go
+#      uses: actions/setup-go@v4
+#      with:
+#        go-version: 1.23
+#
+#     - name: golangci-lint
+#       uses: golangci/golangci-lint-action@v3
+#       with:
+#         version: latest
+#         args: --timeout=5m

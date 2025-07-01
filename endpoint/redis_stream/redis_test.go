@@ -18,13 +18,14 @@ package redis
 
 import (
 	"context"
-	"github.com/redis/go-redis/v9"
-	"github.com/rulego/rulego"
-	"github.com/rulego/rulego/test/assert"
 	"os"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/redis/go-redis/v9"
+	"github.com/rulego/rulego"
+	"github.com/rulego/rulego/test/assert"
 
 	"github.com/rulego/rulego/api/types"
 	endpointApi "github.com/rulego/rulego/api/types/endpoint"
@@ -61,10 +62,10 @@ func TestRedisEndpoint(t *testing.T) {
 	router1 := endpoint.NewRouter().SetId("router1").From("device.msg.request,device.msg.response").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		atomic.AddInt32(&count, 1)
 		if exchange.In.Headers().Get("topic") == "device.msg.response" {
-			assert.Equal(t, "{\"value\":\"this is response\"}", exchange.In.GetMsg().Data)
+			assert.Equal(t, "{\"value\":\"this is response\"}", exchange.In.GetMsg().GetData())
 			return false
 		}
-		assert.Equal(t, "{\"field1\":\"value1\",\"field2\":\"42\"}", exchange.In.GetMsg().Data)
+		assert.Equal(t, "{\"field1\":\"value1\",\"field2\":\"42\"}", exchange.In.GetMsg().GetData())
 		return true
 	}).To("chain:default").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		// 往指定主题发送数据，用于响应
@@ -76,10 +77,10 @@ func TestRedisEndpoint(t *testing.T) {
 	router2 := endpoint.NewRouter().SetId("router1").From("device.msg.request,device.msg.response").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		atomic.AddInt32(&count, 1)
 		if exchange.In.Headers().Get("topic") == "device.msg.response" {
-			assert.Equal(t, "{\"value\":\"this is response\"}", exchange.In.GetMsg().Data)
+			assert.Equal(t, "{\"value\":\"this is response\"}", exchange.In.GetMsg().GetData())
 			return false
 		}
-		assert.Equal(t, "{\"field1\":\"value1\",\"field2\":\"42\"}", exchange.In.GetMsg().Data)
+		assert.Equal(t, "{\"field1\":\"value1\",\"field2\":\"42\"}", exchange.In.GetMsg().GetData())
 		return true
 	}).To("chain:default").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		// 往指定主题发送数据，用于响应
@@ -112,7 +113,7 @@ func TestRedisEndpoint(t *testing.T) {
 	// 等待消息处理
 	time.Sleep(time.Millisecond * 500)
 
-	assert.Equal(t, int32(2), count)
+	assert.Equal(t, int32(2), atomic.LoadInt32(&count))
 	atomic.StoreInt32(&count, 0)
 
 	ep.RemoveRouter("router1")
@@ -120,7 +121,7 @@ func TestRedisEndpoint(t *testing.T) {
 	addData(redisClient, "device.msg.request")
 	// 等待消息处理
 	time.Sleep(time.Millisecond * 500)
-	assert.Equal(t, int32(0), count)
+	assert.Equal(t, int32(0), atomic.LoadInt32(&count))
 	atomic.StoreInt32(&count, 0)
 }
 

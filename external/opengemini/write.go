@@ -146,19 +146,15 @@ func (x *WriteNode) GetInstance() (interface{}, error) {
 
 // initClient 初始化客户端
 func (x *WriteNode) initClient() (opengemini.Client, error) {
+	x.Locker.Lock()
+	defer x.Locker.Unlock()
 	if x.client != nil {
 		return x.client, nil
-	} else {
-		x.Locker.Lock()
-		defer x.Locker.Unlock()
-		if x.client != nil {
-			return x.client, nil
-		}
-		var err error
-		// 创建 OpenGemini 客户端
-		x.client, err = opengemini.NewClient(x.opengeminiConfig)
-		return x.client, err
 	}
+	var err error
+	// 创建 OpenGemini 客户端
+	x.client, err = opengemini.NewClient(x.opengeminiConfig)
+	return x.client, err
 }
 
 func (x *WriteNode) createOpengeminiConfig() (*opengemini.Config, error) {

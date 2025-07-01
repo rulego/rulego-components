@@ -20,7 +20,7 @@ return nil
 }
 //处理消息
 func (n *UpperNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
-msg.Data = strings.ToUpper(msg.Data)
+msg.SetData(strings.ToUpper(msg.GetData()))
 // Send the modified message to the next node
 ctx.TellSuccess(msg)
 return nil

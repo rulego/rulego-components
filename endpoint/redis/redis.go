@@ -323,21 +323,17 @@ func (x *Redis) Start() error {
 }
 
 func (x *Redis) initClient() (*redis.Client, error) {
+	x.Locker.Lock()
+	defer x.Locker.Unlock()
 	if x.redisClient != nil {
 		return x.redisClient, nil
-	} else {
-		x.Locker.Lock()
-		defer x.Locker.Unlock()
-		if x.redisClient != nil {
-			return x.redisClient, nil
-		}
-		x.redisClient = redis.NewClient(&redis.Options{
-			Addr:     x.Config.Server,
-			DB:       x.Config.Db,
-			Password: x.Config.Password,
-		})
-		return x.redisClient, x.redisClient.Ping(context.Background()).Err()
 	}
+	x.redisClient = redis.NewClient(&redis.Options{
+		Addr:     x.Config.Server,
+		DB:       x.Config.Db,
+		Password: x.Config.Password,
+	})
+	return x.redisClient, x.redisClient.Ping(context.Background()).Err()
 }
 
 func (x *Redis) Printf(format string, v ...interface{}) {

@@ -39,6 +39,7 @@ import (
 const (
 	SELECT = "SELECT"
 	QUERY  = "QUERY"
+	FIND   = "FIND"
 	INSERT = "INSERT"
 	DELETE = "DELETE"
 	UPDATE = "UPDATE"
@@ -62,7 +63,7 @@ type ClientNodeConfiguration struct {
 	Database string
 	//集合名称，支持${}占位符
 	Collection string
-	//操作类型 INSERT,UPDATE,DELETE,QUERY
+	//操作类型 INSERT,UPDATE,DELETE,QUERY,SELECT,FIND
 	OpType string
 	// 过滤条件，可以使用expr表达式。示例：{"age": {"$gte": 18}}
 	Filter string
@@ -178,11 +179,14 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 
 // ProcessMessage 处理消息，执行查询、更新或删除操作
 func (x *ClientNode) processMessage(ctx types.RuleContext, evn map[string]interface{}, collection *mongo.Collection, msg types.RuleMsg, opType string) {
+	// 转换为大写以支持大小写不敏感
+	opTypeUpper := strings.ToUpper(opType)
+
 	// 根据操作类型执行不同的操作
-	switch opType {
+	switch opTypeUpper {
 	case INSERT:
 		x.insert(ctx, evn, collection, msg)
-	case QUERY, SELECT:
+	case QUERY, SELECT, FIND:
 		x.query(ctx, evn, collection, msg)
 	case UPDATE:
 		x.update(ctx, evn, collection, msg)

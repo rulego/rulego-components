@@ -124,16 +124,12 @@ func (x *ClientNode) Destroy() {
 }
 
 func (x *ClientNode) initClient() (*nats.Conn, error) {
+	x.Locker.Lock()
+	defer x.Locker.Unlock()
 	if x.client != nil {
 		return x.client, nil
-	} else {
-		x.Locker.Lock()
-		defer x.Locker.Unlock()
-		if x.client != nil {
-			return x.client, nil
-		}
-		var err error
-		x.client, err = nats.Connect(x.Config.Server, nats.UserInfo(x.Config.Username, x.Config.Password))
-		return x.client, err
 	}
+	var err error
+	x.client, err = nats.Connect(x.Config.Server, nats.UserInfo(x.Config.Username, x.Config.Password))
+	return x.client, err
 }

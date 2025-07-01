@@ -17,14 +17,21 @@
 package grpc
 
 import (
+	"os"
+	"testing"
+	"time"
+
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/test"
 	"github.com/rulego/rulego/test/assert"
-	"testing"
-	"time"
 )
 
 func TestClientNode(t *testing.T) {
+	// 如果设置了跳过 gRPC 测试，则跳过
+	if os.Getenv("SKIP_GRPC_TESTS") == "true" {
+		t.Skip("Skipping gRPC tests")
+	}
+
 	Registry := &types.SafeComponentSlice{}
 	Registry.Add(&ClientNode{})
 	var targetNodeType = "x/grpcClient"
@@ -96,7 +103,7 @@ func TestClientNode(t *testing.T) {
 				Node:    node1,
 				MsgList: msgList,
 				Callback: func(msg types.RuleMsg, relationType string, err error) {
-					assert.Equal(t, "{\"message\":\"Hello lulu\",\"groupName\":\"app01\"}\n", msg.Data)
+					assert.Equal(t, "{\"message\":\"Hello lulu\",\"groupName\":\"app01\"}\n", msg.GetData())
 					assert.Equal(t, types.Success, relationType)
 				},
 			},
@@ -104,7 +111,7 @@ func TestClientNode(t *testing.T) {
 				Node:    node2,
 				MsgList: msgList,
 				Callback: func(msg types.RuleMsg, relationType string, err error) {
-					assert.Equal(t, "{\"message\":\"Hello lala\"}\n", msg.Data)
+					assert.Equal(t, "{\"message\":\"Hello lala\"}\n", msg.GetData())
 					assert.Equal(t, types.Success, relationType)
 				},
 			},
@@ -112,7 +119,7 @@ func TestClientNode(t *testing.T) {
 				Node:    node3,
 				MsgList: msgList,
 				Callback: func(msg types.RuleMsg, relationType string, err error) {
-					assert.Equal(t, "{\"message\":\"Hello lala\"}\n", msg.Data)
+					assert.Equal(t, "{\"message\":\"Hello lala\"}\n", msg.GetData())
 					assert.Equal(t, types.Success, relationType)
 				},
 			},
