@@ -20,6 +20,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/textproto"
+	"strings"
+
 	"github.com/redis/go-redis/v9"
 	"github.com/rulego/rulego/api/types"
 	endpointApi "github.com/rulego/rulego/api/types/endpoint"
@@ -28,8 +31,6 @@ import (
 	"github.com/rulego/rulego/endpoint/impl"
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/runtime"
-	"net/textproto"
-	"strings"
 )
 
 // Type 组件类型
@@ -240,13 +241,19 @@ func (x *Redis) Destroy() {
 }
 
 func (x *Redis) Close() error {
-	if nil != x.redisClient {
-		_ = x.redisClient.Close()
-	}
+	// 使用优雅关闭机制，等待活跃操作完成后再关闭资源
+	x.SharedNode.GracefulShutdown(0, func() {
+		// 只在非资源池模式下关闭本地资源
+		if nil != x.redisClient {
+			_ = x.redisClient.Close()
+			x.redisClient = nil
+		}
+		if x.pubSub != nil {
+			_ = x.pubSub.Close()
+			x.pubSub = nil
+		}
+	})
 	x.BaseEndpoint.Destroy()
-	if x.pubSub != nil {
-		_ = x.pubSub.Close()
-	}
 	return nil
 }
 
@@ -403,6 +410,15 @@ func (x *Redis) checkSubByRouterId(routerId string) bool {
 }
 
 func (x *Redis) handlerMsg(client *redis.Client, msg *redis.Message) {
+	// 开始操作，增加活跃操作计数
+	x.SharedNode.BeginOp()
+	defer x.SharedNode.EndOp()
+
+	// 检查是否正在关闭
+	if x.SharedNode.IsShuttingDown() {
+		return
+	}
+
 	defer func() {
 		if e := recover(); e != nil {
 			x.Printf("redis endpoint handler err :\n%v", runtime.Stack())

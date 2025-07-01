@@ -17,11 +17,12 @@
 package redis
 
 import (
+	"testing"
+	"time"
+
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/test"
 	"github.com/rulego/rulego/test/assert"
-	"testing"
-	"time"
 )
 
 func TestRedisClientNodeOnMsg(t *testing.T) {
@@ -52,7 +53,7 @@ func testRedisClientSetFromMetadata(t *testing.T) {
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
 		// 检查结果是否正确
-		assert.Equal(t, "OK", msg.Data)
+		assert.Equal(t, "OK", msg.GetData())
 	})
 	metaData := types.NewMetadata()
 	// 在元数据中添加参数
@@ -81,7 +82,7 @@ func testRedisClientSetFromData(t *testing.T) {
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
 		// 检查结果是否正确
-		assert.Equal(t, "OK", msg.Data)
+		assert.Equal(t, "OK", msg.GetData())
 	})
 	metaData := types.NewMetadata()
 	// 在元数据中添加参数
@@ -109,7 +110,7 @@ func testRedisClientGetOnMsg(t *testing.T) {
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
 		// 检查结果是否正确
-		assert.Equal(t, `{"aa":"lala"}`, msg.Data)
+		assert.Equal(t, `{"aa":"lala"}`, msg.GetData())
 	})
 	metaData := types.NewMetadata()
 	// 在元数据中添加参数
@@ -137,7 +138,7 @@ func testRedisClientDelOnMsg(t *testing.T) {
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
 		// 检查结果是否正确
-		assert.Equal(t, "1", msg.Data)
+		assert.Equal(t, "1", msg.GetData())
 	})
 	metaData := types.NewMetadata()
 	// 在元数据中添加参数
@@ -164,7 +165,7 @@ func testRedisClientHMSet(t *testing.T) {
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
 		// 检查结果是否正确
-		assert.Equal(t, "OK", msg.Data)
+		assert.Equal(t, "OK", msg.GetData())
 	})
 	metaData := types.NewMetadata()
 	// 在元数据中添加参数
@@ -190,7 +191,7 @@ func testRedisClientHMGet(t *testing.T) {
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
 		// 检查结果是否正确
-		assert.Equal(t, "[\"value1\"]", msg.Data)
+		assert.Equal(t, "[\"value1\"]", msg.GetData())
 	})
 	metaData := types.NewMetadata()
 	// 在元数据中添加参数
@@ -217,7 +218,7 @@ func testRedisClientHMSetFromExpr(t *testing.T) {
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
 		// 检查结果是否正确
-		assert.Equal(t, "OK", msg.Data)
+		assert.Equal(t, "OK", msg.GetData())
 	})
 	metaData := types.NewMetadata()
 	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, `["myhash2", "field1", "value1"]`)
@@ -240,7 +241,7 @@ func testRedisClientHMGetFromExpr(t *testing.T) {
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
 		// 检查结果是否正确
-		assert.Equal(t, "[\"value1\"]", msg.Data)
+		assert.Equal(t, "[\"value1\"]", msg.GetData())
 	})
 	metaData := types.NewMetadata()
 	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, `["myhash", "field1"]`)
@@ -262,7 +263,7 @@ func testRedisClientFlushDB(t *testing.T) {
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
 		// 检查结果是否正确
-		assert.Equal(t, "OK", msg.Data)
+		assert.Equal(t, "OK", msg.GetData())
 	})
 	metaData := types.NewMetadata()
 	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, ``)

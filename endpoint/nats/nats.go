@@ -20,6 +20,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/textproto"
+
 	"github.com/nats-io/nats.go"
 	"github.com/rulego/rulego/api/types"
 	endpointApi "github.com/rulego/rulego/api/types/endpoint"
@@ -28,7 +30,6 @@ import (
 	"github.com/rulego/rulego/endpoint/impl"
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/runtime"
-	"net/textproto"
 )
 
 // Type 组件类型
@@ -229,9 +230,14 @@ func (x *Nats) Destroy() {
 }
 
 func (x *Nats) Close() error {
-	if nil != x.conn {
-		x.conn.Close()
-	}
+	// 使用优雅关闭机制，等待活跃操作完成后再关闭资源
+	x.SharedNode.GracefulShutdown(0, func() {
+		// 只在非资源池模式下关闭本地资源
+		if nil != x.conn {
+			x.conn.Close()
+			x.conn = nil
+		}
+	})
 	x.BaseEndpoint.Destroy()
 	return nil
 }
@@ -258,6 +264,15 @@ func (x *Nats) AddRouter(router endpointApi.Router, params ...interface{}) (stri
 		return routerId, fmt.Errorf("routerId %s already exists", routerId)
 	}
 	subscription, err := client.Subscribe(router.FromToString(), func(msg *nats.Msg) {
+		// 开始操作，增加活跃操作计数
+		x.SharedNode.BeginOp()
+		defer x.SharedNode.EndOp()
+
+		// 检查是否正在关闭
+		if x.SharedNode.IsShuttingDown() {
+			return
+		}
+
 		defer func() {
 			if e := recover(); e != nil {
 				x.Printf("nats endpoint handler err :\n%v", runtime.Stack())

@@ -19,6 +19,8 @@ package rabbitmq
 import (
 	"context"
 	"fmt"
+	"net/textproto"
+
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/rulego/rulego/api/types"
 	endpointApi "github.com/rulego/rulego/api/types/endpoint"
@@ -27,7 +29,6 @@ import (
 	"github.com/rulego/rulego/endpoint/impl"
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/runtime"
-	"net/textproto"
 )
 
 const (
@@ -269,15 +270,20 @@ func (x *RabbitMQ) Destroy() {
 }
 
 func (x *RabbitMQ) Close() error {
-	if x.conn != nil {
-		return x.conn.Close()
-	}
-	x.Lock()
-	defer x.Unlock()
-	for _, ch := range x.channels {
-		_ = ch.Close()
-	}
-	x.channels = map[string]*amqp.Channel{}
+	// 使用优雅关闭机制，等待活跃操作完成后再关闭资源
+	x.SharedNode.GracefulShutdown(0, func() {
+		// 只在非资源池模式下关闭本地资源
+		if x.conn != nil {
+			_ = x.conn.Close()
+			x.conn = nil
+		}
+		x.Lock()
+		defer x.Unlock()
+		for _, ch := range x.channels {
+			_ = ch.Close()
+		}
+		x.channels = map[string]*amqp.Channel{}
+	})
 	return nil
 }
 
@@ -402,6 +408,15 @@ func (x *RabbitMQ) queueBind(key string) (*amqp.Channel, *amqp.Queue, error) {
 }
 
 func (x *RabbitMQ) handlerMsg(router endpointApi.Router, ch *amqp.Channel, msg amqp.Delivery) {
+	// 开始操作，增加活跃操作计数
+	x.SharedNode.BeginOp()
+	defer x.SharedNode.EndOp()
+
+	// 检查是否正在关闭
+	if x.SharedNode.IsShuttingDown() {
+		return
+	}
+
 	defer func() {
 		if err := recover(); err != nil {
 			x.Printf("rabbitmq endpoint handler err :\n%v", runtime.Stack())

@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/redis/go-redis/v9"
@@ -74,6 +75,16 @@ func (x *PublisherNode) Init(ruleConfig types.Config, configuration types.Config
 
 // OnMsg 处理消息
 func (x *PublisherNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
+	// 开始操作，增加活跃操作计数
+	x.SharedNode.BeginOp()
+	defer x.SharedNode.EndOp()
+
+	// 检查是否正在关闭
+	if x.SharedNode.IsShuttingDown() {
+		ctx.TellFailure(msg, fmt.Errorf("redis publisher is shutting down"))
+		return
+	}
+
 	evn := base.NodeUtils.GetEvnAndMetadata(ctx, msg)
 	var channel = x.channelTemplate.Execute(evn)
 	client, err := x.SharedNode.Get()
@@ -82,8 +93,14 @@ func (x *PublisherNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		return
 	}
 
+	// 再次检查是否正在关闭，防止在Get()之后被关闭
+	if x.SharedNode.IsShuttingDown() {
+		ctx.TellFailure(msg, fmt.Errorf("redis publisher is shutting down"))
+		return
+	}
+
 	// 发布消息到Redis
-	result, err := client.Publish(ctx.GetContext(), channel, msg.Data).Result()
+	result, err := client.Publish(ctx.GetContext(), channel, msg.GetData()).Result()
 	if err != nil {
 		ctx.TellFailure(msg, err)
 	} else {
@@ -94,9 +111,14 @@ func (x *PublisherNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 
 // Destroy 销毁组件
 func (x *PublisherNode) Destroy() {
-	if x.client != nil {
-		_ = x.client.Close()
-	}
+	// 使用优雅关闭机制，等待活跃操作完成后再关闭资源
+	x.SharedNode.GracefulShutdown(0, func() {
+		// 只在非资源池模式下关闭本地资源
+		if x.client != nil {
+			_ = x.client.Close()
+			x.client = nil
+		}
+	})
 }
 
 func (x *PublisherNode) initClient() (*redis.Client, error) {

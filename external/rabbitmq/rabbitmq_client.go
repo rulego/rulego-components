@@ -17,6 +17,8 @@
 package rabbitmq
 
 import (
+	"fmt"
+
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
@@ -95,6 +97,16 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 
 // OnMsg 处理消息
 func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
+	// 开始操作，增加活跃操作计数
+	x.SharedNode.BeginOp()
+	defer x.SharedNode.EndOp()
+
+	// 检查是否正在关闭
+	if x.SharedNode.IsShuttingDown() {
+		ctx.TellFailure(msg, fmt.Errorf("rabbitmq client is shutting down"))
+		return
+	}
+
 	var evn map[string]interface{}
 	if !x.keyTemplate.IsNotVar() {
 		evn = base.NodeUtils.GetEvnAndMetadata(ctx, msg)
@@ -103,6 +115,12 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 
 	ch, err := x.checkChannel()
 	if err == nil {
+		// 再次检查是否正在关闭，防止在checkChannel()之后被关闭
+		if x.SharedNode.IsShuttingDown() {
+			ctx.TellFailure(msg, fmt.Errorf("rabbitmq client is shutting down"))
+			return
+		}
+
 		err = ch.Publish(x.Config.Exchange, key, false, false,
 			amqp.Publishing{
 				ContentType:     x.getContentType(msg),
@@ -120,12 +138,18 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 
 // Destroy 销毁
 func (x *ClientNode) Destroy() {
-	if x.amqpChannel != nil {
-		_ = x.amqpChannel.Close()
-	}
-	if x.amqpConn != nil {
-		_ = x.amqpConn.Close()
-	}
+	// 使用优雅关闭机制，等待活跃操作完成后再关闭资源
+	x.SharedNode.GracefulShutdown(0, func() {
+		// 只在非资源池模式下关闭本地资源
+		if x.amqpChannel != nil {
+			_ = x.amqpChannel.Close()
+			x.amqpChannel = nil
+		}
+		if x.amqpConn != nil {
+			_ = x.amqpConn.Close()
+			x.amqpConn = nil
+		}
+	})
 }
 
 func (x *ClientNode) getContentType(msg types.RuleMsg) string {

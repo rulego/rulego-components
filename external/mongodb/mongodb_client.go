@@ -20,10 +20,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/expr-lang/expr"
-	"github.com/expr-lang/expr/vm"
 	"strconv"
 	"strings"
+
+	"github.com/expr-lang/expr"
+	"github.com/expr-lang/expr/vm"
 
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
@@ -147,9 +148,25 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 
 // OnMsg 处理消息
 func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
+	// 开始操作，增加活跃操作计数
+	x.SharedNode.BeginOp()
+	defer x.SharedNode.EndOp()
+
+	// 检查是否正在关闭
+	if x.SharedNode.IsShuttingDown() {
+		ctx.TellFailure(msg, fmt.Errorf("mongodb client is shutting down"))
+		return
+	}
+
 	if client, err := x.SharedNode.Get(); err != nil {
 		ctx.TellFailure(msg, err)
 	} else {
+		// 再次检查是否正在关闭，防止在Get()之后被关闭
+		if x.SharedNode.IsShuttingDown() {
+			ctx.TellFailure(msg, fmt.Errorf("mongodb client is shutting down"))
+			return
+		}
+
 		evn := base.NodeUtils.GetEvnAndMetadata(ctx, msg)
 
 		databaseName := x.DatabaseNameTemplate.Execute(evn)
@@ -178,9 +195,14 @@ func (x *ClientNode) processMessage(ctx types.RuleContext, evn map[string]interf
 
 // Destroy 销毁组件
 func (x *ClientNode) Destroy() {
-	if x.client != nil {
-		_ = x.client.Disconnect(context.TODO())
-	}
+	// 使用优雅关闭机制，等待活跃操作完成后再关闭资源
+	x.SharedNode.GracefulShutdown(0, func() {
+		// 只在非资源池模式下关闭本地资源
+		if x.client != nil {
+			_ = x.client.Disconnect(context.TODO())
+			x.client = nil
+		}
+	})
 }
 
 func (x *ClientNode) toBsonM(evn map[string]interface{}, template *vm.Program) (interface{}, error) {

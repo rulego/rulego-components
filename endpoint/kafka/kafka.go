@@ -21,6 +21,12 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"net/textproto"
+	"strconv"
+	"strings"
+	"sync/atomic"
+	"time"
+
 	"github.com/IBM/sarama"
 	"github.com/rulego/rulego/api/types"
 	endpointApi "github.com/rulego/rulego/api/types/endpoint"
@@ -28,10 +34,6 @@ import (
 	"github.com/rulego/rulego/endpoint/impl"
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/runtime"
-	"net/textproto"
-	"strconv"
-	"strings"
-	"time"
 )
 
 // Type 组件类型
@@ -248,6 +250,14 @@ type Kafka struct {
 	// 主题和主题消费者映射关系，用于取消订阅
 	handlers map[string]sarama.ConsumerGroup
 	closed   bool
+	// 优雅关闭状态
+	isShuttingDown int32 // 使用原子操作
+	// 活跃消息处理计数器
+	activeMessages int64 // 使用原子操作
+	// 等待所有消息处理完成的channel
+	shutdownComplete chan struct{}
+	// 关闭超时
+	shutdownTimeout time.Duration
 }
 
 // Type 组件类型
@@ -264,6 +274,8 @@ func (x *Kafka) New() types.Node {
 				Mechanism: "PLAIN",
 			},
 		},
+		shutdownComplete: make(chan struct{}),
+		shutdownTimeout:  30 * time.Second,
 	}
 }
 
@@ -299,16 +311,96 @@ func (x *Kafka) Destroy() {
 }
 
 func (x *Kafka) Close() error {
-	for _, v := range x.handlers {
-		_ = v.Close()
+	x.Lock()
+
+	// 防止重复关闭
+	if x.closed {
+		x.Unlock()
+		return nil
 	}
 
-	x.handlers = nil
+	// 设置关闭状态，阻止新的consumer启动和新的消息处理
 	x.closed = true
-	if nil != x.producer {
-		return x.producer.Close()
+	atomic.StoreInt32(&x.isShuttingDown, 1)
+	x.Printf("Kafka endpoint starting graceful shutdown...")
+
+	// 获取当前handlers的副本，避免在关闭过程中修改map
+	handlersToClose := make(map[string]sarama.ConsumerGroup)
+	for k, v := range x.handlers {
+		handlersToClose[k] = v
 	}
+	x.Unlock()
+
+	// 阶段1：停止接收新消息 - 关闭所有consumer
+	x.Printf("Kafka endpoint closing %d consumers...", len(handlersToClose))
+	for routerId, consumer := range handlersToClose {
+		if consumer != nil {
+			if err := consumer.Close(); err != nil {
+				x.Printf("Error closing consumer %s: %v", routerId, err)
+			}
+		}
+	}
+
+	// 阶段2：等待活跃消息处理完成
+	x.Printf("Kafka endpoint waiting for active messages to complete...")
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	timeout := time.NewTimer(x.shutdownTimeout)
+	defer timeout.Stop()
+
+	for {
+		activeCount := atomic.LoadInt64(&x.activeMessages)
+		if activeCount == 0 {
+			x.Printf("All active messages completed")
+			break
+		}
+
+		select {
+		case <-timeout.C:
+			x.Printf("Shutdown timeout reached, forcing close with %d active messages", activeCount)
+			goto forceClose
+		case <-ticker.C:
+			x.Printf("Waiting for %d active messages to complete...", activeCount)
+		}
+	}
+
+forceClose:
+	// 阶段3：关闭producer
+	x.Lock()
+	defer x.Unlock()
+
+	x.handlers = nil
+
+	if x.producer != nil {
+		x.Printf("Kafka endpoint closing producer...")
+		err := x.producer.Close()
+		x.producer = nil
+		x.BaseEndpoint.Destroy()
+
+		// 通知关闭完成
+		select {
+		case <-x.shutdownComplete:
+			// 已经关闭
+		default:
+			close(x.shutdownComplete)
+		}
+
+		x.Printf("Kafka endpoint shutdown completed")
+		return err
+	}
+
 	x.BaseEndpoint.Destroy()
+
+	// 通知关闭完成
+	select {
+	case <-x.shutdownComplete:
+		// 已经关闭
+	default:
+		close(x.shutdownComplete)
+	}
+
+	x.Printf("Kafka endpoint shutdown completed")
 	return nil
 }
 
@@ -562,10 +654,24 @@ func (h *consumerHandler) ConsumeClaim(session sarama.ConsumerGroupSession, clai
 }
 func (h *consumerHandler) handlerMsg(session sarama.ConsumerGroupSession, msg *sarama.ConsumerMessage) {
 	defer func() {
+		// 减少活跃消息计数
+		atomic.AddInt64(&h.ep.activeMessages, -1)
+
 		if e := recover(); e != nil {
 			h.ep.Printf("kafka endpoint handler err :\n%v", runtime.Stack())
 		}
 	}()
+
+	// 增加活跃消息计数
+	atomic.AddInt64(&h.ep.activeMessages, 1)
+
+	// 检查是否正在关闭，如果是则拒绝处理新消息
+	if h.ep.IsShuttingDown() {
+		h.ep.Printf("Kafka endpoint is shutting down, rejecting message processing")
+		session.MarkMessage(msg, "") // 仍然标记消息已处理，避免重复
+		return
+	}
+
 	exchange := &endpointApi.Exchange{
 		In: &RequestMessage{
 			request: msg,
@@ -584,4 +690,27 @@ func (h *consumerHandler) handlerMsg(session sarama.ConsumerGroupSession, msg *s
 
 	h.ep.DoProcess(context.Background(), h.router, exchange)
 	session.MarkMessage(msg, "") // 标记消息已处理
+}
+
+// BeginShutdown 实现 GracefulShutdown 接口，开始优雅关闭过程
+func (x *Kafka) BeginShutdown(ctx context.Context) error {
+	// 设置关闭状态，防止接受新的连接和消息
+	atomic.StoreInt32(&x.isShuttingDown, 1)
+
+	x.Printf("Kafka endpoint beginning graceful shutdown...")
+
+	// 不立即关闭资源，而是标记状态，让正在处理的消息完成
+	// 实际的资源关闭会在Destroy()中进行
+	return nil
+}
+
+// IsShuttingDown 实现 GracefulShutdown 接口，检查是否正在关闭
+func (x *Kafka) IsShuttingDown() bool {
+	return atomic.LoadInt32(&x.isShuttingDown) == 1
+}
+
+// GetShutdownTimeout 实现 ShutdownTimeout 接口，返回关闭超时时间
+func (x *Kafka) GetShutdownTimeout() time.Duration {
+	// Kafka组件需要较长的时间来优雅关闭所有consumer和producer
+	return 30 * time.Second
 }

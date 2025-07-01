@@ -128,6 +128,17 @@ func (x *ProducerNode) Init(ruleConfig types.Config, configuration types.Configu
 
 // OnMsg 处理消息
 func (x *ProducerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
+	defer x.SharedNode.EndOp()
+
+	// 开始操作计数
+	x.SharedNode.BeginOp()
+
+	// 检查是否正在关闭
+	if x.SharedNode.IsShuttingDown() {
+		ctx.TellFailure(msg, errors.New("kafka producer is shutting down"))
+		return
+	}
+
 	topic := x.Config.Topic
 	key := x.Config.Key
 	if !x.topicTemplate.IsNotVar() || !x.keyTemplate.IsNotVar() {
@@ -174,9 +185,16 @@ func (x *ProducerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 
 // Destroy 销毁组件
 func (x *ProducerNode) Destroy() {
-	if x.client != nil {
-		_ = x.client.Close()
-	}
+	// 使用SharedNode的优雅关闭机制
+	// 如果是共享资源池的客户端，会自动跳过关闭
+	// 如果是本地客户端，会等待活跃操作完成后执行关闭函数
+	x.SharedNode.GracefulShutdown(0, func() {
+		// 只有非资源池模式下才关闭本地客户端
+		if x.client != nil {
+			_ = x.client.Close()
+			x.client = nil
+		}
+	})
 }
 
 func (x *ProducerNode) getBrokerFromOldVersion(configuration types.Configuration) []string {
