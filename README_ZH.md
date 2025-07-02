@@ -1,5 +1,9 @@
 # rulego-components
 
+[![Test](https://github.com/rulego/rulego-components/actions/workflows/test.yml/badge.svg)](https://github.com/rulego/rulego-components/actions/workflows/test.yml)
+
+[English](README.md)| 简体中文
+
 `rulego-components` 是 [RuleGo](https://github.com/rulego/rulego) 规则引擎扩展组件库。
 
 ## 特性

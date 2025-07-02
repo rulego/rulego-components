@@ -1,4 +1,7 @@
 # rulego-components
+[![Test](https://github.com/rulego/rulego-components/actions/workflows/test.yml/badge.svg)](https://github.com/rulego/rulego-components/actions/workflows/test.yml)
+
+English| [简体中文](README_ZH.md)
 
 `rulego-components` is a rule engine extension component library for [RuleGo](https://github.com/rulego/rulego).
 
