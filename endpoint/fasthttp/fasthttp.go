@@ -372,6 +372,8 @@ type FastHttp struct {
 	//http路由器
 	router  *router.Router
 	started bool
+	// resourceMapping is the resource mapping for static file serving
+	resourceMapping string
 }
 
 // Type 组件类型
@@ -453,6 +455,9 @@ func (fh *FastHttp) Restart() error {
 				continue
 			}
 		}
+	}
+	if fh.resourceMapping != "" {
+		fh.RegisterStaticFiles(fh.resourceMapping)
 	}
 	return nil
 }
@@ -668,6 +673,7 @@ func (fh *FastHttp) RegisterStaticFiles(resourceMapping string) endpointApi.Http
 	if resourceMapping == "" {
 		return fh
 	}
+	fh.resourceMapping = resourceMapping
 	mapping := strings.Split(resourceMapping, ",")
 	for _, item := range mapping {
 		files := strings.Split(item, "=")
