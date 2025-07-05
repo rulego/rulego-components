@@ -79,7 +79,6 @@ type TLSConfig struct {
 type ProducerNode struct {
 	base.SharedNode[sarama.SyncProducer]
 	Config NodeConfiguration
-	client sarama.SyncProducer
 	// brokers kafka服务器地址列表
 	brokers []string
 	//topic 模板
@@ -116,8 +115,10 @@ func (x *ProducerNode) Init(ruleConfig types.Config, configuration types.Configu
 		if len(x.brokers) == 0 {
 			return errors.New("brokers is empty")
 		}
-		_ = x.SharedNode.Init(ruleConfig, x.Type(), x.brokers[0], ruleConfig.NodeClientInitNow, func() (sarama.SyncProducer, error) {
+		_ = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.brokers[0], ruleConfig.NodeClientInitNow, func() (sarama.SyncProducer, error) {
 			return x.initClient()
+		}, func(client sarama.SyncProducer) error {
+			return client.Close()
 		})
 
 		x.topicTemplate = str.NewTemplate(x.Config.Topic)
@@ -128,17 +129,6 @@ func (x *ProducerNode) Init(ruleConfig types.Config, configuration types.Configu
 
 // OnMsg 处理消息
 func (x *ProducerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
-	defer x.SharedNode.EndOp()
-
-	// 开始操作计数
-	x.SharedNode.BeginOp()
-
-	// 检查是否正在关闭
-	if x.SharedNode.IsShuttingDown() {
-		ctx.TellFailure(msg, errors.New("kafka producer is shutting down"))
-		return
-	}
-
 	topic := x.Config.Topic
 	key := x.Config.Key
 	if !x.topicTemplate.IsNotVar() || !x.keyTemplate.IsNotVar() {
@@ -147,7 +137,7 @@ func (x *ProducerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		key = str.ExecuteTemplate(key, evn)
 	}
 
-	client, err := x.SharedNode.Get()
+	client, err := x.SharedNode.GetSafely()
 	if err != nil {
 		ctx.TellFailure(msg, err)
 		return
@@ -164,7 +154,7 @@ func (x *ProducerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		if x.isNetworkError(err) {
 			x.resetClient()
 			// 重试一次
-			client, retryErr := x.SharedNode.Get()
+			client, retryErr := x.SharedNode.GetSafely()
 			if retryErr == nil {
 				partition, offset, err = client.SendMessage(message)
 				if err == nil {
@@ -183,18 +173,8 @@ func (x *ProducerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	}
 }
 
-// Destroy 销毁组件
 func (x *ProducerNode) Destroy() {
-	// 使用SharedNode的优雅关闭机制
-	// 如果是共享资源池的客户端，会自动跳过关闭
-	// 如果是本地客户端，会等待活跃操作完成后执行关闭函数
-	x.SharedNode.GracefulShutdown(0, func() {
-		// 只有非资源池模式下才关闭本地客户端
-		if x.client != nil {
-			_ = x.client.Close()
-			x.client = nil
-		}
-	})
+	_ = x.SharedNode.Close()
 }
 
 func (x *ProducerNode) getBrokerFromOldVersion(configuration types.Configuration) []string {
@@ -206,52 +186,41 @@ func (x *ProducerNode) getBrokerFromOldVersion(configuration types.Configuration
 }
 
 func (x *ProducerNode) initClient() (sarama.SyncProducer, error) {
-	if x.client != nil {
-		return x.client, nil
-	} else {
-		x.Locker.Lock()
-		defer x.Locker.Unlock()
-		if x.client != nil {
-			return x.client, nil
+	config := sarama.NewConfig()
+	config.Producer.Return.Successes = true // 同步模式需要设置这个参数为true
+	// 设置重连相关配置
+	config.Metadata.Retry.Max = 3
+	config.Metadata.Retry.Backoff = 250 * 1000000 // 250ms
+	config.Producer.Retry.Max = 3
+	config.Producer.Retry.Backoff = 100 * 1000000 // 100ms
+
+	// 配置SASL认证
+	if x.Config.SASL.Enable {
+		config.Net.SASL.Enable = true
+		config.Net.SASL.User = x.Config.SASL.Username
+		config.Net.SASL.Password = x.Config.SASL.Password
+
+		switch strings.ToUpper(x.Config.SASL.Mechanism) {
+		case "PLAIN":
+			config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
+		case "SCRAM-SHA-256":
+			config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA256
+		case "SCRAM-SHA-512":
+			config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA512
+		default:
+			config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
 		}
-		var err error
-		config := sarama.NewConfig()
-		config.Producer.Return.Successes = true // 同步模式需要设置这个参数为true
-		// 设置重连相关配置
-		config.Metadata.Retry.Max = 3
-		config.Metadata.Retry.Backoff = 250 * 1000000 // 250ms
-		config.Producer.Retry.Max = 3
-		config.Producer.Retry.Backoff = 100 * 1000000 // 100ms
-
-		// 配置SASL认证
-		if x.Config.SASL.Enable {
-			config.Net.SASL.Enable = true
-			config.Net.SASL.User = x.Config.SASL.Username
-			config.Net.SASL.Password = x.Config.SASL.Password
-
-			switch strings.ToUpper(x.Config.SASL.Mechanism) {
-			case "PLAIN":
-				config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
-			case "SCRAM-SHA-256":
-				config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA256
-			case "SCRAM-SHA-512":
-				config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA512
-			default:
-				config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
-			}
-		}
-
-		// 配置TLS
-		if x.Config.TLS.Enable {
-			config.Net.TLS.Enable = true
-			if x.Config.TLS.InsecureSkipVerify {
-				config.Net.TLS.Config = &tls.Config{InsecureSkipVerify: true}
-			}
-		}
-
-		x.client, err = sarama.NewSyncProducer(x.brokers, config)
-		return x.client, err
 	}
+
+	// 配置TLS
+	if x.Config.TLS.Enable {
+		config.Net.TLS.Enable = true
+		if x.Config.TLS.InsecureSkipVerify {
+			config.Net.TLS.Config = &tls.Config{InsecureSkipVerify: true}
+		}
+	}
+
+	return sarama.NewSyncProducer(x.brokers, config)
 }
 
 // isNetworkError 判断是否是网络连接错误
@@ -278,10 +247,5 @@ func (x *ProducerNode) isNetworkError(err error) bool {
 
 // resetClient 重置客户端连接
 func (x *ProducerNode) resetClient() {
-	x.Locker.Lock()
-	defer x.Locker.Unlock()
-	if x.client != nil {
-		_ = x.client.Close()
-		x.client = nil
-	}
+	_ = x.SharedNode.Close()
 }

@@ -229,8 +229,13 @@ func (x *GrpcStream) Init(ruleConfig types.Config, configuration types.Configura
 		return err
 	}
 	x.RuleConfig = ruleConfig
-	_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, false, func() (*Client, error) {
+	_ = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, false, func() (*Client, error) {
 		return x.initClient()
+	}, func(client *Client) error {
+		if client != nil {
+			client.Close()
+		}
+		return nil
 	})
 	return nil
 }
@@ -261,7 +266,7 @@ func (x *GrpcStream) streamWithReconnect() {
 				if x.client != nil {
 					x.client.Close()
 				} else {
-					if client, _ := x.SharedNode.Get(); client != nil {
+					if client, _ := x.SharedNode.GetSafely(); client != nil {
 						client.Close()
 					}
 				}
@@ -321,7 +326,7 @@ func (x *GrpcStream) initClient() (*Client, error) {
 }
 
 func (x *GrpcStream) handleStream() error {
-	client, err := x.SharedNode.Get()
+	client, err := x.SharedNode.GetSafely()
 	if err != nil {
 		return err
 	}

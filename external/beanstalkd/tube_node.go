@@ -79,8 +79,6 @@ type TubeNode struct {
 	base.SharedNode[*beanstalk.Conn]
 	//节点配置
 	Config            TubeConfiguration
-	conn              *beanstalk.Conn
-	tube              *beanstalk.Tube
 	tubeTemplate      str.Template
 	putBodyTemplate   str.Template
 	putPriTemplate    str.Template
@@ -109,8 +107,10 @@ func (x *TubeNode) Init(ruleConfig types.Config, configuration types.Configurati
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
 		//初始化客户端
-		err = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, false, func() (*beanstalk.Conn, error) {
+		err = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, false, func() (*beanstalk.Conn, error) {
 			return x.initClient()
+		}, func(conn *beanstalk.Conn) error {
+			return conn.Close()
 		})
 	}
 	//初始化模板
@@ -140,29 +140,29 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	params, err = x.getParams(ctx, msg)
 
 	// use tube
-	x.conn, err = x.SharedNode.Get()
+	conn, err := x.SharedNode.GetSafely()
 	if err != nil {
 		ctx.TellFailure(msg, err)
 		return
 	}
-	x.Printf("conn :%v ", x.conn)
-	x.tube = beanstalk.NewTube(x.conn, params.Tube)
-	x.conn.Tube.Name = params.Tube
+	x.Printf("conn :%v ", conn)
+	tube := beanstalk.NewTube(conn, params.Tube)
+	conn.Tube.Name = params.Tube
 	if err != nil {
 		ctx.TellFailure(msg, err)
 		return
 	}
 	switch x.Config.Cmd {
 	case Put:
-		id, err = x.tube.Put([]byte(params.Body), params.Pri, params.Delay, params.Ttr)
+		id, err = tube.Put([]byte(params.Body), params.Pri, params.Delay, params.Ttr)
 		if err != nil {
 			x.Printf("put job with err: %s", err)
 			break
 		}
 		data["id"] = id
-		x.Printf("put job id:%d to %s ", id, x.tube.Conn.Tube.Name)
+		x.Printf("put job id:%d to %s ", id, tube.Conn.Tube.Name)
 	case PeekReady:
-		id, body, err = x.tube.PeekReady()
+		id, body, err = tube.PeekReady()
 		if err != nil {
 			break
 		}
@@ -170,7 +170,7 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		data["body"] = string(body)
 		x.Printf("peek ready job id:%d  with err: %s", id, err)
 	case PeekDelayed:
-		id, body, err = x.tube.PeekDelayed()
+		id, body, err = tube.PeekDelayed()
 		if err != nil {
 			break
 		}
@@ -178,7 +178,7 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		data["body"] = string(body)
 		x.Printf("peek delayed job id:%d  with err: %s", id, err)
 	case PeekBuried:
-		id, body, err = x.tube.PeekBuried()
+		id, body, err = tube.PeekBuried()
 		if err != nil {
 			break
 		}
@@ -186,20 +186,20 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		data["body"] = string(body)
 		x.Printf("peek bury job id:%d  with err: %s", id, err)
 	case Kick:
-		count, err = x.tube.Kick(params.Bound)
+		count, err = tube.Kick(params.Bound)
 		if err != nil {
 			break
 		}
 		data["count"] = count
 		x.Printf("kicked with err: %s", err)
 	case Stat:
-		stat, err = x.tube.Stats()
+		stat, err = tube.Stats()
 		for k, v := range stat {
 			data[k] = v
 		}
 		x.Printf("tube stats:%v, err: %s", stat, err)
 	case Pause:
-		err = x.tube.Pause(params.Pause)
+		err = tube.Pause(params.Pause)
 		x.Printf("pause with  err: %s", err)
 	default:
 		err = errors.New("Unknown Command")
@@ -214,7 +214,7 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		}
 		msg.SetData(str.ToString(bytes))
 		if id > 0 {
-			stat, err = x.tube.Conn.StatsJob(id)
+			stat, err = tube.Conn.StatsJob(id)
 			if err != nil {
 				x.Printf("get job stats error %v ", err)
 				ctx.TellFailure(msg, err)
@@ -324,13 +324,6 @@ func (x *TubeNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*TubeMsg
 	return &params, nil
 }
 
-// Destroy 销毁组件
-func (x *TubeNode) Destroy() {
-	if x.tube != nil {
-		_ = x.tube.Conn.Close()
-	}
-}
-
 // Printf 打印日志
 func (x *TubeNode) Printf(format string, v ...interface{}) {
 	if x.RuleConfig.Logger != nil {
@@ -340,17 +333,13 @@ func (x *TubeNode) Printf(format string, v ...interface{}) {
 
 // 初始化连接
 func (x *TubeNode) initClient() (*beanstalk.Conn, error) {
-	if x.conn != nil {
-		return x.conn, nil
-	} else {
-		x.Locker.Lock()
-		defer x.Locker.Unlock()
-		if x.conn != nil {
-			return x.conn, nil
-		}
-		var err error
-		x.conn, err = beanstalk.Dial("tcp", x.Config.Server)
-		x.tube = beanstalk.NewTube(x.conn, DefaultTube)
-		return x.conn, err
+	conn, err := beanstalk.Dial("tcp", x.Config.Server)
+	if err != nil {
+		return nil, err
 	}
+	return conn, nil
+}
+
+func (x *TubeNode) Destroy() {
+	_ = x.SharedNode.Close()
 }

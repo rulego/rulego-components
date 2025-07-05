@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 
 	"github.com/fullstorydev/grpcurl"
@@ -64,7 +63,6 @@ type ClientConfig struct {
 type ClientNode struct {
 	base.SharedNode[*Client]
 	Config          ClientConfig
-	client          *Client
 	serviceTemplate str.Template
 	methodTemplate  str.Template
 	requestTemplate str.Template
@@ -94,8 +92,11 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 	if err != nil {
 		return err
 	}
-	_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*Client, error) {
+	_ = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*Client, error) {
 		return x.initClient()
+	}, func(client *Client) error {
+		// 清理回调函数
+		return client.conn.Close()
 	})
 	x.serviceTemplate = str.NewTemplate(x.Config.Service)
 	x.methodTemplate = str.NewTemplate(x.Config.Method)
@@ -118,25 +119,9 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 
 // OnMsg 实现 Node 接口，处理消息
 func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
-	// 开始操作，增加活跃操作计数
-	x.SharedNode.BeginOp()
-	defer x.SharedNode.EndOp()
-
-	// 检查是否正在关闭
-	if x.SharedNode.IsShuttingDown() {
-		ctx.TellFailure(msg, fmt.Errorf("grpc client is shutting down"))
-		return
-	}
-
-	client, err := x.SharedNode.Get()
+	client, err := x.SharedNode.GetSafely()
 	if err != nil {
 		ctx.TellFailure(msg, err)
-		return
-	}
-
-	// 再次检查是否正在关闭，防止在Get()之后被关闭
-	if x.SharedNode.IsShuttingDown() {
-		ctx.TellFailure(msg, fmt.Errorf("grpc client is shutting down"))
 		return
 	}
 
@@ -198,39 +183,22 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	}
 }
 
-// Destroy 清理资源
 func (x *ClientNode) Destroy() {
-	// 使用优雅关闭机制，等待活跃操作完成后再关闭资源
-	x.SharedNode.GracefulShutdown(0, func() {
-		// 只在非资源池模式下关闭本地资源
-		if x.client != nil && x.client.conn != nil {
-			_ = x.client.conn.Close()
-			x.client = nil
-		}
-	})
+	_ = x.SharedNode.Close()
 }
 
 func (x *ClientNode) initClient() (*Client, error) {
-	if x.client != nil {
-		return x.client, nil
-	} else {
-		x.Locker.Lock()
-		defer x.Locker.Unlock()
-		if x.client != nil {
-			return x.client, nil
-		}
-		var err error
-		conn, err := grpc.Dial(x.Config.Server, grpc.WithTransportCredentials(insecure.NewCredentials()))
-		if err != nil {
-			return nil, err
-		}
-		rc := grpcreflect.NewClientAuto(context.Background(), conn)
-		x.client = &Client{
-			client: rc,
-			conn:   conn,
-		}
-		return x.client, err
+	var err error
+	conn, err := grpc.Dial(x.Config.Server, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, err
 	}
+	rc := grpcreflect.NewClientAuto(context.Background(), conn)
+	client := &Client{
+		client: rc,
+		conn:   conn,
+	}
+	return client, err
 }
 
 type Client struct {

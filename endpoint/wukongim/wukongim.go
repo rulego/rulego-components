@@ -214,17 +214,21 @@ func (x *Wukongim) New() types.Node {
 func (x *Wukongim) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	x.RuleConfig = ruleConfig
-	_ = x.SharedNode.Init(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*wksdk.Client, error) {
+	_ = x.SharedNode.InitWithClose(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*wksdk.Client, error) {
 		return x.initClient()
+	}, func(client *wksdk.Client) error {
+		if client != nil {
+			return client.Disconnect()
+		}
+		return nil
 	})
 	return err
 }
 
 // Destroy 销毁组件
 func (x *Wukongim) Destroy() {
-	if x.client != nil {
-		_ = x.client.Disconnect()
-	}
+	_ = x.SharedNode.Close()
+	x.BaseEndpoint.Destroy()
 }
 
 func (x *Wukongim) Close() error {
@@ -257,8 +261,13 @@ func (x *Wukongim) RemoveRouter(routerId string, params ...interface{}) error {
 func (x *Wukongim) Start() error {
 	var err error
 	if !x.SharedNode.IsInit() {
-		err = x.SharedNode.Init(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*wksdk.Client, error) {
+		err = x.SharedNode.InitWithClose(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*wksdk.Client, error) {
 			return x.initClient()
+		}, func(client *wksdk.Client) error {
+			if client != nil {
+				return client.Disconnect()
+			}
+			return nil
 		})
 	}
 	x.client.OnMessage(func(msg *wksdk.Message) {

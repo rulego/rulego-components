@@ -81,7 +81,6 @@ type WukongimSender struct {
 	base.SharedNode[*wksdk.Client]
 	//节点配置
 	Config              WukongimSenderConfiguration
-	client              *wksdk.Client
 	channelIdTemplate   str.Template
 	channelTypeTemplate str.Template
 }
@@ -115,8 +114,11 @@ func (x *WukongimSender) Init(ruleConfig types.Config, configuration types.Confi
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
 		//初始化客户端
-		err = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*wksdk.Client, error) {
+		err = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*wksdk.Client, error) {
 			return x.initClient()
+		}, func(client *wksdk.Client) error {
+			// 清理回调函数
+			return client.Disconnect()
 		})
 	}
 	x.channelIdTemplate = str.NewTemplate(x.Config.ChannelID)
@@ -135,7 +137,7 @@ func (x *WukongimSender) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		ctype = x.channelTypeTemplate.Execute(evn)
 		cid = x.channelIdTemplate.Execute(evn)
 	}
-	client, err := x.SharedNode.Get()
+	client, err := x.SharedNode.GetSafely()
 	if err != nil {
 		ctx.TellFailure(msg, err)
 		return
@@ -162,32 +164,20 @@ func (x *WukongimSender) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	}
 }
 
-// Destroy 销毁组件
 func (x *WukongimSender) Destroy() {
-	if x.client != nil {
-		_ = x.client.Disconnect()
-	}
+	_ = x.SharedNode.Close()
 }
 
 func (x *WukongimSender) initClient() (*wksdk.Client, error) {
-	if x.client != nil {
-		return x.client, nil
-	} else {
-		x.Locker.Lock()
-		defer x.Locker.Unlock()
-		if x.client != nil {
-			return x.client, nil
-		}
-		x.client = wksdk.NewClient(x.Config.Server,
-			wksdk.WithConnectTimeout(time.Duration(x.Config.ConnectTimeout)*time.Second),
-			wksdk.WithProtoVersion(x.Config.ProtoVersion),
-			wksdk.WithUID(x.Config.UID),
-			wksdk.WithToken(x.Config.Token),
-			wksdk.WithPingInterval(time.Duration(x.Config.PingInterval)*time.Second),
-			wksdk.WithReconnect(x.Config.Reconnect),
-			wksdk.WithAutoAck(x.Config.AutoAck),
-		)
-		err := x.client.Connect()
-		return x.client, err
-	}
+	client := wksdk.NewClient(x.Config.Server,
+		wksdk.WithConnectTimeout(time.Duration(x.Config.ConnectTimeout)*time.Second),
+		wksdk.WithProtoVersion(x.Config.ProtoVersion),
+		wksdk.WithUID(x.Config.UID),
+		wksdk.WithToken(x.Config.Token),
+		wksdk.WithPingInterval(time.Duration(x.Config.PingInterval)*time.Second),
+		wksdk.WithReconnect(x.Config.Reconnect),
+		wksdk.WithAutoAck(x.Config.AutoAck),
+	)
+	err := client.Connect()
+	return client, err
 }

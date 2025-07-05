@@ -18,6 +18,7 @@ package opengemini
 
 import (
 	"errors"
+
 	"github.com/openGemini/opengemini-client-go/opengemini"
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
@@ -97,7 +98,7 @@ func (x *QueryNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		Database: database,
 		Command:  command,
 	}
-	if client, err := x.SharedNode.Get(); err != nil {
+	if client, err := x.SharedNode.GetSafely(); err != nil {
 		ctx.TellFailure(msg, err)
 	} else {
 		if res, err := client.Query(q); err != nil {
@@ -114,6 +115,11 @@ func (x *QueryNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	}
 
 }
+
+func (x *QueryNode) Destroy() {
+	_ = x.SharedNode.Close()
+}
+
 func hasError(result *opengemini.QueryResult) error {
 	if len(result.Error) > 0 {
 		return errors.New(result.Error)

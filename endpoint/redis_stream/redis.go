@@ -20,6 +20,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/textproto"
+	"strings"
+
 	"github.com/redis/go-redis/v9"
 	"github.com/rulego/rulego/api/types"
 	endpointApi "github.com/rulego/rulego/api/types/endpoint"
@@ -30,8 +33,6 @@ import (
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/runtime"
 	"github.com/rulego/rulego/utils/str"
-	"net/textproto"
-	"strings"
 )
 
 // Type 组件类型
@@ -220,7 +221,6 @@ type Redis struct {
 	RuleConfig types.Config
 	//Config 配置
 	Config                   Config
-	redisClient              *redis.Client
 	pubSub                   *redis.PubSub
 	routerIdAndStreamNameMap map[string]string
 	streamNameAndRouterIdMap map[string]string
@@ -253,8 +253,13 @@ func (x *Redis) Init(ruleConfig types.Config, configuration types.Configuration)
 		if x.Config.GroupId == "" {
 			x.Config.GroupId = "rulego"
 		}
-		_ = x.SharedNode.Init(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*redis.Client, error) {
+		_ = x.SharedNode.InitWithClose(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*redis.Client, error) {
 			return x.initClient()
+		}, func(client *redis.Client) error {
+			if client != nil {
+				return client.Close()
+			}
+			return nil
 		})
 	}
 	x.RuleConfig = ruleConfig
@@ -267,9 +272,9 @@ func (x *Redis) Destroy() {
 }
 
 func (x *Redis) Close() error {
-	if nil != x.redisClient {
-		_ = x.redisClient.Close()
-	}
+	// SharedNode 会通过 InitWithClose 中的清理函数来管理客户端的关闭
+	// SharedNode manages client closure through the cleanup function in InitWithClose
+	_ = x.SharedNode.Close()
 	x.BaseEndpoint.Destroy()
 	return nil
 }
@@ -279,7 +284,7 @@ func (x *Redis) AddRouter(router endpointApi.Router, params ...interface{}) (str
 		return "", errors.New("router cannot be nil")
 	}
 	// 获取或者初始化客户端
-	client, err := x.SharedNode.Get()
+	client, err := x.SharedNode.GetSafely()
 	if err != nil {
 		return "", err
 	}
@@ -345,7 +350,7 @@ func (x *Redis) RemoveRouter(routerId string, params ...interface{}) error {
 		return nil
 	}
 	// 获取或者初始化客户端
-	client, err := x.SharedNode.Get()
+	client, err := x.SharedNode.GetSafely()
 	if err != nil {
 		return err
 	}
@@ -359,25 +364,25 @@ func (x *Redis) RemoveRouter(routerId string, params ...interface{}) error {
 
 func (x *Redis) Start() error {
 	if !x.SharedNode.IsInit() {
-		return x.SharedNode.Init(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*redis.Client, error) {
+		return x.SharedNode.InitWithClose(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*redis.Client, error) {
 			return x.initClient()
+		}, func(client *redis.Client) error {
+			if client != nil {
+				return client.Close()
+			}
+			return nil
 		})
 	}
 	return nil
 }
 
 func (x *Redis) initClient() (*redis.Client, error) {
-	x.Locker.Lock()
-	defer x.Locker.Unlock()
-	if x.redisClient != nil {
-		return x.redisClient, nil
-	}
-	x.redisClient = redis.NewClient(&redis.Options{
+	client := redis.NewClient(&redis.Options{
 		Addr:     x.Config.Server,
 		DB:       x.Config.Db,
 		Password: x.Config.Password,
 	})
-	return x.redisClient, x.redisClient.Ping(context.Background()).Err()
+	return client, client.Ping(context.Background()).Err()
 }
 
 func (x *Redis) Printf(format string, v ...interface{}) {

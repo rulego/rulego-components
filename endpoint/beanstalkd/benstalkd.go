@@ -52,8 +52,6 @@ type BeanstalkdTubeSet struct {
 	Config TubesetConfig
 	// 路由实例
 	Router endpointApi.Router
-	// beanstalk 连接实例
-	conn *beanstalk.Conn
 	// beanstalk Tubesett实例
 	tubeset *beanstalk.TubeSet
 }
@@ -78,8 +76,13 @@ func (x *BeanstalkdTubeSet) New() types.Node {
 func (x *BeanstalkdTubeSet) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	x.RuleConfig = ruleConfig
-	_ = x.SharedNode.Init(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*beanstalk.Conn, error) {
+	_ = x.SharedNode.InitWithClose(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*beanstalk.Conn, error) {
 		return x.initClient()
+	}, func(conn *beanstalk.Conn) error {
+		if conn != nil {
+			return conn.Close()
+		}
+		return nil
 	})
 	return err
 }
@@ -90,10 +93,13 @@ func (x *BeanstalkdTubeSet) Destroy() {
 }
 
 func (x *BeanstalkdTubeSet) Close() error {
-	if x.tubeset != nil && x.tubeset.Conn != nil {
-		_ = x.conn.Close()
+	// SharedNode 会通过 InitWithClose 中的清理函数来管理客户端的关闭
+	// SharedNode manages client closure through the cleanup function in InitWithClose
+	_ = x.SharedNode.Close()
+	if x.tubeset != nil {
 		x.tubeset = nil
 	}
+	x.BaseEndpoint.Destroy()
 	return nil
 }
 
@@ -126,8 +132,13 @@ func (x *BeanstalkdTubeSet) RemoveRouter(routerId string, params ...interface{})
 func (x *BeanstalkdTubeSet) Start() error {
 	var err error
 	if !x.SharedNode.IsInit() {
-		err = x.SharedNode.Init(x.RuleConfig, x.Type(), x.Config.Server, false, func() (*beanstalk.Conn, error) {
+		err = x.SharedNode.InitWithClose(x.RuleConfig, x.Type(), x.Config.Server, false, func() (*beanstalk.Conn, error) {
 			return x.initClient()
+		}, func(conn *beanstalk.Conn) error {
+			if conn != nil {
+				return conn.Close()
+			}
+			return nil
 		})
 		if err != nil {
 			return err
@@ -153,17 +164,17 @@ func (x *BeanstalkdTubeSet) reserve(router endpointApi.Router) error {
 
 	var err error
 	timeout := time.Duration(x.Config.Timeout) * time.Second
-	x.conn, err = x.SharedNode.Get()
+	conn, err := x.SharedNode.GetSafely()
 	if err != nil {
 		return err
 	}
-	x.tubeset = beanstalk.NewTubeSet(x.conn, x.Config.Tubesets...)
+	x.tubeset = beanstalk.NewTubeSet(conn, x.Config.Tubesets...)
 	id, data, err := x.tubeset.Reserve(timeout)
 	if err != nil {
 		x.Printf("reserve job error %v ", err)
 		return err
 	}
-	stat, err := x.conn.StatsJob(id)
+	stat, err := conn.StatsJob(id)
 	if err != nil {
 		x.Printf("get job stats error %v ", err)
 		return err
@@ -194,26 +205,8 @@ func (x *BeanstalkdTubeSet) Printf(format string, v ...interface{}) {
 
 // initClient 初始化客户端
 func (x *BeanstalkdTubeSet) initClient() (*beanstalk.Conn, error) {
-	if x.conn != nil {
-		return x.conn, nil
-	} else {
-		_, cancel := context.WithTimeout(context.TODO(), 4*time.Second)
-		x.Lock()
-		defer func() {
-			cancel()
-			x.Unlock()
-		}()
-		if x.conn != nil {
-			return x.conn, nil
-		}
-		var err error
-		x.conn, err = beanstalk.Dial("tcp", x.Config.Server)
-		if err != nil {
-			return nil, err
-		}
-		x.tubeset = beanstalk.NewTubeSet(x.conn, x.Config.Tubesets...)
-		return x.conn, err
-	}
+	conn, err := beanstalk.Dial("tcp", x.Config.Server)
+	return conn, err
 }
 
 type RequestMessage struct {

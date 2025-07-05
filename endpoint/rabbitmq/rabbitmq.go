@@ -17,7 +17,6 @@
 package rabbitmq
 
 import (
-	"context"
 	"fmt"
 	"net/textproto"
 
@@ -226,9 +225,11 @@ type Config struct {
 type RabbitMQ struct {
 	impl.BaseEndpoint
 	base.SharedNode[*amqp.Connection]
+	// GracefulShutdown provides graceful shutdown capabilities
+	// GracefulShutdown 提供优雅停机功能
+	base.GracefulShutdown
 	RuleConfig types.Config
 	Config     Config
-	conn       *amqp.Connection
 	channels   map[string]*amqp.Channel
 }
 
@@ -256,34 +257,48 @@ func (x *RabbitMQ) New() types.Node {
 func (x *RabbitMQ) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	x.RuleConfig = ruleConfig
+
+	// 初始化优雅停机功能
+	x.GracefulShutdown.InitGracefulShutdown(x.RuleConfig.Logger, 0)
+
 	if x.Config.ExchangeType == "" {
 		x.Config.ExchangeType = "direct"
 	}
-	_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, true, func() (*amqp.Connection, error) {
+	_ = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, true, func() (*amqp.Connection, error) {
 		return x.initClient()
+	}, func(conn *amqp.Connection) error {
+		if conn != nil && !conn.IsClosed() {
+			return conn.Close()
+		}
+		return nil
 	})
 	return err
 }
 
 func (x *RabbitMQ) Destroy() {
-	_ = x.Close()
+	x.GracefulShutdown.GracefulStop(func() {
+		_ = x.Close()
+	})
+}
+
+// GracefulStop provides graceful shutdown for the RabbitMQ endpoint
+// GracefulStop 为 RabbitMQ 端点提供优雅停机
+func (x *RabbitMQ) GracefulStop() {
+	x.GracefulShutdown.GracefulStop(func() {
+		_ = x.Close()
+	})
 }
 
 func (x *RabbitMQ) Close() error {
-	// 使用优雅关闭机制，等待活跃操作完成后再关闭资源
-	x.SharedNode.GracefulShutdown(0, func() {
-		// 只在非资源池模式下关闭本地资源
-		if x.conn != nil {
-			_ = x.conn.Close()
-			x.conn = nil
-		}
-		x.Lock()
-		defer x.Unlock()
-		for _, ch := range x.channels {
-			_ = ch.Close()
-		}
-		x.channels = map[string]*amqp.Channel{}
-	})
+	// SharedNode 会通过 InitWithClose 中的清理函数来管理客户端的关闭
+	// SharedNode manages client closure through the cleanup function in InitWithClose
+	_ = x.SharedNode.Close()
+	x.Lock()
+	defer x.Unlock()
+	for _, ch := range x.channels {
+		_ = ch.Close()
+	}
+	x.channels = map[string]*amqp.Channel{}
 	return nil
 }
 
@@ -353,8 +368,13 @@ func (x *RabbitMQ) RemoveRouter(routerId string, params ...interface{}) error {
 
 func (x *RabbitMQ) Start() error {
 	if !x.SharedNode.IsInit() {
-		return x.SharedNode.Init(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*amqp.Connection, error) {
+		return x.SharedNode.InitWithClose(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*amqp.Connection, error) {
 			return x.initClient()
+		}, func(conn *amqp.Connection) error {
+			if conn != nil && !conn.IsClosed() {
+				return conn.Close()
+			}
+			return nil
 		})
 	}
 	return nil
@@ -367,22 +387,12 @@ func (x *RabbitMQ) Printf(format string, v ...interface{}) {
 }
 
 func (x *RabbitMQ) initClient() (*amqp.Connection, error) {
-	if x.conn != nil && !x.conn.IsClosed() {
-		return x.conn, nil
-	} else {
-		x.Locker.Lock()
-		defer x.Locker.Unlock()
-		if x.conn != nil && !x.conn.IsClosed() {
-			return x.conn, nil
-		}
-		var err error
-		x.conn, err = amqp.Dial(x.Config.Server)
-		return x.conn, err
-	}
+	conn, err := amqp.Dial(x.Config.Server)
+	return conn, err
 }
 
 func (x *RabbitMQ) queueBind(key string) (*amqp.Channel, *amqp.Queue, error) {
-	conn, err := x.SharedNode.Get()
+	conn, err := x.SharedNode.GetSafely()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -408,20 +418,18 @@ func (x *RabbitMQ) queueBind(key string) (*amqp.Channel, *amqp.Queue, error) {
 }
 
 func (x *RabbitMQ) handlerMsg(router endpointApi.Router, ch *amqp.Channel, msg amqp.Delivery) {
-	// 开始操作，增加活跃操作计数
-	x.SharedNode.BeginOp()
-	defer x.SharedNode.EndOp()
-
-	// 检查是否正在关闭
-	if x.SharedNode.IsShuttingDown() {
-		return
-	}
-
 	defer func() {
 		if err := recover(); err != nil {
 			x.Printf("rabbitmq endpoint handler err :\n%v", runtime.Stack())
 		}
 	}()
+
+	// 检查是否正在停机
+	if err := x.GracefulShutdown.CheckShutdownSignal(); err != nil {
+		x.Printf("RabbitMQ message ignored due to shutdown: %v", err)
+		return
+	}
+
 	exchange := &endpointApi.Exchange{
 		In: &RequestMessage{
 			delivery: msg,
@@ -437,7 +445,8 @@ func (x *RabbitMQ) handlerMsg(router endpointApi.Router, ch *amqp.Channel, msg a
 			},
 		},
 	}
-	x.DoProcess(context.Background(), router, exchange)
+	// 使用停机上下文处理消息
+	x.DoProcess(x.GracefulShutdown.GetShutdownContext(), router, exchange)
 }
 
 func getContentType(msg *types.RuleMsg) string {

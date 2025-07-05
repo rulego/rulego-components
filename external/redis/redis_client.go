@@ -67,7 +67,6 @@ type ClientNode struct {
 	base.SharedNode[*redis.Client]
 	//节点配置
 	Config ClientNodeConfiguration
-	client *redis.Client
 	//cmd是否有变量
 	cmdHasVar bool
 	//参数是否有变量
@@ -94,8 +93,11 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
 		//初始化客户端
-		_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*redis.Client, error) {
+		_ = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*redis.Client, error) {
 			return x.initClient()
+		}, func(client *redis.Client) error {
+			// 清理回调函数
+			return client.Close()
 		})
 
 		if str.CheckHasVar(x.Config.Cmd) {
@@ -122,16 +124,6 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 
 // OnMsg 处理消息
 func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
-	// 开始操作，增加活跃操作计数
-	x.SharedNode.BeginOp()
-	defer x.SharedNode.EndOp()
-
-	// 检查是否正在关闭
-	if x.SharedNode.IsShuttingDown() {
-		ctx.TellFailure(msg, fmt.Errorf("redis client is shutting down"))
-		return
-	}
-
 	var data interface{}
 	var err error
 	var evn map[string]interface{}
@@ -170,18 +162,11 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		args = append(args, x.Config.Params...)
 	}
 
-	client, err := x.SharedNode.Get()
+	client, err := x.SharedNode.GetSafely()
 	if err != nil {
 		ctx.TellFailure(msg, err)
 		return
 	}
-
-	// 再次检查是否正在关闭，防止在Get()之后被关闭
-	if x.SharedNode.IsShuttingDown() {
-		ctx.TellFailure(msg, fmt.Errorf("redis client is shutting down"))
-		return
-	}
-
 	if cmd == "hgetall" {
 		if len(args) < 2 {
 			ctx.TellFailure(msg, fmt.Errorf("hgetall need one param"))
@@ -202,33 +187,17 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	}
 }
 
-// Destroy 销毁组件
 func (x *ClientNode) Destroy() {
-	// 使用优雅关闭机制，等待活跃操作完成后再关闭资源
-	x.SharedNode.GracefulShutdown(0, func() {
-		// 只在非资源池模式下关闭本地资源
-		if x.client != nil {
-			_ = x.client.Close()
-			x.client = nil
-		}
-	})
+	_ = x.SharedNode.Close()
 }
 
 func (x *ClientNode) initClient() (*redis.Client, error) {
-	if x.client != nil {
-		return x.client, nil
-	} else {
-		x.Locker.Lock()
-		defer x.Locker.Unlock()
-		if x.client != nil {
-			return x.client, nil
-		}
-		x.client = redis.NewClient(&redis.Options{
-			Addr:     x.Config.Server,
-			PoolSize: x.Config.PoolSize,
-			DB:       x.Config.Db,
-			Password: x.Config.Password,
-		})
-		return x.client, x.client.Ping(context.Background()).Err()
-	}
+	client := redis.NewClient(&redis.Options{
+		Addr:     x.Config.Server,
+		PoolSize: x.Config.PoolSize,
+		DB:       x.Config.Db,
+		Password: x.Config.Password,
+	})
+	err := client.Ping(context.Background()).Err()
+	return client, err
 }
