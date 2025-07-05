@@ -66,7 +66,6 @@ type WorkerNode struct {
 	base.SharedNode[*beanstalk.Conn]
 	//节点配置
 	Config           WorkerConfiguration
-	conn             *beanstalk.Conn
 	tubeTemplate     str.Template
 	jobIdTemplate    str.Template
 	putPriTemplate   str.Template
@@ -92,8 +91,10 @@ func (x *WorkerNode) Init(ruleConfig types.Config, configuration types.Configura
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
 		//初始化客户端
-		err = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, false, func() (*beanstalk.Conn, error) {
+		err = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, false, func() (*beanstalk.Conn, error) {
 			return x.initClient()
+		}, func(conn *beanstalk.Conn) error {
+			return conn.Close()
 		})
 	}
 	//初始化模板
@@ -118,77 +119,77 @@ func (x *WorkerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	)
 	params, err = x.getParams(ctx, msg)
 	// use tube
-	x.conn, err = x.SharedNode.Get()
+	conn, err := x.SharedNode.GetSafely()
 	if err != nil {
 		ctx.TellFailure(msg, err)
 		return
 	}
-	x.Printf("conn :%v ", x.conn)
-	x.conn.Tube.Name = params.Tube
+	x.Printf("conn :%v ", conn)
+	conn.Tube.Name = params.Tube
 	switch x.Config.Cmd {
 	case Delete:
 		if params.Id == 0 {
 			err = errors.New("id is empty")
 			break
 		}
-		err = x.conn.Delete(params.Id)
-		x.Printf("delete job id:%d tube:%s with err: %s", params.Id, x.conn.Tube.Name, err)
+		err = conn.Delete(params.Id)
+		x.Printf("delete job id:%d tube:%s with err: %s", params.Id, conn.Tube.Name, err)
 	case Release:
 		if params.Id == 0 {
 			err = errors.New("id is empty")
 			break
 		}
-		err = x.conn.Release(params.Id, params.Pri, params.Delay)
-		x.Printf("release job id:%d tube:%s with err: %s", params.Id, x.conn.Tube.Name, err)
+		err = conn.Release(params.Id, params.Pri, params.Delay)
+		x.Printf("release job id:%d tube:%s with err: %s", params.Id, conn.Tube.Name, err)
 	case Bury:
 		if params.Id == 0 {
 			err = errors.New("id is empty")
 			break
 		}
-		err = x.conn.Bury(params.Id, params.Pri)
-		x.Printf("bury job id:%d tube:%s with err: %s", params.Id, x.conn.Tube.Name, err)
+		err = conn.Bury(params.Id, params.Pri)
+		x.Printf("bury job id:%d tube:%s with err: %s", params.Id, conn.Tube.Name, err)
 	case KickJob:
 		if params.Id == 0 {
 			err = errors.New("id is empty")
 			break
 		}
-		err = x.conn.KickJob(params.Id)
-		x.Printf("kick job id:%d tube:%s with err: %s", params.Id, x.conn.Tube.Name, err)
+		err = conn.KickJob(params.Id)
+		x.Printf("kick job id:%d tube:%s with err: %s", params.Id, conn.Tube.Name, err)
 	case Touch:
 		if params.Id == 0 {
 			err = errors.New("id is empty")
 			break
 		}
-		err = x.conn.Touch(params.Id)
-		x.Printf("touch job id:%d tube:%s with err: %s", params.Id, x.conn.Tube.Name, err)
+		err = conn.Touch(params.Id)
+		x.Printf("touch job id:%d tube:%s with err: %s", params.Id, conn.Tube.Name, err)
 	case Peek:
 		if params.Id == 0 {
 			err = errors.New("id is empty")
 			break
 		}
-		body, err = x.conn.Peek(params.Id)
+		body, err = conn.Peek(params.Id)
 		data["body"] = string(body)
-		x.Printf("peek job id:%d tube:%s with err: %s", params.Id, x.conn.Tube.Name, err)
+		x.Printf("peek job id:%d tube:%s with err: %s", params.Id, conn.Tube.Name, err)
 	case ReserveJob:
 		if params.Id == 0 {
 			err = errors.New("id is empty")
 			break
 		}
-		body, err = x.conn.ReserveJob(params.Id)
+		body, err = conn.ReserveJob(params.Id)
 		data["body"] = string(body)
-		x.Printf("reserve job id:%d tube:%s with err: %s", params.Id, x.conn.Tube.Name, err)
+		x.Printf("reserve job id:%d tube:%s with err: %s", params.Id, conn.Tube.Name, err)
 	case StatsJob:
 		if params.Id == 0 {
 			err = errors.New("id is empty")
 			break
 		}
-		data, err = x.conn.StatsJob(params.Id)
-		x.Printf("stats job id:%d tube:%s with err: %s", params.Id, x.conn.Tube.Name, err)
+		data, err = conn.StatsJob(params.Id)
+		x.Printf("stats job id:%d tube:%s with err: %s", params.Id, conn.Tube.Name, err)
 	case Stats:
-		data, err = x.conn.Stats()
+		data, err = conn.Stats()
 		x.Printf("stats :%v  with err: %s", data, err)
 	case ListTubes:
-		tubes, err = x.conn.ListTubes()
+		tubes, err = conn.ListTubes()
 		data["tubes"] = strings.Join(tubes, ",")
 		x.Printf("tubes :%v  with err: %s", tubes, err)
 	default:
@@ -204,7 +205,7 @@ func (x *WorkerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		}
 		msg.SetData(str.ToString(bytes))
 		if params.Id > 0 {
-			stat, err = x.conn.StatsJob(params.Id)
+			stat, err = conn.StatsJob(params.Id)
 			if err == nil {
 				msg.Metadata.ReplaceAll(stat)
 			}
@@ -272,13 +273,6 @@ func (x *WorkerNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*Worke
 	return &params, nil
 }
 
-// Destroy 销毁组件
-func (x *WorkerNode) Destroy() {
-	if x.conn != nil {
-		_ = x.conn.Close()
-	}
-}
-
 // Printf 打印日志
 func (x *WorkerNode) Printf(format string, v ...interface{}) {
 	if x.RuleConfig.Logger != nil {
@@ -288,17 +282,14 @@ func (x *WorkerNode) Printf(format string, v ...interface{}) {
 
 // 初始化连接
 func (x *WorkerNode) initClient() (*beanstalk.Conn, error) {
-	if x.conn != nil {
-		return x.conn, nil
-	} else {
-		x.Locker.Lock()
-		defer x.Locker.Unlock()
-		if x.conn != nil {
-			return x.conn, nil
-		}
-		var err error
-		x.conn, err = beanstalk.Dial("tcp", x.Config.Server)
-		x.conn.Tube = *beanstalk.NewTube(x.conn, DefaultTube)
-		return x.conn, err
+	conn, err := beanstalk.Dial("tcp", x.Config.Server)
+	if err != nil {
+		return nil, err
 	}
+	conn.Tube = *beanstalk.NewTube(conn, DefaultTube)
+	return conn, nil
+}
+
+func (x *WorkerNode) Destroy() {
+	_ = x.SharedNode.Close()
 }

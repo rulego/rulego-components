@@ -19,6 +19,10 @@ package opengemini
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/openGemini/opengemini-client-go/opengemini"
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
@@ -26,9 +30,6 @@ import (
 	"github.com/rulego/rulego/utils/json"
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/str"
-	"strconv"
-	"strings"
-	"time"
 )
 
 func init() {
@@ -52,7 +53,6 @@ type WriteConfig struct {
 // WriteNode opengemini 写节点
 type WriteNode struct {
 	base.SharedNode[opengemini.Client]
-	client           opengemini.Client
 	Config           WriteConfig
 	opengeminiConfig *opengemini.Config
 	databaseTemplate str.Template
@@ -85,8 +85,10 @@ func (x *WriteNode) Init(ruleConfig types.Config, configuration types.Configurat
 		x.opengeminiConfig = opengeminiConfig
 	}
 	x.databaseTemplate = str.NewTemplate(x.Config.Database)
-	_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (opengemini.Client, error) {
+	_ = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (opengemini.Client, error) {
 		return x.initClient()
+	}, func(client opengemini.Client) error {
+		return client.Close()
 	})
 	return nil
 }
@@ -94,7 +96,7 @@ func (x *WriteNode) Init(ruleConfig types.Config, configuration types.Configurat
 // OnMsg 实现 Node 接口，处理消息
 func (x *WriteNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 
-	if client, err := x.SharedNode.Get(); err != nil {
+	if client, err := x.SharedNode.GetSafely(); err != nil {
 		ctx.TellFailure(msg, err)
 	} else {
 		database := x.databaseTemplate.ExecuteFn(func() map[string]any {
@@ -133,28 +135,18 @@ func (x *WriteNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	}
 }
 
-// Destroy 清理资源
-func (x *WriteNode) Destroy() {
-	if x.client != nil {
-		_ = x.client.Close()
-	}
-}
-
 func (x *WriteNode) GetInstance() (interface{}, error) {
 	return x.SharedNode.GetInstance()
 }
 
+func (x *WriteNode) Destroy() {
+	_ = x.SharedNode.Close()
+}
+
 // initClient 初始化客户端
 func (x *WriteNode) initClient() (opengemini.Client, error) {
-	x.Locker.Lock()
-	defer x.Locker.Unlock()
-	if x.client != nil {
-		return x.client, nil
-	}
-	var err error
 	// 创建 OpenGemini 客户端
-	x.client, err = opengemini.NewClient(x.opengeminiConfig)
-	return x.client, err
+	return opengemini.NewClient(x.opengeminiConfig)
 }
 
 func (x *WriteNode) createOpengeminiConfig() (*opengemini.Config, error) {

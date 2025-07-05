@@ -34,7 +34,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/rulego/rulego/endpoint/rest"
 	"net"
 	"net/http"
 	"net/textproto"
@@ -42,6 +41,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/rulego/rulego/endpoint/rest"
 
 	"github.com/rulego/rulego/endpoint"
 
@@ -402,8 +403,13 @@ func (fh *FastHttp) Init(ruleConfig types.Config, configuration types.Configurat
 		return err
 	}
 	fh.RuleConfig = ruleConfig
-	return fh.SharedNode.Init(fh.RuleConfig, fh.Type(), fh.Config.Server, false, func() (*FastHttp, error) {
+	return fh.SharedNode.InitWithClose(fh.RuleConfig, fh.Type(), fh.Config.Server, false, func() (*FastHttp, error) {
 		return fh.initServer()
+	}, func(server *FastHttp) error {
+		if server != nil {
+			return server.Close()
+		}
+		return nil
 	})
 }
 
@@ -413,14 +419,11 @@ func (fh *FastHttp) Destroy() {
 }
 
 func (fh *FastHttp) Restart() error {
-	if fh.Server != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		_ = fh.Server.ShutdownWithContext(ctx)
-	}
+	// 使用统一的关闭方法
+	fh.shutdownServer()
 
 	if fh.SharedNode.InstanceId != "" {
-		if shared, err := fh.SharedNode.Get(); err == nil {
+		if shared, err := fh.SharedNode.GetSafely(); err == nil {
 			return shared.Restart()
 		} else {
 			return err
@@ -440,7 +443,6 @@ func (fh *FastHttp) Restart() error {
 	fh.Unlock()
 
 	fh.RouterStorage = make(map[string]endpointApi.Router)
-	fh.started = false
 
 	if err := fh.Start(); err != nil {
 		return err
@@ -462,19 +464,40 @@ func (fh *FastHttp) Restart() error {
 	return nil
 }
 
-func (fh *FastHttp) Close() error {
-	if fh.Server != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		if err := fh.Server.ShutdownWithContext(ctx); err != nil {
-			return err
-		}
+// shutdownServer 统一的服务器关闭逻辑
+func (fh *FastHttp) shutdownServer() {
+	fh.Lock()
+	if !fh.started || fh.Server == nil {
+		fh.Unlock()
+		return
 	}
+	server := fh.Server
+	fh.started = false
+	fh.Server = nil
+	fh.Unlock()
+
+	if fh.Config.Server != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = server.ShutdownWithContext(ctx)
+	}
+
+	// 等待一小段时间确保端口完全释放
+	time.Sleep(100 * time.Millisecond)
+}
+
+func (fh *FastHttp) Close() error {
+	// 使用统一的关闭方法
+	fh.shutdownServer()
+
+	fh.Lock()
 	if fh.router != nil {
 		fh.newRouter()
 	}
+	fh.Unlock()
+
 	if fh.SharedNode.InstanceId != "" {
-		if shared, err := fh.SharedNode.Get(); err == nil {
+		if shared, err := fh.SharedNode.GetSafely(); err == nil {
 			fh.RLock()
 			defer fh.RUnlock()
 			for key := range fh.RouterStorage {
@@ -485,7 +508,6 @@ func (fh *FastHttp) Close() error {
 		}
 	}
 
-	fh.started = false
 	fh.BaseEndpoint.Destroy()
 	return nil
 }
@@ -538,7 +560,7 @@ func (fh *FastHttp) Start() error {
 	if err := fh.checkIsInitSharedNode(); err != nil {
 		return err
 	}
-	if netResource, err := fh.SharedNode.Get(); err == nil {
+	if netResource, err := fh.SharedNode.GetSafely(); err == nil {
 		return netResource.startServer()
 	} else {
 		return err
@@ -576,7 +598,7 @@ func (fh *FastHttp) addRouter(method string, routers ...endpointApi.Router) erro
 		item.SetParams(method)
 		fh.RouterStorage[item.GetId()] = item
 		if fh.SharedNode.InstanceId != "" {
-			if shared, err := fh.SharedNode.Get(); err == nil {
+			if shared, err := fh.SharedNode.GetSafely(); err == nil {
 				return shared.addRouter(method, item)
 			} else {
 				return err
@@ -705,8 +727,13 @@ func (fh *FastHttp) RegisterStaticFiles(resourceMapping string) endpointApi.Http
 
 func (fh *FastHttp) checkIsInitSharedNode() error {
 	if !fh.SharedNode.IsInit() {
-		err := fh.SharedNode.Init(fh.RuleConfig, fh.Type(), fh.Config.Server, false, func() (*FastHttp, error) {
+		err := fh.SharedNode.InitWithClose(fh.RuleConfig, fh.Type(), fh.Config.Server, false, func() (*FastHttp, error) {
 			return fh.initServer()
+		}, func(server *FastHttp) error {
+			if server != nil {
+				return server.Close()
+			}
+			return nil
 		})
 		if err != nil {
 			return err
@@ -718,7 +745,7 @@ func (fh *FastHttp) checkIsInitSharedNode() error {
 func (fh *FastHttp) Router() *router.Router {
 	fh.checkIsInitSharedNode()
 
-	if fromPool, err := fh.SharedNode.Get(); err != nil {
+	if fromPool, err := fh.SharedNode.GetSafely(); err != nil {
 		fh.Printf("get router err :%v", err)
 		return fh.newRouter()
 	} else {
@@ -877,7 +904,7 @@ func (fh *FastHttp) GetServer() *fasthttp.Server {
 	if fh.Server != nil {
 		return fh.Server
 	} else if fh.SharedNode.InstanceId != "" {
-		if shared, err := fh.SharedNode.Get(); err == nil {
+		if shared, err := fh.SharedNode.GetSafely(); err == nil {
 			return shared.Server
 		}
 	}
@@ -986,26 +1013,43 @@ func (fh *FastHttp) startServer() error {
 	//标记已经启动
 	fh.started = true
 
+	// 安全地访问Config字段和Server字段，防止数据竞争
+	fh.RLock()
 	isTls := fh.Config.CertKeyFile != "" && fh.Config.CertFile != ""
-	if fh.OnEvent != nil {
-		fh.OnEvent(endpointApi.EventInitServer, fh)
+	certFile := fh.Config.CertFile
+	certKeyFile := fh.Config.CertKeyFile
+	serverAddr := fh.Config.Server
+	server := fh.Server // 保存Server引用，防止在goroutine中访问时被其他goroutine修改
+	onEvent := fh.OnEvent
+	fh.RUnlock()
+
+	if onEvent != nil {
+		onEvent(endpointApi.EventInitServer, fh)
 	}
 	if isTls {
-		fh.Printf("started fasthttp server with TLS on %s", fh.Config.Server)
+		fh.Printf("started fasthttp server with TLS on %s", serverAddr)
 		go func() {
 			defer ln.Close()
-			err = fh.Server.ServeTLS(ln, fh.Config.CertFile, fh.Config.CertKeyFile)
-			if fh.OnEvent != nil {
-				fh.OnEvent(endpointApi.EventCompletedServer, err)
+			err = server.ServeTLS(ln, certFile, certKeyFile)
+			// 安全地访问OnEvent字段
+			fh.RLock()
+			onEvent := fh.OnEvent
+			fh.RUnlock()
+			if onEvent != nil {
+				onEvent(endpointApi.EventCompletedServer, err)
 			}
 		}()
 	} else {
-		fh.Printf("started fasthttp server on %s", fh.Config.Server)
+		fh.Printf("started fasthttp server on %s", serverAddr)
 		go func() {
 			defer ln.Close()
-			err = fh.Server.Serve(ln)
-			if fh.OnEvent != nil {
-				fh.OnEvent(endpointApi.EventCompletedServer, err)
+			err = server.Serve(ln)
+			// 安全地访问OnEvent字段
+			fh.RLock()
+			onEvent := fh.OnEvent
+			fh.RUnlock()
+			if onEvent != nil {
+				onEvent(endpointApi.EventCompletedServer, err)
 			}
 		}()
 	}

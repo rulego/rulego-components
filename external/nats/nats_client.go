@@ -17,8 +17,6 @@
 package nats
 
 import (
-	"fmt"
-
 	"github.com/nats-io/nats.go"
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
@@ -46,7 +44,6 @@ type ClientNode struct {
 	base.SharedNode[*nats.Conn]
 	// 节点配置
 	Config ClientNodeConfiguration
-	client *nats.Conn
 	// 是否正在连接NATS服务器
 	connecting int32
 	//topic 模板
@@ -69,8 +66,12 @@ func (x *ClientNode) New() types.Node {
 func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
-		_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*nats.Conn, error) {
+		_ = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*nats.Conn, error) {
 			return x.initClient()
+		}, func(client *nats.Conn) error {
+			// 清理回调函数
+			client.Close()
+			return nil
 		})
 		x.topicTemplate = str.NewTemplate(x.Config.Topic)
 	}
@@ -79,28 +80,12 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 
 // OnMsg 处理消息
 func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
-	// 开始操作，增加活跃操作计数
-	x.SharedNode.BeginOp()
-	defer x.SharedNode.EndOp()
-
-	// 检查是否正在关闭
-	if x.SharedNode.IsShuttingDown() {
-		ctx.TellFailure(msg, fmt.Errorf("nats client is shutting down"))
-		return
-	}
-
 	topic := x.topicTemplate.ExecuteFn(func() map[string]any {
 		return base.NodeUtils.GetEvnAndMetadata(ctx, msg)
 	})
-	client, err := x.SharedNode.Get()
+	client, err := x.SharedNode.GetSafely()
 	if err != nil {
 		ctx.TellFailure(msg, err)
-		return
-	}
-
-	// 再次检查是否正在关闭，防止在Get()之后被关闭
-	if x.SharedNode.IsShuttingDown() {
-		ctx.TellFailure(msg, fmt.Errorf("nats client is shutting down"))
 		return
 	}
 
@@ -111,25 +96,11 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	}
 }
 
-// Destroy 销毁
 func (x *ClientNode) Destroy() {
-	// 使用优雅关闭机制，等待活跃操作完成后再关闭资源
-	x.SharedNode.GracefulShutdown(0, func() {
-		// 只在非资源池模式下关闭本地资源
-		if x.client != nil {
-			x.client.Close()
-			x.client = nil
-		}
-	})
+	_ = x.SharedNode.Close()
 }
 
 func (x *ClientNode) initClient() (*nats.Conn, error) {
-	x.Locker.Lock()
-	defer x.Locker.Unlock()
-	if x.client != nil {
-		return x.client, nil
-	}
-	var err error
-	x.client, err = nats.Connect(x.Config.Server, nats.UserInfo(x.Config.Username, x.Config.Password))
-	return x.client, err
+	client, err := nats.Connect(x.Config.Server, nats.UserInfo(x.Config.Username, x.Config.Password))
+	return client, err
 }

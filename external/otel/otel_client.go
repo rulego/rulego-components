@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/rulego/rulego/utils/str"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/rulego/rulego/utils/str"
 
 	"github.com/rulego/rulego/utils/json"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
@@ -162,8 +163,6 @@ type OtelNode struct {
 	metricsCacheMu sync.RWMutex
 	// 指标表达式
 	metricsExpr el.Template
-	// OTEL客户端
-	client *Client
 }
 
 // Type 返回组件类型
@@ -204,8 +203,11 @@ func (x *OtelNode) Init(ruleConfig types.Config, configuration types.Configurati
 		x.Config.Protocol = "HTTP"
 	}
 	// 初始化共享MeterProvider
-	err = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*Client, error) {
+	err = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*Client, error) {
 		return x.initMeterProvider()
+	}, func(client *Client) error {
+		// 清理回调函数
+		return client.MeterProvider.Shutdown(context.Background())
 	})
 
 	// 预编译配置的指标模板
@@ -251,14 +253,6 @@ type Client struct {
 
 // initMeterProvider 初始化MeterProvider
 func (x *OtelNode) initMeterProvider() (*Client, error) {
-	if x.client != nil && x.client.Meter != nil {
-		return x.client, nil
-	}
-	x.Locker.Lock()
-	defer x.Locker.Unlock()
-	if x.client != nil && x.client.Meter != nil {
-		return x.client, nil
-	}
 	var exporter sdkmetric.Exporter
 	var err error
 
@@ -293,12 +287,12 @@ func (x *OtelNode) initMeterProvider() (*Client, error) {
 			),
 		),
 	)
-	x.client = &Client{
+	client := &Client{
 		MeterProvider: mp,
 		Meter:         mp.Meter(x.Type()),
 	}
 
-	return x.client, nil
+	return client, nil
 }
 
 // OnMsg 处理消息
@@ -402,10 +396,7 @@ func (x *OtelNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 }
 
 func (x *OtelNode) Destroy() {
-	if x.client != nil && x.client.MeterProvider != nil {
-		_ = x.client.MeterProvider.Shutdown(context.Background())
-		x.client = nil
-	}
+	_ = x.SharedNode.Close()
 }
 
 // getOrCreateMetric 获取或创建指标
@@ -427,7 +418,7 @@ func (x *OtelNode) getOrCreateMetric(cfg MetricConfig) (*Metric, error) {
 		return m, nil
 	}
 	var err error
-	client, err := x.SharedNode.Get()
+	client, err := x.SharedNode.GetSafely()
 	if err != nil {
 		return nil, err
 	}

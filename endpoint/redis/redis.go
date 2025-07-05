@@ -199,10 +199,12 @@ type Config struct {
 type Redis struct {
 	impl.BaseEndpoint
 	base.SharedNode[*redis.Client]
+	// GracefulShutdown provides graceful shutdown capabilities
+	// GracefulShutdown 提供优雅停机功能
+	base.GracefulShutdown
 	RuleConfig types.Config
 	//Config 配置
 	Config           Config
-	redisClient      *redis.Client
 	pubSub           *redis.PubSub
 	channelRouterMap map[string][]endpointApi.Router
 }
@@ -229,30 +231,44 @@ func (x *Redis) New() types.Node {
 func (x *Redis) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	x.RuleConfig = ruleConfig
-	_ = x.SharedNode.Init(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*redis.Client, error) {
+
+	// 初始化优雅停机功能
+	x.GracefulShutdown.InitGracefulShutdown(x.RuleConfig.Logger, 0)
+
+	_ = x.SharedNode.InitWithClose(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*redis.Client, error) {
 		return x.initClient()
+	}, func(client *redis.Client) error {
+		if client != nil {
+			return client.Close()
+		}
+		return nil
 	})
 	return err
 }
 
 // Destroy 销毁
 func (x *Redis) Destroy() {
-	_ = x.Close()
+	x.GracefulShutdown.GracefulStop(func() {
+		_ = x.Close()
+	})
+}
+
+// GracefulStop provides graceful shutdown for the Redis endpoint
+// GracefulStop 为 Redis 端点提供优雅停机
+func (x *Redis) GracefulStop() {
+	x.GracefulShutdown.GracefulStop(func() {
+		_ = x.Close()
+	})
 }
 
 func (x *Redis) Close() error {
-	// 使用优雅关闭机制，等待活跃操作完成后再关闭资源
-	x.SharedNode.GracefulShutdown(0, func() {
-		// 只在非资源池模式下关闭本地资源
-		if nil != x.redisClient {
-			_ = x.redisClient.Close()
-			x.redisClient = nil
-		}
-		if x.pubSub != nil {
-			_ = x.pubSub.Close()
-			x.pubSub = nil
-		}
-	})
+	// SharedNode 会通过 InitWithClose 中的清理函数来管理客户端的关闭
+	// SharedNode manages client closure through the cleanup function in InitWithClose
+	_ = x.SharedNode.Close()
+	if x.pubSub != nil {
+		_ = x.pubSub.Close()
+		x.pubSub = nil
+	}
 	x.BaseEndpoint.Destroy()
 	return nil
 }
@@ -262,7 +278,7 @@ func (x *Redis) AddRouter(router endpointApi.Router, params ...interface{}) (str
 		return "", errors.New("router cannot be nil")
 	}
 	// 获取或者初始化客户端
-	client, err := x.SharedNode.Get()
+	client, err := x.SharedNode.GetSafely()
 	if err != nil {
 		return "", err
 	}
@@ -305,7 +321,7 @@ func (x *Redis) pSubscribe(client *redis.Client, channels ...string) {
 
 func (x *Redis) RemoveRouter(routerId string, params ...interface{}) error {
 	channels := x.removeSubByRouterId(routerId)
-	client, err := x.SharedNode.Get()
+	client, err := x.SharedNode.GetSafely()
 	if err != nil {
 		return err
 	}
@@ -315,25 +331,25 @@ func (x *Redis) RemoveRouter(routerId string, params ...interface{}) error {
 
 func (x *Redis) Start() error {
 	if !x.SharedNode.IsInit() {
-		return x.SharedNode.Init(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*redis.Client, error) {
+		return x.SharedNode.InitWithClose(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*redis.Client, error) {
 			return x.initClient()
+		}, func(client *redis.Client) error {
+			if client != nil {
+				return client.Close()
+			}
+			return nil
 		})
 	}
 	return nil
 }
 
 func (x *Redis) initClient() (*redis.Client, error) {
-	x.Locker.Lock()
-	defer x.Locker.Unlock()
-	if x.redisClient != nil {
-		return x.redisClient, nil
-	}
-	x.redisClient = redis.NewClient(&redis.Options{
+	client := redis.NewClient(&redis.Options{
 		Addr:     x.Config.Server,
 		DB:       x.Config.Db,
 		Password: x.Config.Password,
 	})
-	return x.redisClient, x.redisClient.Ping(context.Background()).Err()
+	return client, client.Ping(context.Background()).Err()
 }
 
 func (x *Redis) Printf(format string, v ...interface{}) {
@@ -406,20 +422,18 @@ func (x *Redis) checkSubByRouterId(routerId string) bool {
 }
 
 func (x *Redis) handlerMsg(client *redis.Client, msg *redis.Message) {
-	// 开始操作，增加活跃操作计数
-	x.SharedNode.BeginOp()
-	defer x.SharedNode.EndOp()
-
-	// 检查是否正在关闭
-	if x.SharedNode.IsShuttingDown() {
-		return
-	}
-
 	defer func() {
 		if e := recover(); e != nil {
 			x.Printf("redis endpoint handler err :\n%v", runtime.Stack())
 		}
 	}()
+
+	// 检查是否正在停机
+	if err := x.GracefulShutdown.CheckShutdownSignal(); err != nil {
+		x.Printf("Redis message ignored due to shutdown: %v", err)
+		return
+	}
+
 	x.RLock()
 	routers := x.channelRouterMap[msg.Pattern]
 	x.RUnlock()
@@ -438,6 +452,7 @@ func (x *Redis) handlerMsg(client *redis.Client, msg *redis.Message) {
 				},
 			},
 		}
-		x.DoProcess(context.Background(), router, exchange)
+		// 使用停机上下文处理消息
+		x.DoProcess(x.GracefulShutdown.GetShutdownContext(), router, exchange)
 	}
 }

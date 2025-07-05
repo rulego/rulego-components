@@ -78,7 +78,6 @@ type ClientNode struct {
 	base.SharedNode[*mongo.Client]
 	// 节点配置
 	Config ClientNodeConfiguration
-	client *mongo.Client
 	// 数据库名称
 	DatabaseNameTemplate str.Template
 	// 集合名称
@@ -141,33 +140,20 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 		}
 	}
 	// 初始化客户端
-	_ = x.SharedNode.Init(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*mongo.Client, error) {
+	_ = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*mongo.Client, error) {
 		return x.initClient()
+	}, func(client *mongo.Client) error {
+		// 清理回调函数
+		return client.Disconnect(context.TODO())
 	})
 	return nil
 }
 
 // OnMsg 处理消息
 func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
-	// 开始操作，增加活跃操作计数
-	x.SharedNode.BeginOp()
-	defer x.SharedNode.EndOp()
-
-	// 检查是否正在关闭
-	if x.SharedNode.IsShuttingDown() {
-		ctx.TellFailure(msg, fmt.Errorf("mongodb client is shutting down"))
-		return
-	}
-
-	if client, err := x.SharedNode.Get(); err != nil {
+	if client, err := x.SharedNode.GetSafely(); err != nil {
 		ctx.TellFailure(msg, err)
 	} else {
-		// 再次检查是否正在关闭，防止在Get()之后被关闭
-		if x.SharedNode.IsShuttingDown() {
-			ctx.TellFailure(msg, fmt.Errorf("mongodb client is shutting down"))
-			return
-		}
-
 		evn := base.NodeUtils.GetEvnAndMetadata(ctx, msg)
 
 		databaseName := x.DatabaseNameTemplate.Execute(evn)
@@ -195,18 +181,6 @@ func (x *ClientNode) processMessage(ctx types.RuleContext, evn map[string]interf
 	default:
 		ctx.TellFailure(msg, fmt.Errorf("unsupported operation type: %s", opType))
 	}
-}
-
-// Destroy 销毁组件
-func (x *ClientNode) Destroy() {
-	// 使用优雅关闭机制，等待活跃操作完成后再关闭资源
-	x.SharedNode.GracefulShutdown(0, func() {
-		// 只在非资源池模式下关闭本地资源
-		if x.client != nil {
-			_ = x.client.Disconnect(context.TODO())
-			x.client = nil
-		}
-	})
 }
 
 func (x *ClientNode) toBsonM(evn map[string]interface{}, template *vm.Program) (interface{}, error) {
@@ -356,23 +330,17 @@ func (x *ClientNode) delete(ctx types.RuleContext, evn map[string]interface{}, c
 	}
 }
 
+func (x *ClientNode) Destroy() {
+	_ = x.SharedNode.Close()
+}
+
 // initClient 初始化客户端
 func (x *ClientNode) initClient() (*mongo.Client, error) {
-	if x.client != nil {
-		return x.client, nil
-	} else {
-		x.Locker.Lock()
-		defer x.Locker.Unlock()
-		if x.client != nil {
-			return x.client, nil
-		}
-		var err error
-		client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(x.Config.Server))
-		if err == nil {
-			x.client = client
-			// 测试连接
-			err = x.client.Ping(context.TODO(), nil)
-		}
-		return x.client, err
+	var err error
+	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(x.Config.Server))
+	if err == nil {
+		// 测试连接
+		err = client.Ping(context.TODO(), nil)
 	}
+	return client, err
 }

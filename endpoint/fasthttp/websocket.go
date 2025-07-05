@@ -35,21 +35,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/fasthttp/websocket"
 	"github.com/rulego/rulego/api/types"
 	endpointApi "github.com/rulego/rulego/api/types/endpoint"
 	nodeBase "github.com/rulego/rulego/components/base"
 	websocketEndpoint "github.com/rulego/rulego/endpoint/websocket"
 
+	"net/textproto"
+	"strconv"
+	"strings"
+	"sync"
+
 	"github.com/rulego/rulego/endpoint"
 	"github.com/rulego/rulego/endpoint/impl"
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/runtime"
 	"github.com/valyala/fasthttp"
-	"net/textproto"
-	"strconv"
-	"strings"
-	"sync"
 )
 
 // WebsocketType 组件类型
@@ -299,8 +301,13 @@ func (ws *FastHttpWebsocket) Init(ruleConfig types.Config, configuration types.C
 		return ws.Config.AllowCors // 允许所有跨域请求
 	}
 
-	return ws.SharedNode.Init(ws.RuleConfig, ws.Type(), ws.Config.Server, false, func() (*FastHttpWebsocket, error) {
+	return ws.SharedNode.InitWithClose(ws.RuleConfig, ws.Type(), ws.Config.Server, false, func() (*FastHttpWebsocket, error) {
 		return ws.initServer()
+	}, func(server *FastHttpWebsocket) error {
+		if server != nil {
+			return server.Close()
+		}
+		return nil
 	})
 }
 
@@ -321,7 +328,7 @@ func (ws *FastHttpWebsocket) Restart() error {
 	}
 
 	if ws.SharedNode.InstanceId != "" {
-		if shared, err := ws.SharedNode.Get(); err == nil {
+		if shared, err := ws.SharedNode.GetSafely(); err == nil {
 			return shared.Restart()
 		} else {
 			return err
@@ -366,7 +373,7 @@ func (ws *FastHttpWebsocket) Close() error {
 	}
 
 	if ws.SharedNode.InstanceId != "" {
-		if shared, err := ws.SharedNode.Get(); err == nil {
+		if shared, err := ws.SharedNode.GetSafely(); err == nil {
 			ws.RLock()
 			defer ws.RUnlock()
 			for key := range ws.RouterStorage {

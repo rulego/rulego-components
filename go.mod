@@ -19,7 +19,8 @@ require (
 	github.com/openGemini/opengemini-client-go v0.9.0
 	github.com/rabbitmq/amqp091-go v1.10.1-0.20240821123418-dc67c21576c2
 	github.com/redis/go-redis/v9 v9.10.0
-	github.com/rulego/rulego v0.32.0-alpha.1.0.20250701135557-841b15b50208
+	github.com/rulego/rulego v0.32.0-alpha.1.0.20250705114414-4a7f2b01314f
+	github.com/stretchr/testify v1.10.0
 	github.com/vadv/gopher-lua-libs v0.5.0
 	github.com/valyala/fasthttp v1.58.0
 	github.com/yuin/gopher-lua v1.1.1
@@ -103,7 +104,6 @@ require (
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/savsgio/gotils v0.0.0-20240704082632-aef3928b8a38 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.5.0 // indirect
-	github.com/stretchr/testify v1.10.0 // indirect
 	github.com/technoweenie/multipartstreamer v1.0.1 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect

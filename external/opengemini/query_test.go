@@ -1,14 +1,15 @@
 package opengemini
 
 import (
-	"github.com/openGemini/opengemini-client-go/opengemini"
-	"github.com/rulego/rulego/api/types"
-	"github.com/rulego/rulego/test"
-	"github.com/rulego/rulego/test/assert"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/openGemini/opengemini-client-go/opengemini"
+	"github.com/rulego/rulego/api/types"
+	"github.com/rulego/rulego/test"
+	"github.com/rulego/rulego/test/assert"
 )
 
 func TestQueryNode(t *testing.T) {
@@ -61,13 +62,13 @@ func TestQueryNode(t *testing.T) {
 		if os.Getenv("SKIP_OPENGEMINI_TESTS") == "true" {
 			t.Skip("Skipping OpenGemini tests")
 		}
-		
+
 		// 检查是否有可用的 OpenGemini 服务器
 		server := os.Getenv("OPENGEMINI_SERVER")
 		if server == "" {
 			server = "127.0.0.1:8086"
 		}
-		
+
 		node1, err := test.CreateAndInitNode(queryNodeType, types.Configuration{
 			"server":   server,
 			"database": "db0",
@@ -126,10 +127,8 @@ func TestQueryNode(t *testing.T) {
 						t.Skipf("OpenGemini server not available: %v", err)
 						return
 					}
-					if relationType == types.Failure {
-						assert.True(t, strings.Contains(msg.GetData(), "measurement not found"))
-					}
 					assert.Equal(t, types.Failure, relationType)
+					assert.True(t, strings.Contains(msg.GetData(), "measurement not found"))
 				},
 			},
 		}

@@ -1,15 +1,16 @@
 package opengemini
 
 import (
+	"os"
+	"strings"
+	"testing"
+	"time"
+
 	"github.com/openGemini/opengemini-client-go/opengemini"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/test"
 	"github.com/rulego/rulego/test/assert"
 	"github.com/rulego/rulego/utils/json"
-	"os"
-	"strings"
-	"testing"
-	"time"
 )
 
 func TestWriteNode(t *testing.T) {
@@ -58,7 +59,7 @@ func TestWriteNode(t *testing.T) {
 		if os.Getenv("SKIP_OPENGEMINI_TESTS") == "true" {
 			t.Skip("Skipping OpenGemini tests")
 		}
-		
+
 		// 检查是否有可用的 OpenGemini 服务器
 		server := os.Getenv("OPENGEMINI_SERVER")
 		if server == "" {
@@ -143,46 +144,47 @@ func TestWriteNode(t *testing.T) {
 				Node:    node,
 				MsgList: msgList,
 				Callback: func(msg types.RuleMsg, relationType string, err error) {
-				// 允许连接失败，因为可能没有可用的服务器
-				if err != nil && strings.Contains(err.Error(), "connection refused") {
-					t.Skipf("OpenGemini server not available: %v", err)
-					return
-				}
-				if msg.Type == "cpu_load_err" {
-					assert.Equal(t, types.Failure, relationType)
-				} else {
-					assert.Equal(t, types.Success, relationType)
-				}
-			},
+					// 允许连接失败，因为可能没有可用的服务器
+					if err != nil && strings.Contains(err.Error(), "connection refused") {
+						t.Skipf("OpenGemini server not available: %v", err)
+						return
+					}
+					if msg.Type == "cpu_load_err" {
+						assert.Equal(t, types.Failure, relationType)
+					} else {
+						assert.Equal(t, types.Success, relationType)
+					}
+				},
 			},
 			{
 				Node:    node2,
 				MsgList: msgList,
 				Callback: func(msg types.RuleMsg, relationType string, err error) {
-				// 允许连接失败，因为可能没有可用的服务器
-				if err != nil && strings.Contains(err.Error(), "connection refused") {
-					t.Skipf("OpenGemini server not available: %v", err)
-					return
-				}
-				if msg.Type == "cpu_load_err" {
-					assert.Equal(t, types.Failure, relationType)
-				} else {
-					assert.Equal(t, types.Success, relationType)
-				}
+					// 允许连接失败，因为可能没有可用的服务器
+					if err != nil && strings.Contains(err.Error(), "connection refused") {
+						t.Skipf("OpenGemini server not available: %v", err)
+						return
+					}
+					if msg.Type == "cpu_load_err" {
+						assert.Equal(t, types.Failure, relationType)
+					} else {
+						assert.Equal(t, types.Success, relationType)
+					}
 
-			},
+				},
 			},
 			{
 				Node:    node3,
 				MsgList: msgList,
 				Callback: func(msg types.RuleMsg, relationType string, err error) {
-				// 允许连接失败，因为可能没有可用的服务器
-				if err != nil && strings.Contains(err.Error(), "connection refused") {
-					t.Skipf("OpenGemini server not available: %v", err)
-					return
-				}
-				assert.Equal(t, types.Failure, relationType)
-			},
+					// 允许连接失败，因为可能没有可用的服务器
+					if err != nil && strings.Contains(err.Error(), "connection refused") {
+						t.Skipf("OpenGemini server not available: %v", err)
+						return
+					}
+					assert.Equal(t, types.Failure, relationType)
+					assert.True(t, strings.Contains(msg.GetData(), "database not found"))
+				},
 			},
 		}
 		for _, item := range nodeList {
