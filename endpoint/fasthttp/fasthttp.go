@@ -807,6 +807,8 @@ func (fh *FastHttp) handler(router endpointApi.Router, isWait bool) fasthttp.Req
 			reqCtx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
 			// 确保context被取消，防止goroutine泄漏
 			defer cancel()
+		} else {
+			reqCtx = context.Background()
 		}
 
 		// 设置context到exchange中
