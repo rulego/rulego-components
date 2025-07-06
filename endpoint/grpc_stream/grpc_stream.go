@@ -93,8 +93,8 @@ type GrpcStream struct {
 	base.SharedNode[*Client]
 	RuleConfig types.Config
 	Config     Config
-	client     *Client
-	Router     endpointApi.Router
+	//client     *Client
+	Router endpointApi.Router
 
 	stopCh chan struct{}
 }
@@ -262,13 +262,8 @@ func (x *GrpcStream) streamWithReconnect() {
 			return
 		default:
 			if err := x.handleStream(); err != nil {
-				x.Printf("Stream error: %v, reconnecting in %d millisecond", err, x.Config.CheckInterval)
-				if x.client != nil {
-					x.client.Close()
-				} else {
-					if client, _ := x.SharedNode.GetSafely(); client != nil {
-						client.Close()
-					}
+				if client, _ := x.SharedNode.GetSafely(); client != nil {
+					x.SharedNode.Close()
 				}
 			}
 			time.Sleep(time.Duration(x.Config.CheckInterval) * time.Millisecond)
@@ -281,9 +276,8 @@ func (x *GrpcStream) Destroy() {
 	if x.stopCh != nil {
 		close(x.stopCh)
 	}
-	if x.client != nil {
-		x.client.Close()
-	}
+	_ = x.SharedNode.Close()
+	x.BaseEndpoint.Destroy()
 }
 
 type Client struct {
@@ -303,26 +297,17 @@ func (c *Client) Close() {
 }
 
 func (x *GrpcStream) initClient() (*Client, error) {
-	if x.client != nil && x.client.IsActive() {
-		return x.client, nil
-	} else {
-		x.Locker.Lock()
-		defer x.Locker.Unlock()
-		if x.client != nil && x.client.IsActive() {
-			return x.client, nil
-		}
-		var err error
-		conn, err := grpc.Dial(x.Config.Server, grpc.WithTransportCredentials(insecure.NewCredentials()))
-		if err != nil {
-			return nil, err
-		}
-		rc := grpcreflect.NewClientAuto(context.Background(), conn)
-		x.client = &Client{
-			client: rc,
-			conn:   conn,
-		}
-		return x.client, err
+	var err error
+	conn, err := grpc.Dial(x.Config.Server, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, err
 	}
+	rc := grpcreflect.NewClientAuto(context.Background(), conn)
+	client := &Client{
+		client: rc,
+		conn:   conn,
+	}
+	return client, err
 }
 
 func (x *GrpcStream) handleStream() error {

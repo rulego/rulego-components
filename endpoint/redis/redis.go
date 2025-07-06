@@ -174,7 +174,9 @@ func (r *ResponseMessage) SetBody(body []byte) {
 		topic = r.getMetadataValue(KeyResponseChannel, KeyResponseChannel)
 	}
 	if topic != "" {
-		_ = r.redisClient.Publish(context.Background(), topic, string(r.body))
+		if err := r.redisClient.Publish(context.Background(), topic, string(r.body)).Err(); err != nil {
+			r.log("redis publish error:%v", err)
+		}
 	}
 }
 

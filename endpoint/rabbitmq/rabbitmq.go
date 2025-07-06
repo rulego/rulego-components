@@ -294,6 +294,7 @@ func (x *RabbitMQ) Close() error {
 	// SharedNode 会通过 InitWithClose 中的清理函数来管理客户端的关闭
 	// SharedNode manages client closure through the cleanup function in InitWithClose
 	_ = x.SharedNode.Close()
+	x.BaseEndpoint.Destroy()
 	x.Lock()
 	defer x.Unlock()
 	for _, ch := range x.channels {

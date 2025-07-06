@@ -186,7 +186,6 @@ type Wukongim struct {
 	RuleConfig types.Config
 	//Config 配置
 	Config Config
-	client *wksdk.Client
 	Router endpointApi.Router
 }
 
@@ -227,11 +226,11 @@ func (x *Wukongim) Init(ruleConfig types.Config, configuration types.Configurati
 
 // Destroy 销毁组件
 func (x *Wukongim) Destroy() {
-	_ = x.SharedNode.Close()
-	x.BaseEndpoint.Destroy()
+	_ = x.Close()
 }
 
 func (x *Wukongim) Close() error {
+	_ = x.SharedNode.Close()
 	x.BaseEndpoint.Destroy()
 	return nil
 }
@@ -270,7 +269,11 @@ func (x *Wukongim) Start() error {
 			return nil
 		})
 	}
-	x.client.OnMessage(func(msg *wksdk.Message) {
+	client, err := x.SharedNode.GetSafely()
+	if err != nil {
+		return err
+	}
+	client.OnMessage(func(msg *wksdk.Message) {
 		if !x.Config.AutoAck {
 			err = msg.Ack()
 			if err != nil {
@@ -294,23 +297,14 @@ func (x *Wukongim) Printf(format string, v ...interface{}) {
 }
 
 func (x *Wukongim) initClient() (*wksdk.Client, error) {
-	if x.client != nil {
-		return x.client, nil
-	} else {
-		x.Locker.Lock()
-		defer x.Locker.Unlock()
-		if x.client != nil {
-			return x.client, nil
-		}
-		x.client = wksdk.NewClient(x.Config.Server,
-			wksdk.WithConnectTimeout(time.Duration(x.Config.ConnectTimeout)*time.Second),
-			wksdk.WithProtoVersion(x.Config.ProtoVersion),
-			wksdk.WithUID(x.Config.UID),
-			wksdk.WithToken(x.Config.Token),
-			wksdk.WithPingInterval(time.Duration(x.Config.PingInterval)*time.Second),
-			wksdk.WithReconnect(x.Config.Reconnect),
-		)
-		err := x.client.Connect()
-		return x.client, err
-	}
+	client := wksdk.NewClient(x.Config.Server,
+		wksdk.WithConnectTimeout(time.Duration(x.Config.ConnectTimeout)*time.Second),
+		wksdk.WithProtoVersion(x.Config.ProtoVersion),
+		wksdk.WithUID(x.Config.UID),
+		wksdk.WithToken(x.Config.Token),
+		wksdk.WithPingInterval(time.Duration(x.Config.PingInterval)*time.Second),
+		wksdk.WithReconnect(x.Config.Reconnect),
+	)
+	err := client.Connect()
+	return client, err
 }

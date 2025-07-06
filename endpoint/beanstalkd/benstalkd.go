@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/textproto"
+	"sync/atomic"
 	"time"
 
 	"errors"
@@ -16,6 +17,7 @@ import (
 	"github.com/rulego/rulego/endpoint"
 	"github.com/rulego/rulego/endpoint/impl"
 	"github.com/rulego/rulego/utils/maps"
+	"github.com/rulego/rulego/utils/runtime"
 )
 
 const (
@@ -47,6 +49,7 @@ type TubesetConfig struct {
 type BeanstalkdTubeSet struct {
 	impl.BaseEndpoint
 	base.SharedNode[*beanstalk.Conn]
+	base.GracefulShutdown
 	RuleConfig types.Config
 	// beanstalk Tubeset 相关配置
 	Config TubesetConfig
@@ -54,6 +57,7 @@ type BeanstalkdTubeSet struct {
 	Router endpointApi.Router
 	// beanstalk Tubesett实例
 	tubeset *beanstalk.TubeSet
+	started int32
 }
 
 // Type 组件类型
@@ -76,6 +80,7 @@ func (x *BeanstalkdTubeSet) New() types.Node {
 func (x *BeanstalkdTubeSet) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	x.RuleConfig = ruleConfig
+	x.GracefulShutdown.InitGracefulShutdown(x.RuleConfig.Logger, 10*time.Second)
 	_ = x.SharedNode.InitWithClose(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*beanstalk.Conn, error) {
 		return x.initClient()
 	}, func(conn *beanstalk.Conn) error {
@@ -89,7 +94,9 @@ func (x *BeanstalkdTubeSet) Init(ruleConfig types.Config, configuration types.Co
 
 // Destroy 销毁
 func (x *BeanstalkdTubeSet) Destroy() {
-	_ = x.Close()
+	x.GracefulShutdown.GracefulStop(func() {
+		_ = x.Close()
+	})
 }
 
 func (x *BeanstalkdTubeSet) Close() error {
@@ -101,6 +108,13 @@ func (x *BeanstalkdTubeSet) Close() error {
 	}
 	x.BaseEndpoint.Destroy()
 	return nil
+}
+
+// GracefulStop provides graceful shutdown for the beanstalkd endpoint
+func (x *BeanstalkdTubeSet) GracefulStop() {
+	x.GracefulShutdown.GracefulStop(func() {
+		_ = x.Close()
+	})
 }
 
 // Id 获取组件id
@@ -130,6 +144,9 @@ func (x *BeanstalkdTubeSet) RemoveRouter(routerId string, params ...interface{})
 
 // Start 启动
 func (x *BeanstalkdTubeSet) Start() error {
+	if atomic.LoadInt32(&x.started) == 1 {
+		return nil
+	}
 	var err error
 	if !x.SharedNode.IsInit() {
 		err = x.SharedNode.InitWithClose(x.RuleConfig, x.Type(), x.Config.Server, false, func() (*beanstalk.Conn, error) {
@@ -144,10 +161,51 @@ func (x *BeanstalkdTubeSet) Start() error {
 			return err
 		}
 	}
+	atomic.StoreInt32(&x.started, 1)
+
 	go func(router endpointApi.Router) {
+		defer func() {
+			if e := recover(); e != nil {
+				x.Printf("beanstalkd endpoint reserve err :\n%v", runtime.Stack())
+			}
+		}()
 		for {
-			_ = x.reserve(x.Router)
-			x.Printf("reserve job err: %s", err)
+			select {
+			case <-x.GracefulShutdown.GetShutdownSignal():
+				atomic.StoreInt32(&x.started, 0)
+				return
+			default:
+			}
+			// 增加活跃操作计数
+			x.GracefulShutdown.IncrementActiveOperations()
+
+			reserveErr := x.reserve(router)
+
+			x.GracefulShutdown.DecrementActiveOperations()
+
+			if reserveErr != nil {
+				// It is not an error if the connection is closed during shutdown
+				select {
+				case <-x.GracefulShutdown.GetShutdownSignal():
+					atomic.StoreInt32(&x.started, 0)
+					return
+				default:
+				}
+
+				// Ignore timeout errors, they are expected when no job is available
+				var connErr beanstalk.ConnError
+				if errors.As(reserveErr, &connErr) && connErr.Err == beanstalk.ErrTimeout {
+					continue
+				}
+
+				// On other errors, wait a bit before retrying to avoid spamming
+				select {
+				case <-time.After(5 * time.Second):
+				case <-x.GracefulShutdown.GetShutdownSignal():
+					atomic.StoreInt32(&x.started, 0)
+					return
+				}
+			}
 		}
 	}(x.Router)
 	return nil
@@ -155,34 +213,34 @@ func (x *BeanstalkdTubeSet) Start() error {
 
 // pop job： Remove a job from a queue and pass it to next node with job stat as meta.
 func (x *BeanstalkdTubeSet) reserve(router endpointApi.Router) error {
-	x.Lock()
-	defer x.Unlock()
-	ctx, cancel := context.WithTimeout(context.TODO(), 2*time.Second)
-	defer func() {
-		cancel()
-	}()
-
-	var err error
-	timeout := time.Duration(x.Config.Timeout) * time.Second
 	conn, err := x.SharedNode.GetSafely()
 	if err != nil {
 		return err
 	}
+	x.Lock()
 	x.tubeset = beanstalk.NewTubeSet(conn, x.Config.Tubesets...)
+	x.Unlock()
+
+	timeout := time.Duration(x.Config.Timeout) * time.Second
 	id, data, err := x.tubeset.Reserve(timeout)
 	if err != nil {
-		x.Printf("reserve job error %v ", err)
 		return err
+	}
+
+	x.RLock()
+	defer x.RUnlock()
+	// 如果router为空，则不处理
+	if x.Router == nil {
+		return nil
 	}
 	stat, err := conn.StatsJob(id)
 	if err != nil {
-		x.Printf("get job stats error %v ", err)
 		return err
 	}
-	if err != nil {
-		x.Printf("delete job error %v ", err)
-		return err
-	}
+	//
+	//ctx, cancel := context.WithTimeout(context.TODO(), 2*time.Second)
+	//defer cancel()
+
 	exchange := &endpoint.Exchange{
 		In: &RequestMessage{
 			body:  data,
@@ -192,7 +250,7 @@ func (x *BeanstalkdTubeSet) reserve(router endpointApi.Router) error {
 			body:  data,
 			stats: stat,
 		}}
-	x.DoProcess(ctx, router, exchange)
+	x.DoProcess(context.Background(), router, exchange)
 	return nil
 }
 

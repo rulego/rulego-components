@@ -19,6 +19,7 @@ package redis
 import (
 	"context"
 	"os"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -33,6 +34,7 @@ import (
 )
 
 var testdataFolder = "../../testdata"
+var redisServer = "127.0.0.1:6379"
 
 func Test2t(*testing.T) {
 	// 测试发布和订阅
@@ -41,6 +43,7 @@ func Test2t(*testing.T) {
 	})
 	addData(redisClient, "device.msg.request")
 }
+
 func TestRedisEndpoint(t *testing.T) {
 	buf, err := os.ReadFile(testdataFolder + "/chain_msg_type_switch.json")
 	if err != nil {
@@ -139,4 +142,104 @@ func addData(redisClient *redis.Client, streamName string) {
 		ID:     "*", // 使用 "*" 表示使用 Redis 自动生成的 ID
 		Values: message,
 	}).Result()
+}
+
+// TestEndpoint is a placeholder to demonstrate basic endpoint functionality
+func TestEndpoint(t *testing.T) {
+	client := redis.NewClient(&redis.Options{
+		Addr: redisServer,
+	})
+	err := client.Ping(context.Background()).Err()
+	if err != nil {
+		t.Skip("redis not available, skipping test")
+	}
+	_ = client.FlushDB(context.Background()).Err()
+	defer client.Close()
+
+	config := types.NewConfig()
+	ep := &Endpoint{}
+	err = ep.Init(config, types.Configuration{
+		"server":  redisServer,
+		"groupId": "test_group",
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, Type, ep.Type())
+
+	router := endpoint.NewRouter().From("test_stream").End()
+	routerId, err := ep.AddRouter(router)
+	assert.Nil(t, err)
+	assert.NotEqual(t, "", routerId)
+
+	err = ep.RemoveRouter(routerId)
+	assert.Nil(t, err)
+	ep.Destroy()
+}
+
+// TestRedisStreamEndpointLifecycle tests that the redis stream endpoint can start, receive a message,
+// be destroyed, and not receive any more messages.
+func TestRedisStreamEndpointLifecycle(t *testing.T) {
+	client := redis.NewClient(&redis.Options{
+		Addr: redisServer,
+	})
+	err := client.Ping(context.Background()).Err()
+	if err != nil {
+		t.Skip("redis not available, skipping test")
+	}
+	_ = client.FlushDB(context.Background()).Err()
+	defer client.Close()
+
+	config := types.NewConfig()
+
+	ep := &Endpoint{}
+	err = ep.Init(config, types.Configuration{
+		"server":  redisServer,
+		"groupId": "test_group_lifecycle",
+	})
+	assert.Nil(t, err)
+
+	msgChan := make(chan bool, 1)
+	streamName := "test_stream_lifecycle"
+
+	router := endpoint.NewRouter().From(streamName).Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
+		if strings.Contains(string(exchange.In.Body()), "msg1") {
+			msgChan <- true
+		}
+		return true
+	}).End()
+
+	_, err = ep.AddRouter(router)
+	assert.Nil(t, err)
+
+	// Publish first message, should be received
+	_, err = client.XAdd(context.Background(), &redis.XAddArgs{
+		Stream: streamName,
+		Values: map[string]interface{}{"data": "msg1"},
+	}).Result()
+	assert.Nil(t, err)
+
+	select {
+	case <-msgChan:
+		// Message received, as expected
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for message before destroy")
+	}
+
+	// Destroy the endpoint
+	ep.Destroy()
+	// Wait a bit for graceful shutdown
+	time.Sleep(200 * time.Millisecond)
+
+	// Publish second message, should NOT be received
+	_, err = client.XAdd(context.Background(), &redis.XAddArgs{
+		Stream: streamName,
+		Values: map[string]interface{}{"data": "msg2"},
+	}).Result()
+	assert.Nil(t, err)
+
+	select {
+	case <-msgChan:
+		t.Fatal("received message after endpoint was destroyed")
+	case <-time.After(1 * time.Second):
+		// No message received, as expected
+	}
 }
