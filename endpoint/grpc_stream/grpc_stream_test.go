@@ -50,7 +50,7 @@ func TestMain(m *testing.M) {
 func setupTestServer() error {
 	fmt.Println("Setting up gRPC test server...")
 	serverPath := filepath.Join(testdataFolder, "main.go")
-	buildPath := filepath.Join(testdataFolder, "api/ble/v1")
+	//buildPath := filepath.Join(testdataFolder, "api/ble/v1")
 	// Generate protobuf code
 	// Check if protoc is installed
 	if _, err := exec.LookPath("protoc"); err != nil {
@@ -120,7 +120,7 @@ func TestGrpcStreamEndpoint(t *testing.T) {
 		t.Logf("Received message: %s", msg.Data)
 
 		var data map[string]interface{}
-		err := json.Unmarshal([]byte(msg.Data), &data)
+		err := json.Unmarshal([]byte(msg.GetData()), &data)
 		assert.Nil(t, err)
 
 		// Check message content based on type

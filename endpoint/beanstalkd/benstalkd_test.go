@@ -65,7 +65,7 @@ func TestBeanstalkdEndpoint(t *testing.T) {
 
 	count := int32(0)
 	router1 := endpoint.NewRouter().From("").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
-		assert.Equal(t, "test message", exchange.In.GetMsg().Data)
+		assert.Equal(t, "test message", exchange.In.GetMsg().GetData())
 		atomic.AddInt32(&count, 1)
 		return true
 	}).To("chain:default").End()
