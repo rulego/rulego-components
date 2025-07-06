@@ -428,12 +428,6 @@ func (x *Redis) handlerMsg(client *redis.Client, msg *redis.Message) {
 		}
 	}()
 
-	// 检查是否正在停机
-	if err := x.GracefulShutdown.CheckShutdownSignal(); err != nil {
-		x.Printf("Redis message ignored due to shutdown: %v", err)
-		return
-	}
-
 	x.RLock()
 	routers := x.channelRouterMap[msg.Pattern]
 	x.RUnlock()
@@ -452,7 +446,6 @@ func (x *Redis) handlerMsg(client *redis.Client, msg *redis.Message) {
 				},
 			},
 		}
-		// 使用停机上下文处理消息
-		x.DoProcess(x.GracefulShutdown.GetShutdownContext(), router, exchange)
+		x.DoProcess(context.Background(), router, exchange)
 	}
 }

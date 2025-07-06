@@ -17,6 +17,7 @@
 package nats
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/textproto"
@@ -284,12 +285,6 @@ func (x *Nats) AddRouter(router endpointApi.Router, params ...interface{}) (stri
 			}
 		}()
 
-		// 检查是否正在停机
-		if err := x.GracefulShutdown.CheckShutdownSignal(); err != nil {
-			x.Printf("NATS message ignored due to shutdown: %v", err)
-			return
-		}
-
 		exchange := &endpointApi.Exchange{
 			In: &RequestMessage{
 				request: msg,
@@ -302,8 +297,7 @@ func (x *Nats) AddRouter(router endpointApi.Router, params ...interface{}) (stri
 				},
 			},
 		}
-		// 使用停机上下文处理消息
-		x.DoProcess(x.GracefulShutdown.GetShutdownContext(), router, exchange)
+		x.DoProcess(context.Background(), router, exchange)
 	})
 	if err != nil {
 		return "", err
