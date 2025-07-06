@@ -17,7 +17,11 @@
 package grpc
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -26,12 +30,90 @@ import (
 	"github.com/rulego/rulego/test/assert"
 )
 
-func TestClientNode(t *testing.T) {
-	// 如果设置了跳过 gRPC 测试，则跳过
+var (
+	testdataFolder = "testdata"
+	serverCmd      *exec.Cmd
+)
+
+// TestMain package-level entry point
+func TestMain(m *testing.M) {
+	// Skip tests if the skip flag is set
 	if os.Getenv("SKIP_GRPC_TESTS") == "true" {
-		t.Skip("Skipping gRPC tests")
+		fmt.Println("Skipping gRPC tests")
+		os.Exit(0)
 	}
 
+	// Set up and start the gRPC server before running tests
+	if err := setupTestServer(); err != nil {
+		fmt.Printf("Failed to set up test server: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Run the tests
+	exitCode := m.Run()
+
+	// Stop the server after tests
+	teardownTestServer()
+
+	os.Exit(exitCode)
+}
+
+// setupTestServer compiles and starts the gRPC test server.
+func setupTestServer() error {
+	fmt.Println("Setting up gRPC test server for grpc_client_test...")
+	serverPath := "server.go"
+
+	// Check if protoc is installed
+	if _, err := exec.LookPath("protoc"); err != nil {
+		return fmt.Errorf("protoc is not installed or not in PATH: %w", err)
+	}
+	// Generate protobuf code
+	protoCmd := exec.Command("protoc",
+		"--go_out=.",
+		"--go_opt=paths=source_relative",
+		"--go-grpc_out=.",
+		"--go-grpc_opt=paths=source_relative",
+		"helloworld/helloworld.proto",
+	)
+	protoCmd.Dir = testdataFolder
+	output, err := protoCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to generate protobuf code: %v\n%s", err, string(output))
+	}
+	// Build the server
+	serverBin := "helloworld_server"
+	if runtime.GOOS == "windows" {
+		serverBin += ".exe"
+	}
+	buildCmd := exec.Command("go", "build", "-o", serverBin, serverPath)
+	buildCmd.Dir = testdataFolder
+	output, err = buildCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to build gRPC server: %v\n%s", err, string(output))
+	}
+
+	// Start the server
+	serverCmd = exec.Command(filepath.Join(testdataFolder, serverBin))
+	if err := serverCmd.Start(); err != nil {
+		return fmt.Errorf("failed to start gRPC server: %v", err)
+	}
+	// Give server time to start
+	time.Sleep(3 * time.Second)
+	fmt.Println("gRPC test server started for grpc_client_test.")
+	return nil
+}
+
+// teardownTestServer stops the gRPC test server.
+func teardownTestServer() {
+	if serverCmd != nil && serverCmd.Process != nil {
+		fmt.Println("Stopping gRPC test server for grpc_client_test...")
+		if err := serverCmd.Process.Kill(); err != nil {
+			fmt.Printf("Failed to kill server process: %v\n", err)
+		}
+	}
+}
+
+func TestClientNode(t *testing.T) {
 	Registry := &types.SafeComponentSlice{}
 	Registry.Add(&ClientNode{})
 	var targetNodeType = "x/grpcClient"

@@ -49,7 +49,6 @@ func TestMain(m *testing.M) {
 // setupTestServer compiles and starts the gRPC test server.
 func setupTestServer() error {
 	fmt.Println("Setting up gRPC test server...")
-	serverPath := filepath.Join(testdataFolder, "main.go")
 	//buildPath := filepath.Join(testdataFolder, "api/ble/v1")
 	// Generate protobuf code
 	// Check if protoc is installed
@@ -73,7 +72,8 @@ func setupTestServer() error {
 	if runtime.GOOS == "windows" {
 		serverBin += ".exe"
 	}
-	buildCmd := exec.Command("go", "build", "-o", serverBin, serverPath)
+	buildCmd := exec.Command("go", "build", "-o", serverBin, "main.go")
+	buildCmd.Dir = testdataFolder
 	output, err = buildCmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to build gRPC server: %v\n%s", err, string(output))
@@ -174,15 +174,15 @@ func TestGrpcStreamLifecycle(t *testing.T) {
 	// Check if initialization is correct
 	assert.Equal(t, "127.0.0.1:9000", grpcEndpoint.Config.Server)
 
-	// Start the endpoint
-	err = grpcEndpoint.Start()
-	assert.Nil(t, err)
-
 	// Add a dummy router
 	router := endpoint.NewRouter().From("*").End()
 	_, err = grpcEndpoint.AddRouter(router)
 	assert.Nil(t, err)
 	assert.NotNil(t, grpcEndpoint.Router)
+
+	// Start the endpoint
+	err = grpcEndpoint.Start()
+	assert.Nil(t, err)
 
 	// Wait a moment
 	time.Sleep(500 * time.Millisecond)

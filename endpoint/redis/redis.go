@@ -264,16 +264,20 @@ func (x *Redis) GracefulStop() {
 }
 
 func (x *Redis) Close() error {
-	x.Lock()
-	defer x.Unlock()
+	// 先销毁父组件，它会清理自己的资源，例如通过CheckAndSetRouterId注册的路由
+	x.BaseEndpoint.Destroy()
 	// SharedNode 会通过 InitWithClose 中的清理函数来管理客户端的关闭
 	// SharedNode manages client closure through the cleanup function in InitWithClose
 	_ = x.SharedNode.Close()
+	x.Lock()
+	defer x.Unlock()
+
 	if x.pubSub != nil {
 		_ = x.pubSub.Close()
 		x.pubSub = nil
 	}
-	x.BaseEndpoint.Destroy()
+	// 清理channel-router的映射关系
+	x.channelRouterMap = nil
 	return nil
 }
 
@@ -306,10 +310,12 @@ func (x *Redis) pSubscribe(client *redis.Client, channels ...string) {
 	if len(channels) == 0 {
 		return
 	}
-	x.pubSub = client.PSubscribe(context.Background(), channels...)
+	// 使用本地变量，避免数据竞争
+	pubSub := client.PSubscribe(context.Background(), channels...)
+	x.pubSub = pubSub
 	go func() {
 		// 遍历接收消息
-		for msg := range x.pubSub.Channel() {
+		for msg := range pubSub.Channel() {
 			// 处理消息逻辑
 			if x.RuleConfig.Pool != nil {
 				err := x.RuleConfig.Pool.Submit(func() {
@@ -321,7 +327,6 @@ func (x *Redis) pSubscribe(client *redis.Client, channels ...string) {
 			} else {
 				go x.handlerMsg(client, msg)
 			}
-
 		}
 	}()
 }

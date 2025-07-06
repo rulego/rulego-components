@@ -276,7 +276,16 @@ func (x *GrpcStream) Destroy() {
 	if x.stopCh != nil {
 		close(x.stopCh)
 	}
+	//清理实例
 	_ = x.SharedNode.Close()
+	//设置为nil，防止goroutine重建
+	x.Locker.Lock()
+	x.InitInstanceFunc = nil
+	x.Locker.Unlock()
+
+	x.Lock()
+	x.Router = nil
+	x.Unlock()
 	x.BaseEndpoint.Destroy()
 }
 
@@ -332,6 +341,7 @@ func (x *GrpcStream) handleStream() error {
 				return "", err
 			}
 			x.Printf("Received message: %s", string(jsonBytes))
+			x.RLock()
 			if x.Router != nil {
 				exchange := &endpointApi.Exchange{
 					In:  &RequestMessage{body: jsonBytes},
@@ -339,6 +349,7 @@ func (x *GrpcStream) handleStream() error {
 				}
 				x.DoProcess(context.Background(), x.Router, exchange)
 			}
+			x.RUnlock()
 			return string(jsonBytes), nil
 		},
 	}
@@ -378,6 +389,8 @@ func (x *GrpcStream) handleStream() error {
 
 // AddRouter 添加路由
 func (x *GrpcStream) AddRouter(router endpointApi.Router, params ...interface{}) (string, error) {
+	x.Lock()
+	defer x.Unlock()
 	if router == nil {
 		return "", errors.New("router cannot be nil")
 	}
