@@ -56,7 +56,7 @@ type BeanstalkdTubeSet struct {
 	// 路由实例
 	Router endpointApi.Router
 	// beanstalk Tubesett实例
-	tubeset *beanstalk.TubeSet
+	// tubeset *beanstalk.TubeSet
 	started int32
 }
 
@@ -103,9 +103,6 @@ func (x *BeanstalkdTubeSet) Close() error {
 	// SharedNode 会通过 InitWithClose 中的清理函数来管理客户端的关闭
 	// SharedNode manages client closure through the cleanup function in InitWithClose
 	_ = x.SharedNode.Close()
-	if x.tubeset != nil {
-		x.tubeset = nil
-	}
 	x.BaseEndpoint.Destroy()
 	return nil
 }
@@ -163,7 +160,7 @@ func (x *BeanstalkdTubeSet) Start() error {
 	}
 	atomic.StoreInt32(&x.started, 1)
 
-	go func(router endpointApi.Router) {
+	go func() {
 		defer func() {
 			if e := recover(); e != nil {
 				x.Printf("beanstalkd endpoint reserve err :\n%v", runtime.Stack())
@@ -179,7 +176,7 @@ func (x *BeanstalkdTubeSet) Start() error {
 			// 增加活跃操作计数
 			x.GracefulShutdown.IncrementActiveOperations()
 
-			reserveErr := x.reserve(router)
+			reserveErr := x.reserve()
 
 			x.GracefulShutdown.DecrementActiveOperations()
 
@@ -207,39 +204,42 @@ func (x *BeanstalkdTubeSet) Start() error {
 				}
 			}
 		}
-	}(x.Router)
+	}()
 	return nil
 }
 
 // pop job： Remove a job from a queue and pass it to next node with job stat as meta.
-func (x *BeanstalkdTubeSet) reserve(router endpointApi.Router) error {
+func (x *BeanstalkdTubeSet) reserve() error {
 	conn, err := x.SharedNode.GetSafely()
 	if err != nil {
 		return err
 	}
-	x.Lock()
-	x.tubeset = beanstalk.NewTubeSet(conn, x.Config.Tubesets...)
-	x.Unlock()
+	// Use a local tubeset to avoid race conditions with Close
+	tubeset := beanstalk.NewTubeSet(conn, x.Config.Tubesets...)
 
 	timeout := time.Duration(x.Config.Timeout) * time.Second
-	id, data, err := x.tubeset.Reserve(timeout)
+	id, data, err := tubeset.Reserve(timeout)
 	if err != nil {
 		return err
 	}
 
+	// Lock to get the router, then unlock to avoid holding lock during processing
 	x.RLock()
-	defer x.RUnlock()
-	// 如果router为空，则不处理
-	if x.Router == nil {
+	router := x.Router
+	x.RUnlock()
+
+	// If router is nil, delete the job to prevent it from being stuck
+	if router == nil {
+		// Try to delete the job. If it fails, we can't do much more.
+		_ = conn.Delete(id)
 		return nil
 	}
 	stat, err := conn.StatsJob(id)
 	if err != nil {
+		// Also delete job if we can't get its stats
+		_ = conn.Delete(id)
 		return err
 	}
-	//
-	//ctx, cancel := context.WithTimeout(context.TODO(), 2*time.Second)
-	//defer cancel()
 
 	exchange := &endpoint.Exchange{
 		In: &RequestMessage{
