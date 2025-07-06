@@ -264,6 +264,8 @@ func (x *Redis) GracefulStop() {
 }
 
 func (x *Redis) Close() error {
+	x.Lock()
+	defer x.Unlock()
 	// SharedNode 会通过 InitWithClose 中的清理函数来管理客户端的关闭
 	// SharedNode manages client closure through the cleanup function in InitWithClose
 	_ = x.SharedNode.Close()
@@ -295,8 +297,11 @@ func (x *Redis) AddRouter(router endpointApi.Router, params ...interface{}) (str
 }
 
 func (x *Redis) pSubscribe(client *redis.Client, channels ...string) {
+	x.Lock()
+	defer x.Unlock()
 	if x.pubSub != nil {
 		_ = x.pubSub.Close()
+		x.pubSub = nil
 	}
 	if len(channels) == 0 {
 		return
