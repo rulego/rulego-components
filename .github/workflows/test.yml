@@ -85,11 +85,25 @@ jobs:
         image: schickling/beanstalkd:latest
         ports:
           - 11300:11300
-        options: >-
-          --health-cmd "sh -c 'echo stats | nc localhost 11300'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+
+      opengemini:
+        image: opengeminidb/opengemini-server:latest
+        ports:
+          - 8086:8086
+          - 8088:8088
+        env:
+          OPENGEMINI_HTTP_BIND_ADDRESS: "0.0.0.0:8086"
+          OPENGEMINI_RPC_BIND_ADDRESS: "0.0.0.0:8088"
+
+      otel-collector:
+        image: otel/opentelemetry-collector-contrib:latest
+        ports:
+          - 4317:4317  # OTLP gRPC receiver
+          - 4318:4318  # OTLP HTTP receiver
+          - 8888:8888  # Prometheus metrics
+          - 8889:8889  # Prometheus exporter metrics
+        env:
+          OTEL_RESOURCE_ATTRIBUTES: "service.name=test-collector,service.version=1.0.0"
 
     strategy:
       matrix:
@@ -112,6 +126,7 @@ jobs:
       uses: arduino/setup-protoc@v2
       with:
         version: '25.x'
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Cache Go modules
       uses: actions/cache@v3
@@ -157,6 +172,22 @@ jobs:
           echo "Attempt $i: Kafka not ready yet..."
           sleep 5
         done
+        
+        # Wait for OpenGemini
+        timeout 60 sh -c 'until nc -z localhost 8086; do echo "Waiting for OpenGemini..."; sleep 2; done'
+        
+        # Wait for OTel Collector
+        timeout 60 sh -c 'until nc -z localhost 4317; do echo "Waiting for OTel Collector gRPC..."; sleep 2; done'
+        timeout 60 sh -c 'until nc -z localhost 4318; do echo "Waiting for OTel Collector HTTP..."; sleep 2; done'
+
+    - name: Create OpenGemini database
+      run: |
+        echo "Creating db0 database in OpenGemini..."
+        # Create database using InfluxQL syntax (OpenGemini is compatible with InfluxDB)
+        curl -i -XPOST http://localhost:8086/query --data-urlencode "q=CREATE DATABASE \"db0\""
+        # Verify database creation
+        echo "Verifying database creation..."
+        curl -i -XPOST http://localhost:8086/query --data-urlencode "q=SHOW DATABASES"
 
     - name: Run tests with coverage
       env:
@@ -169,10 +200,11 @@ jobs:
         RABBITMQ_URL: amqp://guest:guest@localhost:5672/
         MONGODB_URL: mongodb://root:password@localhost:27017/
         BEANSTALKD_URL: localhost:11300
+        OPENGEMINI_SERVER: localhost:8086
+        OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318
+        OTEL_EXPORTER_OTLP_GRPC_ENDPOINT: http://localhost:4317
         # Skip tests that require external services not available in CI
         SKIP_WUKONGIM_TESTS: true
-        SKIP_OPENGEMINI_TESTS: true
-        SKIP_OTEL_TESTS: true
         # Test timeout
         TEST_TIMEOUT: 30s
       run: |

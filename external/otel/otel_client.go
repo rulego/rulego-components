@@ -251,24 +251,54 @@ type Client struct {
 	Meter         metric.Meter
 }
 
+// buildEndpointURL 构建端点URL
+// 对于HTTP协议，WithEndpoint只需要主机:端口格式
+// 对于gRPC协议，WithEndpoint需要主机:端口格式
+func (x *OtelNode) buildEndpointURL() string {
+	server := strings.TrimSpace(x.Config.Server)
+	
+	// 如果server为空，使用默认值
+	if server == "" {
+		server = "localhost:4318"
+	}
+	
+	// 移除协议前缀（如果存在）
+	if strings.HasPrefix(server, "http://") {
+		server = strings.TrimPrefix(server, "http://")
+	} else if strings.HasPrefix(server, "https://") {
+		server = strings.TrimPrefix(server, "https://")
+	}
+	
+	// 移除路径部分（如果存在）
+	if idx := strings.Index(server, "/"); idx != -1 {
+		server = server[:idx]
+	}
+	
+	// 返回纯主机:端口格式
+	return server
+}
+
 // initMeterProvider 初始化MeterProvider
 func (x *OtelNode) initMeterProvider() (*Client, error) {
 	var exporter sdkmetric.Exporter
 	var err error
+
+	// 构建完整的端点URL
+	endpoint := x.buildEndpointURL()
 
 	// 创建OTLP导出器
 	if strings.ToUpper(x.Config.Protocol) == "GRPC" {
 		// 创建OTLP gRPC导出器
 		exporter, err = otlpmetricgrpc.New(
 			context.Background(),
-			otlpmetricgrpc.WithEndpoint(x.Config.Server),
+			otlpmetricgrpc.WithEndpoint(endpoint),
 			otlpmetricgrpc.WithInsecure(),
 		)
 	} else {
 		// 创建OTLP HTTP导出器
 		exporter, err = otlpmetrichttp.New(
 			context.Background(),
-			otlpmetrichttp.WithEndpoint(x.Config.Server),
+			otlpmetrichttp.WithEndpoint(endpoint),
 			otlpmetrichttp.WithInsecure(),
 			otlpmetrichttp.WithCompression(otlpmetrichttp.GzipCompression),
 		)
