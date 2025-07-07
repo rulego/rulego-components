@@ -162,6 +162,7 @@ func (x *BeanstalkdTubeSet) Start() error {
 
 	go func() {
 		defer func() {
+			atomic.StoreInt32(&x.started, 0)
 			if e := recover(); e != nil {
 				x.Printf("beanstalkd endpoint reserve err :\n%v", runtime.Stack())
 			}
@@ -187,7 +188,12 @@ func (x *BeanstalkdTubeSet) Start() error {
 				if errors.As(reserveErr, &connErr) && connErr.Err == beanstalk.ErrTimeout {
 					continue
 				}
-
+				x.Printf("reserve error: %v, retrying after 5 seconds", reserveErr)
+				select {
+				case <-time.After(5 * time.Second):
+				case <-x.GracefulShutdown.GetShutdownContext().Done():
+					return
+				}
 			}
 		}
 	}()
