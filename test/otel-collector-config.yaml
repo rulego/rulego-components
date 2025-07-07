@@ -1,0 +1,53 @@
+# OpenTelemetry Collector configuration for CI testing
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+
+exporters:
+  # Export to console for debugging
+  logging:
+    loglevel: debug
+  
+  # Export metrics to Prometheus format
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    const_labels:
+      environment: "ci-test"
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [logging]
+    
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [logging, prometheus]
+    
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [logging]
+
+  # Enable health check endpoint
+  extensions: [health_check]
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+# Enable telemetry for the collector itself
+telemetry:
+  metrics:
+    address: 0.0.0.0:8888
+  logs:
+    level: info
