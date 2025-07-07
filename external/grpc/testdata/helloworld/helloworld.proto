@@ -2,7 +2,10 @@ syntax = "proto3";
 
 package helloworld;
 
-option go_package = ".;helloworld";
+option go_package = "github.com/rulego/rulego-components/external/grpc/testdata/helloworld";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.helloworld";
+option java_outer_classname = "HelloWorldProto";
 
 service Greeter {
   rpc SayHello (HelloRequest) returns (HelloReply) {}

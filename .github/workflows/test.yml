@@ -86,10 +86,15 @@ jobs:
         image: schickling/beanstalkd:latest
         ports:
           - 11300:11300
+        options: >-
+          --health-cmd "sh -c 'echo stats | nc localhost 11300'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     strategy:
       matrix:
-        go-version: [1.23, 1.24]
+        go-version: ['1.22', '1.23']
 
     steps:
     - uses: actions/checkout@v4
@@ -98,6 +103,16 @@ jobs:
       uses: actions/setup-go@v4
       with:
         go-version: ${{ matrix.go-version }}
+
+    - name: Install protoc Go plugins
+      run: |
+        go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+        go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+    - name: Set up protoc
+      uses: arduino/setup-protoc@v2
+      with:
+        version: '25.x'
 
     - name: Cache Go modules
       uses: actions/cache@v3
@@ -156,7 +171,6 @@ jobs:
         MONGODB_URL: mongodb://root:password@localhost:27017/
         BEANSTALKD_URL: localhost:11300
         # Skip tests that require external services not available in CI
-        SKIP_GRPC_TESTS: true
         SKIP_WUKONGIM_TESTS: true
         SKIP_OPENGEMINI_TESTS: true
         SKIP_OTEL_TESTS: true

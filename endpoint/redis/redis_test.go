@@ -33,6 +33,7 @@ import (
 )
 
 var testdataFolder = "../../testdata"
+var redisServer = "127.0.0.1:6379"
 
 func TestRedisEndpoint(t *testing.T) {
 	// 检查是否有可用的 Redis 服务器
@@ -170,4 +171,95 @@ func TestRedisEndpoint(t *testing.T) {
 	time.Sleep(time.Millisecond * 200)
 	assert.Equal(t, int32(2), atomic.LoadInt32(&count))
 	atomic.StoreInt32(&count, 0)
+}
+
+// TestEndpoint is a placeholder to demonstrate basic endpoint functionality
+func TestEndpoint(t *testing.T) {
+	// clean redis
+	client := redis.NewClient(&redis.Options{
+		Addr: redisServer,
+	})
+	err := client.Ping(context.Background()).Err()
+	if err != nil {
+		t.Skip("redis not available, skipping test")
+	}
+	_ = client.FlushDB(context.Background()).Err()
+	defer client.Close()
+
+	config := types.NewConfig()
+	ep := &Endpoint{}
+	err = ep.Init(config, types.Configuration{
+		"server": redisServer,
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, Type, ep.Type())
+
+	router := endpoint.NewRouter().From("test_topic").End()
+	routerId, err := ep.AddRouter(router)
+	assert.Nil(t, err)
+	assert.NotEqual(t, "", routerId)
+
+	err = ep.RemoveRouter(routerId)
+	assert.Nil(t, err)
+	ep.Destroy()
+}
+
+// TestRedisEndpointLifecycle tests that the redis endpoint can start, receive a message,
+// be destroyed, and not receive any more messages.
+func TestRedisEndpointLifecycle(t *testing.T) {
+	// clean redis
+	client := redis.NewClient(&redis.Options{
+		Addr: redisServer,
+	})
+	err := client.Ping(context.Background()).Err()
+	if err != nil {
+		t.Skip("redis not available, skipping test")
+	}
+	_ = client.FlushDB(context.Background()).Err()
+	defer client.Close()
+
+	config := types.NewConfig()
+
+	ep := &Endpoint{}
+	err = ep.Init(config, types.Configuration{
+		"server": redisServer,
+	})
+	assert.Nil(t, err)
+
+	msgChan := make(chan []byte, 1)
+
+	router := endpoint.NewRouter().From("test_topic_lifecycle").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
+		msgChan <- exchange.In.Body()
+		return true
+	}).End()
+
+	_, err = ep.AddRouter(router)
+	assert.Nil(t, err)
+
+	// Publish first message, should be received
+	err = client.Publish(context.Background(), "test_topic_lifecycle", "msg1").Err()
+	assert.Nil(t, err)
+
+	select {
+	case msg := <-msgChan:
+		assert.Equal(t, "msg1", string(msg))
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for message before destroy")
+	}
+
+	// Destroy the endpoint
+	ep.Destroy()
+	// Wait a bit for graceful shutdown
+	time.Sleep(200 * time.Millisecond)
+
+	// Publish second message, should NOT be received
+	err = client.Publish(context.Background(), "test_topic_lifecycle", "msg2").Err()
+	assert.Nil(t, err)
+
+	select {
+	case <-msgChan:
+		t.Fatal("received message after endpoint was destroyed")
+	case <-time.After(1 * time.Second):
+		// No message received, as expected
+	}
 }

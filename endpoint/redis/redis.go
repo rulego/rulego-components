@@ -174,7 +174,9 @@ func (r *ResponseMessage) SetBody(body []byte) {
 		topic = r.getMetadataValue(KeyResponseChannel, KeyResponseChannel)
 	}
 	if topic != "" {
-		_ = r.redisClient.Publish(context.Background(), topic, string(r.body))
+		if err := r.redisClient.Publish(context.Background(), topic, string(r.body)).Err(); err != nil {
+			r.log("redis publish error:%v", err)
+		}
 	}
 }
 
@@ -262,14 +264,20 @@ func (x *Redis) GracefulStop() {
 }
 
 func (x *Redis) Close() error {
+	// 先销毁父组件，它会清理自己的资源，例如通过CheckAndSetRouterId注册的路由
+	x.BaseEndpoint.Destroy()
 	// SharedNode 会通过 InitWithClose 中的清理函数来管理客户端的关闭
 	// SharedNode manages client closure through the cleanup function in InitWithClose
 	_ = x.SharedNode.Close()
+	x.Lock()
+	defer x.Unlock()
+
 	if x.pubSub != nil {
 		_ = x.pubSub.Close()
 		x.pubSub = nil
 	}
-	x.BaseEndpoint.Destroy()
+	// 清理channel-router的映射关系
+	x.channelRouterMap = nil
 	return nil
 }
 
@@ -293,16 +301,21 @@ func (x *Redis) AddRouter(router endpointApi.Router, params ...interface{}) (str
 }
 
 func (x *Redis) pSubscribe(client *redis.Client, channels ...string) {
+	x.Lock()
+	defer x.Unlock()
 	if x.pubSub != nil {
 		_ = x.pubSub.Close()
+		x.pubSub = nil
 	}
 	if len(channels) == 0 {
 		return
 	}
-	x.pubSub = client.PSubscribe(context.Background(), channels...)
+	// 使用本地变量，避免数据竞争
+	pubSub := client.PSubscribe(context.Background(), channels...)
+	x.pubSub = pubSub
 	go func() {
 		// 遍历接收消息
-		for msg := range x.pubSub.Channel() {
+		for msg := range pubSub.Channel() {
 			// 处理消息逻辑
 			if x.RuleConfig.Pool != nil {
 				err := x.RuleConfig.Pool.Submit(func() {
@@ -314,7 +327,6 @@ func (x *Redis) pSubscribe(client *redis.Client, channels ...string) {
 			} else {
 				go x.handlerMsg(client, msg)
 			}
-
 		}
 	}()
 }
@@ -428,12 +440,6 @@ func (x *Redis) handlerMsg(client *redis.Client, msg *redis.Message) {
 		}
 	}()
 
-	// 检查是否正在停机
-	if err := x.GracefulShutdown.CheckShutdownSignal(); err != nil {
-		x.Printf("Redis message ignored due to shutdown: %v", err)
-		return
-	}
-
 	x.RLock()
 	routers := x.channelRouterMap[msg.Pattern]
 	x.RUnlock()
@@ -452,7 +458,6 @@ func (x *Redis) handlerMsg(client *redis.Client, msg *redis.Message) {
 				},
 			},
 		}
-		// 使用停机上下文处理消息
-		x.DoProcess(x.GracefulShutdown.GetShutdownContext(), router, exchange)
+		x.DoProcess(context.Background(), router, exchange)
 	}
 }

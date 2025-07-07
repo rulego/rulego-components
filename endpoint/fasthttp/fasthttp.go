@@ -798,21 +798,18 @@ func (fh *FastHttp) handler(router endpointApi.Router, isWait bool) fasthttp.Req
 		ctx.QueryArgs().VisitAll(func(key, value []byte) {
 			metadata.PutValue(string(key), string(value))
 		})
-
 		// 创建带超时的context，防止goroutine泄漏
 		var reqCtx context.Context
 		var cancel context.CancelFunc
-
-		if !isWait {
-			// 异步处理时使用带超时的context
+		//异步不是设置超时，让引擎控制
+		if isWait {
+			// 同步处理时也使用带超时的context
 			reqCtx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
+			// 确保context被取消，防止goroutine泄漏
+			defer cancel()
 		} else {
-			// 同步处理时也使用带超时的context，但时间更短
-			reqCtx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+			reqCtx = context.Background()
 		}
-
-		// 确保context被取消，防止goroutine泄漏
-		defer cancel()
 
 		// 设置context到exchange中
 		exchange.Context = reqCtx

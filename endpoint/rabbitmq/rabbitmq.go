@@ -17,6 +17,7 @@
 package rabbitmq
 
 import (
+	"context"
 	"fmt"
 	"net/textproto"
 
@@ -293,6 +294,7 @@ func (x *RabbitMQ) Close() error {
 	// SharedNode 会通过 InitWithClose 中的清理函数来管理客户端的关闭
 	// SharedNode manages client closure through the cleanup function in InitWithClose
 	_ = x.SharedNode.Close()
+	x.BaseEndpoint.Destroy()
 	x.Lock()
 	defer x.Unlock()
 	for _, ch := range x.channels {
@@ -424,12 +426,6 @@ func (x *RabbitMQ) handlerMsg(router endpointApi.Router, ch *amqp.Channel, msg a
 		}
 	}()
 
-	// 检查是否正在停机
-	if err := x.GracefulShutdown.CheckShutdownSignal(); err != nil {
-		x.Printf("RabbitMQ message ignored due to shutdown: %v", err)
-		return
-	}
-
 	exchange := &endpointApi.Exchange{
 		In: &RequestMessage{
 			delivery: msg,
@@ -445,8 +441,7 @@ func (x *RabbitMQ) handlerMsg(router endpointApi.Router, ch *amqp.Channel, msg a
 			},
 		},
 	}
-	// 使用停机上下文处理消息
-	x.DoProcess(x.GracefulShutdown.GetShutdownContext(), router, exchange)
+	x.DoProcess(context.Background(), router, exchange)
 }
 
 func getContentType(msg *types.RuleMsg) string {

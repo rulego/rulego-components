@@ -3,8 +3,8 @@ package main
 
 import (
 	"fmt"
-	pb "main/api/ble/v1"
 	"net"
+	pb "testdata/api/ble/v1"
 	"time"
 
 	"google.golang.org/grpc"
