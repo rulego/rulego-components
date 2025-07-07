@@ -54,6 +54,7 @@ type BeanstalkdTubeSet struct {
 	Router endpointApi.Router
 	// beanstalk Tubesett实例
 	tubeset *beanstalk.TubeSet
+	stopCh  chan struct{}
 }
 
 // Type 组件类型
@@ -93,6 +94,9 @@ func (x *BeanstalkdTubeSet) Destroy() {
 }
 
 func (x *BeanstalkdTubeSet) Close() error {
+	if x.stopCh != nil {
+		close(x.stopCh)
+	}
 	// SharedNode 会通过 InitWithClose 中的清理函数来管理客户端的关闭
 	// SharedNode manages client closure through the cleanup function in InitWithClose
 	_ = x.SharedNode.Close()
@@ -144,10 +148,15 @@ func (x *BeanstalkdTubeSet) Start() error {
 			return err
 		}
 	}
+	x.stopCh = make(chan struct{})
 	go func(router endpointApi.Router) {
 		for {
-			_ = x.reserve(x.Router)
-			x.Printf("reserve job err: %s", err)
+			select {
+			case <-x.stopCh:
+				return
+			default:
+				_ = x.reserve(x.Router)
+			}
 		}
 	}(x.Router)
 	return nil
