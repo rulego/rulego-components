@@ -162,16 +162,14 @@ func (x *BeanstalkdTubeSet) Start() error {
 
 	go func() {
 		defer func() {
+			atomic.StoreInt32(&x.started, 0)
 			if e := recover(); e != nil {
 				x.Printf("beanstalkd endpoint reserve err :\n%v", runtime.Stack())
 			}
 		}()
 		for {
-			select {
-			case <-x.GracefulShutdown.GetShutdownSignal():
-				atomic.StoreInt32(&x.started, 0)
+			if x.GracefulShutdown.IsShuttingDown() {
 				return
-			default:
 			}
 			// 增加活跃操作计数
 			x.GracefulShutdown.IncrementActiveOperations()
@@ -181,12 +179,8 @@ func (x *BeanstalkdTubeSet) Start() error {
 			x.GracefulShutdown.DecrementActiveOperations()
 
 			if reserveErr != nil {
-				// It is not an error if the connection is closed during shutdown
-				select {
-				case <-x.GracefulShutdown.GetShutdownSignal():
-					atomic.StoreInt32(&x.started, 0)
+				if x.GracefulShutdown.IsShuttingDown() {
 					return
-				default:
 				}
 
 				// Ignore timeout errors, they are expected when no job is available
@@ -194,12 +188,10 @@ func (x *BeanstalkdTubeSet) Start() error {
 				if errors.As(reserveErr, &connErr) && connErr.Err == beanstalk.ErrTimeout {
 					continue
 				}
-
-				// On other errors, wait a bit before retrying to avoid spamming
+				x.Printf("reserve error: %v, retrying after 5 seconds", reserveErr)
 				select {
 				case <-time.After(5 * time.Second):
-				case <-x.GracefulShutdown.GetShutdownSignal():
-					atomic.StoreInt32(&x.started, 0)
+				case <-x.GracefulShutdown.GetShutdownContext().Done():
 					return
 				}
 			}
