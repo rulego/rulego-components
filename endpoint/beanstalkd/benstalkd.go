@@ -167,11 +167,8 @@ func (x *BeanstalkdTubeSet) Start() error {
 			}
 		}()
 		for {
-			select {
-			case <-x.GracefulShutdown.GetShutdownSignal():
-				atomic.StoreInt32(&x.started, 0)
+			if x.GracefulShutdown.IsShuttingDown() {
 				return
-			default:
 			}
 			// 增加活跃操作计数
 			x.GracefulShutdown.IncrementActiveOperations()
@@ -181,12 +178,8 @@ func (x *BeanstalkdTubeSet) Start() error {
 			x.GracefulShutdown.DecrementActiveOperations()
 
 			if reserveErr != nil {
-				// It is not an error if the connection is closed during shutdown
-				select {
-				case <-x.GracefulShutdown.GetShutdownSignal():
-					atomic.StoreInt32(&x.started, 0)
+				if x.GracefulShutdown.IsShuttingDown() {
 					return
-				default:
 				}
 
 				// Ignore timeout errors, they are expected when no job is available
@@ -195,13 +188,6 @@ func (x *BeanstalkdTubeSet) Start() error {
 					continue
 				}
 
-				// On other errors, wait a bit before retrying to avoid spamming
-				select {
-				case <-time.After(5 * time.Second):
-				case <-x.GracefulShutdown.GetShutdownSignal():
-					atomic.StoreInt32(&x.started, 0)
-					return
-				}
 			}
 		}
 	}()
