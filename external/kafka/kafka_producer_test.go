@@ -691,7 +691,7 @@ func TestKafkaProducerRuleChainDSL(t *testing.T) {
 		// 首先创建共享节点池
 		config := rulego.NewConfig()
 		pool := node_pool.NewNodePool(config)
-		config.NetPool = pool
+		config.NodePool = pool
 
 		// 注册组件
 		_ = rulego.Registry.Register(&ProducerNode{})
