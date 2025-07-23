@@ -2,7 +2,7 @@ name: Test
 
 on:
   push:
-    branches: [ main, dev ]
+    branches: [ main ]
   pull_request:
 
 concurrency:
@@ -105,6 +105,10 @@ jobs:
         env:
           OTEL_RESOURCE_ATTRIBUTES: "service.name=test-collector,service.version=1.0.0"
 
+
+
+
+
     strategy:
       matrix:
         go-version: ['1.22', '1.23']
@@ -144,6 +148,30 @@ jobs:
     - name: Verify dependencies
       run: go mod verify
 
+    - name: Start NSQ services
+      run: |
+        # Start nsqlookupd
+        docker run -d --name nsqlookupd \
+          -p 4160:4160 -p 4161:4161 \
+          nsqio/nsq:v1.2.1 /nsqlookupd --broadcast-address=127.0.0.1
+        
+        # Wait for nsqlookupd to be ready
+        sleep 5
+        
+        # Start nsqd
+        docker run -d --name nsqd \
+          -p 4150:4150 -p 4151:4151 \
+          nsqio/nsq:v1.2.1 /nsqd --broadcast-address=127.0.0.1 --lookupd-tcp-address=127.0.0.1:4160
+
+    - name: Start Pulsar service
+      run: |
+        # Start Pulsar in standalone mode
+        docker run -d --name pulsar \
+          -p 6650:6650 -p 8080:8080 \
+          -e PULSAR_MEM="-Xms512m -Xmx512m -XX:MaxDirectMemorySize=256m" \
+          apachepulsar/pulsar:3.1.0 \
+          bin/pulsar standalone
+
     - name: Wait for services to be ready
       run: |
         echo "Waiting for services to be ready..."
@@ -162,6 +190,14 @@ jobs:
         # Wait for Beanstalkd
         timeout 60 sh -c 'until nc -z localhost 11300; do echo "Waiting for Beanstalkd..."; sleep 2; done'
         
+        # Wait for NSQ
+        timeout 60 sh -c 'until nc -z localhost 4150; do echo "Waiting for NSQ nsqd..."; sleep 2; done'
+        timeout 60 sh -c 'until nc -z localhost 4160; do echo "Waiting for NSQ nsqlookupd..."; sleep 2; done'
+        
+        # Wait for Pulsar
+        timeout 120 sh -c 'until nc -z localhost 6650; do echo "Waiting for Pulsar broker..."; sleep 2; done'
+        timeout 120 sh -c 'until nc -z localhost 8080; do echo "Waiting for Pulsar admin..."; sleep 2; done'
+        
         # Wait for Kafka (takes longer to start)
         echo "Waiting for Kafka to be ready..."
         for i in {1..30}; do
@@ -179,6 +215,16 @@ jobs:
         # Wait for OTel Collector
         timeout 60 sh -c 'until nc -z localhost 4317; do echo "Waiting for OTel Collector gRPC..."; sleep 2; done'
         timeout 60 sh -c 'until nc -z localhost 4318; do echo "Waiting for OTel Collector HTTP..."; sleep 2; done'
+        
+        # Wait for NSQ
+        timeout 60 sh -c 'until nc -z localhost 4150; do echo "Waiting for NSQd TCP..."; sleep 2; done'
+        timeout 60 sh -c 'until nc -z localhost 4151; do echo "Waiting for NSQd HTTP..."; sleep 2; done'
+        timeout 60 sh -c 'until nc -z localhost 4160; do echo "Waiting for NSQLookupd TCP..."; sleep 2; done'
+        timeout 60 sh -c 'until nc -z localhost 4161; do echo "Waiting for NSQLookupd HTTP..."; sleep 2; done'
+        
+        # Wait for Pulsar
+        timeout 60 sh -c 'until nc -z localhost 6650; do echo "Waiting for Pulsar..."; sleep 2; done'
+        timeout 60 sh -c 'until nc -z localhost 8080; do echo "Waiting for Pulsar Admin..."; sleep 2; done'
 
     - name: Create OpenGemini database
       run: |
@@ -203,6 +249,11 @@ jobs:
         OPENGEMINI_SERVER: localhost:8086
         OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318
         OTEL_EXPORTER_OTLP_GRPC_ENDPOINT: http://localhost:4317
+        # NSQ connection settings
+        NSQD_ADDRESS: 127.0.0.1:4150
+        LOOKUPD_ADDRESS: 127.0.0.1:4161
+        # Pulsar connection settings
+        PULSAR_URL: pulsar://localhost:6650
         # Skip tests that require external services not available in CI
         SKIP_WUKONGIM_TESTS: true
         # Test timeout
@@ -217,6 +268,12 @@ jobs:
         flags: unittests
         name: codecov-umbrella
         fail_ci_if_error: false
+
+    - name: Cleanup containers
+      if: always()
+      run: |
+        docker stop nsqd nsqlookupd pulsar || true
+        docker rm nsqd nsqlookupd pulsar || true
 
 #  lint:
 #    runs-on: ubuntu-latest
