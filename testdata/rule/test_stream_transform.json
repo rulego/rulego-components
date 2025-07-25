@@ -1,0 +1,64 @@
+{
+  "ruleChain": {
+    "id": "test_stream_transform",
+    "name": "StreamTransform节点测试规则链", 
+    "root": true
+  },
+  "metadata": {
+    "nodes": [
+      {
+        "id": "t1",
+        "type": "x/streamTransform",
+        "name": "流转换器",
+        "debugMode": true,
+        "configuration": {
+          "sql": "SELECT temperature, humidity, temperature * 1.8 + 32 as temp_fahrenheit FROM stream WHERE temperature > 20"
+        }
+      },
+      {
+        "id": "t2",
+        "type": "jsTransform",
+        "name": "结果处理",
+        "debugMode": true,
+        "configuration": {
+          "jsScript": "metadata['processed'] = 'true'; metadata['source'] = 'streamTransform'; return {'msg': msg, 'metadata': metadata, 'msgType': msgType};"
+        }
+      },
+      {
+        "id": "t3",
+        "type": "log",
+        "name": "成功日志",
+        "debugMode": true,
+        "configuration": {
+          "jsScript": "return 'Transform成功: ' + JSON.stringify(msg);"
+        }
+      },
+      {
+        "id": "t4",
+        "type": "log",
+        "name": "过滤日志",
+        "debugMode": true,
+        "configuration": {
+          "jsScript": "return 'Transform过滤: ' + JSON.stringify(msg);"
+        }
+      }
+    ],
+    "connections": [
+      {
+        "fromId": "t1",
+        "toId": "t2",
+        "type": "Success"
+      },
+      {
+        "fromId": "t2",
+        "toId": "t3",
+        "type": "Success"
+      },
+      {
+        "fromId": "t1",
+        "toId": "t4",
+        "type": "Failure"
+      }
+    ]
+  }
+} 
