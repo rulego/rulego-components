@@ -362,7 +362,7 @@ func TestStreamAggregatorNode_ArrayInput(t *testing.T) {
 
 		// 监控成功处理
 		var processedSuccess int32
-		ruleEngine.OnMsg(msg, types.WithEndFunc(func(ctx types.RuleContext, msg types.RuleMsg, err error, relationType string) {
+		ruleEngine.OnMsg(msg, types.WithOnEnd(func(ctx types.RuleContext, msg types.RuleMsg, err error, relationType string) {
 			if err == nil {
 				atomic.AddInt32(&processedSuccess, 1)
 			}
@@ -427,7 +427,7 @@ func TestStreamAggregatorNode_ArrayInput(t *testing.T) {
 		msg := types.NewMsg(0, "TELEMETRY", types.JSON, types.NewMetadata(), string(msgData))
 
 		var processedSuccess int32
-		ruleEngine.OnMsg(msg, types.WithEndFunc(func(ctx types.RuleContext, msg types.RuleMsg, err error, relationType string) {
+		ruleEngine.OnMsg(msg, types.WithOnEnd(func(ctx types.RuleContext, msg types.RuleMsg, err error, relationType string) {
 			if err == nil {
 				atomic.AddInt32(&processedSuccess, 1)
 			}
@@ -524,7 +524,7 @@ func TestStreamAggregatorNode_DataTypeValidation(t *testing.T) {
 
 			msg := types.NewMsg(0, "TEST", tc.dataType, types.NewMetadata(), tc.data)
 
-			ruleEngine.OnMsg(msg, types.WithEndFunc(func(ctx types.RuleContext, msg types.RuleMsg, err error, relationType string) {
+			ruleEngine.OnMsg(msg, types.WithOnEnd(func(ctx types.RuleContext, msg types.RuleMsg, err error, relationType string) {
 				if err == nil {
 					atomic.AddInt32(&processedSuccess, 1)
 				} else {

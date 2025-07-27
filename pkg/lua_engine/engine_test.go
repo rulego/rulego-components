@@ -274,7 +274,7 @@ func TestGlobalCacheInLua(t *testing.T) {
 	var def types.RuleChain
 	def.RuleChain.ID = "test"
 
-	chainCtx, _ := engine.InitRuleChainCtx(config, nil, &def)
+	chainCtx, _ := engine.InitRuleChainCtx(config, nil, &def, nil)
 
 	pool := NewStringLStatePool(config, "", types.Configuration{
 		types.NodeConfigurationKeyChainCtx: chainCtx,
@@ -423,7 +423,7 @@ func TestGlobalCacheInLua_DotNotation(t *testing.T) {
 	var def types.RuleChain
 	def.RuleChain.ID = "testDot"
 
-	chainCtx, _ := engine.InitRuleChainCtx(config, nil, &def)
+	chainCtx, _ := engine.InitRuleChainCtx(config, nil, &def, nil)
 
 	pool := NewStringLStatePool(config, "", types.Configuration{
 		types.NodeConfigurationKeyChainCtx: chainCtx,
