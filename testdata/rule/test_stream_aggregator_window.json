@@ -1,0 +1,87 @@
+{
+  "ruleChain": {
+    "id": "test_stream_aggregator_window",
+    "name": "StreamAggregator窗口聚合测试规则链",
+    "root": true
+  },
+  "metadata": {
+    "nodes": [
+      {
+        "id": "aw1",
+        "type": "x/streamAggregator",
+        "name": "滚动窗口聚合器",
+        "debugMode": true,
+        "configuration": {
+          "sql": "SELECT AVG(temperature) as avg_temp, SUM(temperature) as sum_temp, COUNT(*) as count FROM stream GROUP BY TumblingWindow('1s')"
+        }
+      },
+      {
+        "id": "aw2",
+        "type": "x/streamAggregator",
+        "name": "滑动窗口聚合器",
+        "debugMode": true,
+        "configuration": {
+          "sql": "SELECT MAX(temperature) as max_temp, MIN(temperature) as min_temp FROM stream GROUP BY SlidingWindow('3s', '1s')"
+        }
+      },
+      {
+        "id": "aw3",
+        "type": "jsFilter",
+        "name": "高温报警过滤器",
+        "debugMode": true,
+        "configuration": {
+          "jsScript": "return msg.avg_temp && msg.avg_temp > 30;"
+        }
+      },
+      {
+        "id": "aw4",
+        "type": "log",
+        "name": "滚动窗口结果",
+        "debugMode": true,
+        "configuration": {
+          "jsScript": "return '滚动窗口聚合: ' + JSON.stringify(msg);"
+        }
+      },
+      {
+        "id": "aw5",
+        "type": "log",
+        "name": "滑动窗口结果",
+        "debugMode": true,
+        "configuration": {
+          "jsScript": "return '滑动窗口聚合: ' + JSON.stringify(msg);"
+        }
+      },
+      {
+        "id": "aw6",
+        "type": "log",
+        "name": "高温报警",
+        "debugMode": true,
+        "configuration": {
+          "jsScript": "return '高温报警: 平均温度=' + msg.avg_temp + '°C';"
+        }
+      }
+    ],
+    "connections": [
+      {
+        "fromId": "aw1",
+        "toId": "aw4",
+        "type": "window_event"
+      },
+      {
+        "fromId": "aw1",
+        "toId": "aw3",
+        "type": "window_event"
+      },
+      {
+        "fromId": "aw2",
+        "toId": "aw5",
+        "type": "window_event"
+      },
+      {
+        "fromId": "aw3",
+        "toId": "aw6",
+        "type": "True"
+      }
+    ]
+  }
+} 

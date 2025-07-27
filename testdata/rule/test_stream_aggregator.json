@@ -1,0 +1,64 @@
+{
+  "ruleChain": {
+    "id": "test_stream_aggregator",
+    "name": "StreamAggregator节点测试规则链",
+    "root": true
+  },
+  "metadata": {
+    "nodes": [
+      {
+        "id": "a1",
+        "type": "x/streamAggregator",
+        "name": "流聚合器",
+        "debugMode": true,
+        "configuration": {
+          "sql": "SELECT deviceId, AVG(temperature) as avg_temp, MAX(temperature) as max_temp, COUNT(*) as count FROM stream GROUP BY deviceId, TumblingWindow('2s')"
+        }
+      },
+      {
+        "id": "a2",
+        "type": "jsTransform",
+        "name": "聚合结果处理",
+        "debugMode": true,
+        "configuration": {
+          "jsScript": "metadata['processed'] = 'true'; metadata['source'] = 'streamAggregator'; metadata['resultType'] = 'aggregation'; return {'msg': msg, 'metadata': metadata, 'msgType': msgType};"
+        }
+      },
+      {
+        "id": "a3",
+        "type": "log",
+        "name": "聚合结果日志",
+        "debugMode": true,
+        "configuration": {
+          "jsScript": "return 'Aggregator结果: ' + JSON.stringify(msg);"
+        }
+      },
+      {
+        "id": "a4",
+        "type": "log",
+        "name": "数据流转日志",
+        "debugMode": true,
+        "configuration": {
+          "jsScript": "return 'Aggregator数据流转: ' + JSON.stringify(msg);"
+        }
+      }
+    ],
+    "connections": [
+      {
+        "fromId": "a1",
+        "toId": "a4",
+        "type": "Success"
+      },
+      {
+        "fromId": "a1",
+        "toId": "a2",
+        "type": "window_event"
+      },
+      {
+        "fromId": "a2",
+        "toId": "a3",
+        "type": "Success"
+      }
+    ]
+  }
+} 

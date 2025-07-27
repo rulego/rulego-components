@@ -31,13 +31,13 @@ func init() {
 
 type ClientNodeConfiguration struct {
 	// NATS服务器地址
-	Server string
+	Server string `json:"server"`
 	// NATS用户名
-	Username string
+	Username string `json:"username"`
 	// NATS密码
-	Password string
+	Password string `json:"password"`
 	// 发布主题
-	Topic string
+	Topic string `json:"topic"`
 }
 
 type ClientNode struct {
