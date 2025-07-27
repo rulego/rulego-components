@@ -231,8 +231,11 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 		// 如果有结果，验证聚合结果的结构
 		if resultsCount > 0 {
 			mu.Lock()
-			firstResult := aggregateResults[0]
+			aggregateResultsCopy := make([]map[string]interface{}, len(aggregateResults))
+			copy(aggregateResultsCopy, aggregateResults)
 			mu.Unlock()
+
+			firstResult := aggregateResultsCopy[0]
 
 			// 验证结果包含期望的字段
 			_, hasDeviceId := firstResult["deviceId"]
@@ -315,6 +318,8 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 		finalCount := atomic.LoadInt32(&windowCount)
 		mu.Lock()
 		resultsCount := len(windowResults)
+		windowResultsCopy := make([]map[string]interface{}, len(windowResults))
+		copy(windowResultsCopy, windowResults)
 		mu.Unlock()
 
 		assert.True(t, finalCount >= 0, "窗口聚合应该完成")
@@ -322,9 +327,7 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 
 		// 如果有结果，验证结果的有效性
 		if resultsCount > 0 {
-			mu.Lock()
-			firstResult := windowResults[0]
-			mu.Unlock()
+			firstResult := windowResultsCopy[0]
 
 			// 验证结果是有效的map
 			assert.True(t, len(firstResult) > 0, "窗口聚合结果不应该为空")
@@ -493,13 +496,13 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 
 		mu.Lock()
 		resultsCount := len(aggregateResults)
+		aggregateResultsCopy := make([]map[string]interface{}, len(aggregateResults))
+		copy(aggregateResultsCopy, aggregateResults)
 		mu.Unlock()
 
 		// 如果有聚合结果，验证其有效性
 		if resultsCount > 0 {
-			mu.Lock()
-			firstResult := aggregateResults[0]
-			mu.Unlock()
+			firstResult := aggregateResultsCopy[0]
 
 			assert.True(t, len(firstResult) > 0, "聚合结果不应该为空")
 		}

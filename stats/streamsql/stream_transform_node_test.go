@@ -221,16 +221,21 @@ func TestStreamTransformNode_ConcurrentProcessing(t *testing.T) {
 	finalSuccess := atomic.LoadInt32(&successCount)
 
 	assert.True(t, finalSuccess > 0, "应该有成功处理的消息")
-	assert.True(t, len(results) > 0, "应该收集到转换结果")
-
+	
 	// 验证所有结果都有正确的字段
 	mu.Lock()
-	for _, result := range results {
+	resultsCount := len(results)
+	resultsCopy := make([]map[string]interface{}, len(results))
+	copy(resultsCopy, results)
+	mu.Unlock()
+	
+	assert.True(t, resultsCount > 0, "应该收集到转换结果")
+	
+	for _, result := range resultsCopy {
 		assert.NotNil(t, result["deviceId"], "结果应该包含设备ID")
 		assert.NotNil(t, result["temperature"], "结果应该包含温度")
 		assert.NotNil(t, result["humidity"], "结果应该包含湿度")
 	}
-	mu.Unlock()
 }
 
 // TestStreamTransformNode_EdgeCases 测试边界情况
@@ -541,7 +546,13 @@ func testStreamTransform(t *testing.T, sql string, testData []map[string]interfa
 	// 等待处理完成
 	time.Sleep(100 * time.Millisecond)
 
-	return results
+	// 使用互斥锁保护对 results 的读取
+	mu.Lock()
+	resultsCopy := make([]map[string]interface{}, len(results))
+	copy(resultsCopy, results)
+	mu.Unlock()
+
+	return resultsCopy
 }
 
 // testStreamTransformArray 数组转换测试辅助函数（成功情况）
@@ -601,7 +612,14 @@ func testStreamTransformArray(t *testing.T, sql string, testData []map[string]in
 	finalSuccess := atomic.LoadInt32(&successCount)
 
 	assert.Equal(t, int32(1), finalSuccess, "数组应该成功转换")
-	return results
+	
+	// 使用互斥锁保护对 results 的读取
+	mu.Lock()
+	resultsCopy := make([]map[string]interface{}, len(results))
+	copy(resultsCopy, results)
+	mu.Unlock()
+	
+	return resultsCopy
 }
 
 // testStreamTransformArrayFailure 数组转换测试辅助函数（失败情况）

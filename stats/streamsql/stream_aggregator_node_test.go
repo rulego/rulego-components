@@ -222,16 +222,19 @@ func TestStreamAggregatorNode_ConcurrentProcessing(t *testing.T) {
 	// 等待窗口聚合触发
 	time.Sleep(3 * time.Second)
 
-	assert.True(t, len(aggregateResults) >= 0, "应该收集到聚合结果")
-
 	// 验证聚合结果结构
 	mu.Lock()
-	for _, result := range aggregateResults {
+	aggregateResultsCopy := make([]map[string]interface{}, len(aggregateResults))
+	copy(aggregateResultsCopy, aggregateResults)
+	mu.Unlock()
+
+	assert.True(t, len(aggregateResultsCopy) >= 0, "应该收集到聚合结果")
+
+	for _, result := range aggregateResultsCopy {
 		assert.NotNil(t, result["deviceId"], "聚合结果应该包含设备ID")
 		assert.NotNil(t, result["avg_temp"], "聚合结果应该包含平均温度")
 		assert.NotNil(t, result["count"], "聚合结果应该包含计数")
 	}
-	mu.Unlock()
 }
 
 // TestStreamAggregatorNode_ComplexAggregation 测试复杂聚合查询
@@ -628,5 +631,11 @@ func testStreamAggregator(t *testing.T, sql string, testData []map[string]interf
 	// 等待窗口聚合触发
 	time.Sleep(2 * time.Second)
 
-	return results
+	// 使用互斥锁保护对 results 的读取
+	mu.Lock()
+	resultsCopy := make([]map[string]interface{}, len(results))
+	copy(resultsCopy, results)
+	mu.Unlock()
+
+	return resultsCopy
 }
