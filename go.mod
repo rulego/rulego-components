@@ -22,7 +22,7 @@ require (
 	github.com/rabbitmq/amqp091-go v1.10.1-0.20240821123418-dc67c21576c2
 	github.com/redis/go-redis/v9 v9.10.0
 	github.com/rulego/rulego v0.33.0-alpha.1
-	github.com/rulego/streamsql v0.10.0
+	github.com/rulego/streamsql v0.0.0-20250730102243-ffb050dc5134
 	github.com/stretchr/testify v1.10.0
 	github.com/vadv/gopher-lua-libs v0.5.0
 	github.com/valyala/fasthttp v1.58.0
