@@ -19,12 +19,15 @@ package kafka
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/IBM/sarama"
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
+	"github.com/rulego/rulego/components/action"
 	"github.com/rulego/rulego/engine"
 	"github.com/rulego/rulego/test/assert"
 )
@@ -42,6 +45,82 @@ import (
 // - 保证配置更新的原子性，避免中间状态
 // - 支持复杂的路由拓扑变更
 func TestKafkaDSLEndpoint(t *testing.T) {
+	// 用于验证消息接收的计数器
+	var sensorMsgCount, deviceMsgCount int32
+	
+	// 注册传感器数据验证函数
+	action.Functions.Register("validateSensorData", func(ctx types.RuleContext, msg types.RuleMsg) {
+		// 增加计数器
+		atomic.AddInt32(&sensorMsgCount, 1)
+		
+		// 验证消息数据
+		data := msg.GetData()
+		if len(data) == 0 {
+			ctx.TellFailure(msg, fmt.Errorf("sensor data is empty"))
+			return
+		}
+		
+		// 解析JSON数据
+		var sensorData map[string]interface{}
+		if err := json.Unmarshal([]byte(data), &sensorData); err != nil {
+			ctx.TellFailure(msg, fmt.Errorf("failed to parse sensor data: %v", err))
+			return
+		}
+		
+		// 验证必要字段
+		if _, ok := sensorData["sensorId"]; !ok {
+			ctx.TellFailure(msg, fmt.Errorf("missing sensorId field"))
+			return
+		}
+		
+		// 添加验证标记到metadata
+		msg.Metadata.PutValue("validated", "true")
+		msg.Metadata.PutValue("validatedBy", "validateSensorData")
+		msg.Metadata.PutValue("processedAt", time.Now().Format(time.RFC3339))
+		
+		// 继续处理
+		ctx.TellNext(msg, "validated")
+	})
+	
+	// 注册设备状态验证函数
+	action.Functions.Register("validateDeviceStatus", func(ctx types.RuleContext, msg types.RuleMsg) {
+		// 增加计数器
+		atomic.AddInt32(&deviceMsgCount, 1)
+		
+		// 验证消息数据
+		data := msg.GetData()
+		if len(data) == 0 {
+			ctx.TellFailure(msg, fmt.Errorf("device status data is empty"))
+			return
+		}
+		
+		// 解析JSON数据
+		var deviceData map[string]interface{}
+		if err := json.Unmarshal([]byte(data), &deviceData); err != nil {
+			ctx.TellFailure(msg, fmt.Errorf("failed to parse device data: %v", err))
+			return
+		}
+		
+		// 验证必要字段
+		if _, ok := deviceData["deviceId"]; !ok {
+			ctx.TellFailure(msg, fmt.Errorf("missing deviceId field"))
+			return
+		}
+		
+		if _, ok := deviceData["status"]; !ok {
+			ctx.TellFailure(msg, fmt.Errorf("missing status field"))
+			return
+		}
+		
+		// 添加验证标记到metadata
+		msg.Metadata.PutValue("validated", "true")
+		msg.Metadata.PutValue("validatedBy", "validateDeviceStatus")
+		msg.Metadata.PutValue("processedAt", time.Now().Format(time.RFC3339))
+		
+		// 继续处理
+		ctx.TellNext(msg, "validated")
+	})
+	
 	// 创建初始的DSL配置
 	initialDSL := `{
 		"ruleChain": {
@@ -90,7 +169,7 @@ func TestKafkaDSLEndpoint(t *testing.T) {
 					"type": "jsTransform",
 					"name": "传感器数据处理器",
 					"configuration": {
-						"jsScript": "var data = JSON.parse(msg);\nvar result = {\n  type: 'sensor_processed',\n  originalData: data,\n  processedAt: new Date().toISOString(),\n  topic: metadata.topic,\n  partition: metadata.partition,\n  offset: metadata.offset\n};\nmetadata.topic = 'processed.sensor.data';\nreturn {'msg': JSON.stringify(result), 'metadata': metadata, 'msgType': 'SENSOR_PROCESSED'};"
+						"jsScript": "var result = {\n  type: 'sensor_processed',\n  originalData: msg,\n  processedAt: new Date().toISOString(),\n  topic: metadata.topic,\n  partition: metadata.partition,\n  offset: metadata.offset\n};\nmetadata.topic = 'processed.sensor.data';\nreturn {'msg': result, 'metadata': metadata, 'msgType': 'SENSOR_PROCESSED'};"
 					},
 					"debugMode": true
 				},
@@ -99,12 +178,41 @@ func TestKafkaDSLEndpoint(t *testing.T) {
 					"type": "jsTransform",
 					"name": "设备状态处理器",
 					"configuration": {
-						"jsScript": "var status = JSON.parse(msg);\nvar result = {\n  type: 'device_status_processed',\n  deviceId: status.deviceId,\n  status: status.status,\n  processedAt: new Date().toISOString(),\n  topic: metadata.topic,\n  partition: metadata.partition\n};\nmetadata.topic = 'processed.device.status';\nreturn {'msg': JSON.stringify(result), 'metadata': metadata, 'msgType': 'DEVICE_STATUS_PROCESSED'};"
+						"jsScript": "var result = {\n  type: 'device_status_processed',\n  deviceId: msg.deviceId,\n  status: msg.status,\n  processedAt: new Date().toISOString(),\n  topic: metadata.topic,\n  partition: metadata.partition\n};\nmetadata.topic = 'processed.device.status';\nreturn {'msg': result, 'metadata': metadata, 'msgType': 'DEVICE_STATUS_PROCESSED'};"
+					},
+					"debugMode": true
+				},
+				{
+					"id": "sensor_validator",
+					"type": "functions",
+					"name": "传感器数据验证器",
+					"configuration": {
+						"functionName": "validateSensorData"
+					},
+					"debugMode": true
+				},
+				{
+					"id": "device_validator",
+					"type": "functions",
+					"name": "设备状态验证器",
+					"configuration": {
+						"functionName": "validateDeviceStatus"
 					},
 					"debugMode": true
 				}
 			],
-			"connections": []
+			"connections": [
+				{
+					"fromId": "sensor_processor",
+					"toId": "sensor_validator",
+					"type": "Success"
+				},
+				{
+					"fromId": "device_processor",
+					"toId": "device_validator",
+					"type": "Success"
+				}
+			]
 		}
 	}`
 
@@ -124,18 +232,27 @@ func TestKafkaDSLEndpoint(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, ruleEngine)
 
-	// 等待Kafka消费者启动
-	time.Sleep(time.Second * 2)
+	// 等待Kafka消费者启动 - CI环境需要更长时间
+	time.Sleep(time.Second * 10)
 
-	// 创建Kafka生产者用于测试
+	// 创建Kafka生产者用于测试，并验证连接
 	saramaConfig := sarama.NewConfig()
 	saramaConfig.Producer.Return.Successes = true
+	saramaConfig.Producer.Retry.Max = 5
+	saramaConfig.Producer.Retry.Backoff = time.Second
 	producer, err := sarama.NewSyncProducer([]string{"localhost:9092"}, saramaConfig)
 	assert.Nil(t, err)
 	defer producer.Close()
 
+	// 额外等待确保消费者完全准备好接收消息
+	time.Sleep(time.Second * 3)
+
 	// 测试初始路由
 	t.Run("TestInitialRoutes", func(t *testing.T) {
+		// 重置计数器
+		atomic.StoreInt32(&sensorMsgCount, 0)
+		atomic.StoreInt32(&deviceMsgCount, 0)
+		
 		// 注意：这个测试通过Kafka消息触发规则链处理，不需要直接调用OnMsg
 
 		// 发送传感器数据消息
@@ -165,8 +282,15 @@ func TestKafkaDSLEndpoint(t *testing.T) {
 		})
 		assert.Nil(t, err)
 
-		// 等待消息处理完成（使用固定时间等待而不是WaitGroup）
+		// 等待消息处理完成
 		time.Sleep(time.Second * 3)
+
+		// 验证functions节点是否正确处理了消息
+		assert.True(t, atomic.LoadInt32(&sensorMsgCount) > 0, "传感器验证函数应该被调用")
+		assert.True(t, atomic.LoadInt32(&deviceMsgCount) > 0, "设备状态验证函数应该被调用")
+		
+		t.Logf("传感器消息处理次数: %d", atomic.LoadInt32(&sensorMsgCount))
+		t.Logf("设备状态消息处理次数: %d", atomic.LoadInt32(&deviceMsgCount))
 
 	})
 
@@ -524,6 +648,10 @@ func TestKafkaDSLEndpoint(t *testing.T) {
 
 	// 清理资源
 	ruleEngine.Stop(context.Background())
+	
+	// 清理注册的函数
+	action.Functions.UnRegister("validateSensorData")
+	action.Functions.UnRegister("validateDeviceStatus")
 }
 
 // TestKafkaDSLWithMultipleConsumers 测试Kafka DSL配置中的多消费者功能

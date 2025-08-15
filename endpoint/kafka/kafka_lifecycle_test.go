@@ -31,14 +31,14 @@ import (
 
 // TestKafkaEndpointLifecycleManagement 测试Kafka endpoint的生命周期管理
 func TestKafkaEndpointLifecycleManagement(t *testing.T) {
-	// 跳过测试，因为需要实际的Kafka服务器
-	t.Skip("Skipping Kafka tests - requires actual Kafka server")
 
 	config := engine.NewConfig()
 
 	// 子测试1：基本初始化测试
 	t.Run("BasicInitialization", func(t *testing.T) {
-		kafkaEndpoint := &Kafka{}
+		// 使用New()方法正确初始化Kafka endpoint
+		tempKafka := &Kafka{}
+		kafkaEndpoint := tempKafka.New().(*Kafka)
 
 		// 测试New方法
 		newInstance := kafkaEndpoint.New()
@@ -51,7 +51,9 @@ func TestKafkaEndpointLifecycleManagement(t *testing.T) {
 
 	// 子测试2：配置初始化测试
 	t.Run("ConfigurationInitialization", func(t *testing.T) {
-		kafkaEndpoint := &Kafka{}
+		// 使用New()方法正确初始化Kafka endpoint
+		tempKafka := &Kafka{}
+		kafkaEndpoint := tempKafka.New().(*Kafka)
 
 		configuration := types.Configuration{
 			"server":  "localhost:9092",
@@ -111,7 +113,9 @@ func TestKafkaEndpointLifecycleManagement(t *testing.T) {
 
 	// 子测试4：关闭和清理测试
 	t.Run("CloseAndCleanup", func(t *testing.T) {
-		kafkaEndpoint := &Kafka{}
+		// 使用New()方法正确初始化Kafka endpoint
+		tempKafka := &Kafka{}
+		kafkaEndpoint := tempKafka.New().(*Kafka)
 
 		configuration := types.Configuration{
 			"server":  "localhost:9092",
@@ -136,13 +140,13 @@ func TestKafkaEndpointLifecycleManagement(t *testing.T) {
 
 // TestKafkaEndpointIdempotencyAndSafety 测试Kafka endpoint的幂等性和安全性
 func TestKafkaEndpointIdempotencyAndSafety(t *testing.T) {
-	// 跳过测试，因为需要实际的Kafka服务器
-	t.Skip("Skipping Kafka tests - requires actual Kafka server")
 
 	config := engine.NewConfig()
 
 	t.Run("MultipleCloseCalls", func(t *testing.T) {
-		kafkaEndpoint := &Kafka{}
+		// 使用New()方法正确初始化Kafka endpoint
+		tempKafka := &Kafka{}
+		kafkaEndpoint := tempKafka.New().(*Kafka)
 
 		configuration := types.Configuration{
 			"server":  "localhost:9092",
@@ -166,7 +170,9 @@ func TestKafkaEndpointIdempotencyAndSafety(t *testing.T) {
 	})
 
 	t.Run("ConcurrentCloseCalls", func(t *testing.T) {
-		kafkaEndpoint := &Kafka{}
+		// 使用New()方法正确初始化Kafka endpoint
+		tempKafka := &Kafka{}
+		kafkaEndpoint := tempKafka.New().(*Kafka)
 
 		configuration := types.Configuration{
 			"server":  "localhost:9092",
@@ -202,7 +208,9 @@ func TestKafkaEndpointIdempotencyAndSafety(t *testing.T) {
 	})
 
 	t.Run("ConcurrentRouterManagement", func(t *testing.T) {
-		kafkaEndpoint := &Kafka{}
+		// 使用New()方法正确初始化Kafka endpoint
+		tempKafka := &Kafka{}
+		kafkaEndpoint := tempKafka.New().(*Kafka)
 
 		configuration := types.Configuration{
 			"server":  "localhost:9092",
@@ -254,13 +262,13 @@ func TestKafkaEndpointIdempotencyAndSafety(t *testing.T) {
 
 // TestKafkaEndpointShutdownBehavior 测试Kafka endpoint的关闭行为
 func TestKafkaEndpointShutdownBehavior(t *testing.T) {
-	// 跳过测试，因为需要实际的Kafka服务器
-	t.Skip("Skipping Kafka tests - requires actual Kafka server")
 
 	config := engine.NewConfig()
 
 	t.Run("GracefulShutdown", func(t *testing.T) {
-		kafkaEndpoint := &Kafka{}
+		// 使用New()方法正确初始化Kafka endpoint
+		tempKafka := &Kafka{}
+		kafkaEndpoint := tempKafka.New().(*Kafka)
 
 		configuration := types.Configuration{
 			"server":  "localhost:9092",
@@ -286,7 +294,9 @@ func TestKafkaEndpointShutdownBehavior(t *testing.T) {
 	})
 
 	t.Run("ShutdownWithTimeout", func(t *testing.T) {
-		kafkaEndpoint := &Kafka{}
+		// 使用New()方法正确初始化Kafka endpoint
+		tempKafka := &Kafka{}
+		kafkaEndpoint := tempKafka.New().(*Kafka)
 		kafkaEndpoint.shutdownTimeout = 5 * time.Second // 设置较短的超时
 
 		configuration := types.Configuration{
@@ -313,8 +323,9 @@ func TestKafkaEndpointConfiguration(t *testing.T) {
 	config := engine.NewConfig()
 
 	t.Run("DefaultConfiguration", func(t *testing.T) {
-		kafkaEndpoint := &Kafka{}
-		newInstance := kafkaEndpoint.New()
+		// 使用New()方法正确初始化Kafka endpoint
+		tempKafka := &Kafka{}
+		newInstance := tempKafka.New()
 		newKafka, ok := newInstance.(*Kafka)
 		assert.True(t, ok)
 
@@ -327,7 +338,9 @@ func TestKafkaEndpointConfiguration(t *testing.T) {
 	})
 
 	t.Run("CustomConfiguration", func(t *testing.T) {
-		kafkaEndpoint := &Kafka{}
+		// 使用New()方法正确初始化Kafka endpoint
+		tempKafka := &Kafka{}
+		kafkaEndpoint := tempKafka.New().(*Kafka)
 
 		configuration := types.Configuration{
 			"server":  "kafka1:9092,kafka2:9092",
@@ -359,7 +372,9 @@ func TestKafkaEndpointConfiguration(t *testing.T) {
 	})
 
 	t.Run("LegacyBrokersConfiguration", func(t *testing.T) {
-		kafkaEndpoint := &Kafka{}
+		// 使用New()方法正确初始化Kafka endpoint
+		tempKafka := &Kafka{}
+		kafkaEndpoint := tempKafka.New().(*Kafka)
 
 		// 测试旧版本的brokers配置
 		configuration := types.Configuration{
@@ -377,7 +392,9 @@ func TestKafkaEndpointConfiguration(t *testing.T) {
 	})
 
 	t.Run("EmptyGroupIdHandling", func(t *testing.T) {
-		kafkaEndpoint := &Kafka{}
+		// 使用New()方法正确初始化Kafka endpoint
+		tempKafka := &Kafka{}
+		kafkaEndpoint := tempKafka.New().(*Kafka)
 
 		configuration := types.Configuration{
 			"server":  "localhost:9092",

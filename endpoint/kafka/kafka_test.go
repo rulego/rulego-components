@@ -84,7 +84,7 @@ func TestKafkaEndpoint(t *testing.T) {
 		GroupId: "test01",
 	})
 	if err != nil {
-		t.Skipf("Failed to create Kafka endpoint: %v", err)
+		t.Errorf("Failed to create Kafka endpoint: %v", err)
 		return
 	}
 
@@ -123,12 +123,12 @@ func TestKafkaEndpoint(t *testing.T) {
 	//注册路由
 	_, err = kafkaEndpoint.AddRouter(router1)
 	if err != nil {
-		t.Skipf("Failed to add router1 (Kafka server may not be available): %v", err)
+		t.Errorf("Failed to add router1 (Kafka server may not be available): %v", err)
 		return
 	}
 	_, err = kafkaEndpoint.AddRouter(router2)
 	if err != nil {
-		t.Skipf("Failed to add router2 (Kafka server may not be available): %v", err)
+		t.Errorf("Failed to add router2 (Kafka server may not be available): %v", err)
 		return
 	}
 	_, err = kafkaEndpoint.AddRouter(router3)
@@ -136,22 +136,29 @@ func TestKafkaEndpoint(t *testing.T) {
 	//并启动服务
 	err = kafkaEndpoint.Start()
 	if err != nil {
-		t.Skipf("Failed to start Kafka endpoint: %v", err)
+		t.Errorf("Failed to start Kafka endpoint: %v", err)
 		return
 	}
 
+	// 等待Kafka endpoint完全启动和消费者初始化
+	time.Sleep(5 * time.Second)
+
 	// 测试发布和订阅
 	brokers := []string{kafkaBrokers}
-	producer, err := sarama.NewSyncProducer(brokers, nil)
+	producerConfig := sarama.NewConfig()
+	producerConfig.Producer.RequiredAcks = sarama.WaitForAll
+	producerConfig.Producer.Retry.Max = 5
+	producerConfig.Producer.Return.Successes = true
+	producer, err := sarama.NewSyncProducer(brokers, producerConfig)
 	if err != nil {
-		t.Skipf("Failed to start Sarama producer (Kafka may not be available): %v", err)
+		t.Errorf("Failed to start Sarama producer (Kafka may not be available): %v", err)
 		return
 	}
 	defer producer.Close()
 
 	consumer, err := sarama.NewConsumer(brokers, nil)
 	if err != nil {
-		t.Skipf("Failed to start Sarama consumer (Kafka may not be available): %v", err)
+		t.Errorf("Failed to start Sarama consumer (Kafka may not be available): %v", err)
 		return
 	}
 	defer consumer.Close()
@@ -166,40 +173,58 @@ func TestKafkaEndpoint(t *testing.T) {
 		// 创建消费者来读取 device.msg.response
 		partitionConsumer, err := consumer.ConsumePartition("device.msg.response", 0, sarama.OffsetNewest)
 		if err != nil {
-			t.Logf("Failed to start consumer for response topic: %v", err)
+			t.Errorf("Failed to start consumer for response topic: %v", err)
 			return
 		}
 		defer partitionConsumer.Close()
 
-		// 等待并验证响应，使用更长的超时
-		timeout := time.After(15 * time.Second)
+		// 等待并验证响应，使用更长的超时适应CI环境
+		timeout := time.After(30 * time.Second)
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+
 		for {
 			select {
 			case msg := <-partitionConsumer.Messages():
+				t.Logf("Received response message: %s", string(msg.Value))
 				assert.Equal(t, "this is response", string(msg.Value))
 				mu.Lock()
 				receivedMessage = true
 				mu.Unlock()
 				return
+			case <-ticker.C:
+				t.Logf("Still waiting for response message...")
 			case <-timeout:
-				t.Log("Timeout waiting for response message")
+				t.Errorf("Timeout waiting for response message after 30 seconds")
 				return
 			}
 		}
 	}(&wg)
 
-	// 等待消费者启动
-	time.Sleep(2 * time.Second)
+	// 等待消费者启动和生产者完全初始化
+	time.Sleep(3 * time.Second)
 
-	// 发布消息到 device.msg.request
-	_, _, err = producer.SendMessage(&sarama.ProducerMessage{
-		Topic: "device.msg.request",
-		Value: sarama.StringEncoder("test message"),
-	})
-	if err != nil {
-		t.Skipf("Failed to send message (Kafka server may not be available): %v", err)
+	// 发布消息到 device.msg.request，增加重试机制
+	var sendErr error
+	for i := 0; i < 3; i++ {
+		_, _, sendErr = producer.SendMessage(&sarama.ProducerMessage{
+			Topic: "device.msg.request",
+			Value: sarama.StringEncoder("test message"),
+		})
+		if sendErr == nil {
+			t.Logf("Message sent successfully on attempt %d", i+1)
+			break
+		}
+		t.Logf("Failed to send message on attempt %d: %v", i+1, sendErr)
+		time.Sleep(1 * time.Second)
+	}
+	if sendErr != nil {
+		t.Errorf("Failed to send message after 3 attempts (Kafka server may not be available): %v", sendErr)
 		return
 	}
+
+	// 发送消息后额外等待，确保消息被处理
+	time.Sleep(2 * time.Second)
 
 	wg.Wait()
 
@@ -208,7 +233,7 @@ func TestKafkaEndpoint(t *testing.T) {
 	mu.Unlock()
 
 	if !received {
-		t.Skip("Failed to receive message within the timeout period - Kafka server may not be properly configured")
+		t.Errorf("Failed to receive message within the timeout period")
 		return
 	}
 
