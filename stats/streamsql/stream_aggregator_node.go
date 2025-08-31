@@ -148,8 +148,8 @@ func (x *StreamAggregatorNode) Init(ruleConfig types.Config, configuration types
 	}
 
 	// 设置聚合结果处理回调
-	x.streamsql.AddSink(func(result interface{}) {
-		x.handleAggregateResult(result)
+	x.streamsql.AddSink(func(results []map[string]interface{}) {
+		x.handleAggregateResult(results)
 	})
 
 	return nil
@@ -188,8 +188,13 @@ func (x *StreamAggregatorNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 			return
 		}
 	} else {
-		// 处理单条数据：直接添加到StreamSQL流中，streamsql会自动处理类型
-		x.streamsql.Emit(data)
+		// 处理单条数据：转换为map[string]interface{}类型后添加到StreamSQL流中
+		mapData, err := x.convertToMapStringInterface(data)
+		if err != nil {
+			ctx.TellFailure(msg, fmt.Errorf("data type conversion failed: %w", err))
+			return
+		}
+		x.streamsql.Emit(mapData)
 	}
 
 	// 数据成功加入聚合流，原始消息继续流转
@@ -228,9 +233,13 @@ func (x *StreamAggregatorNode) processArrayData(data interface{}) error {
 	}
 
 	// 遍历数组，将每个元素添加到聚合流中
-	// streamsql内部会自动处理每个元素的类型转换
+	// 需要将每个元素转换为map[string]interface{}类型
 	for _, item := range arr {
-		x.streamsql.Emit(item)
+		mapItem, err := x.convertToMapStringInterface(item)
+		if err != nil {
+			return fmt.Errorf("array element type conversion failed: %w", err)
+		}
+		x.streamsql.Emit(mapItem)
 	}
 
 	return nil
@@ -239,7 +248,7 @@ func (x *StreamAggregatorNode) processArrayData(data interface{}) error {
 // handleAggregateResult 处理聚合结果
 // 当窗口触发或聚合条件满足时，该方法会被StreamSQL引擎回调
 // 聚合结果会被包装成特殊的window_event消息，通过window_event关系链传递到下一个节点
-func (x *StreamAggregatorNode) handleAggregateResult(result interface{}) {
+func (x *StreamAggregatorNode) handleAggregateResult(results []map[string]interface{}) {
 	// 创建聚合结果消息的元数据
 	metadata := types.NewMetadata()
 	metadata.PutValue("queryType", "aggregation")
@@ -247,9 +256,28 @@ func (x *StreamAggregatorNode) handleAggregateResult(result interface{}) {
 
 	// 通过规则引擎发送聚合结果
 	if e, ok := x.chainCtx.GetRuleEnginePool().Get(x.chainId); ok {
-		msg := types.NewMsg(0, WindowEventMsgType, types.JSON, metadata, str.ToString(result))
+		msg := types.NewMsg(0, WindowEventMsgType, types.JSON, metadata, str.ToString(results))
 		// 发送聚合结果到下一个节点，使用window_event关系链
 		e.OnMsg(msg, types.WithTellNext(x.selfNodeId, RelationTypeWindowEvent))
+	}
+}
+
+// convertToMapStringInterface 将不同类型的map转换为map[string]interface{}
+// 支持的类型包括：map[string]interface{}, map[string]string
+func (x *StreamAggregatorNode) convertToMapStringInterface(data interface{}) (map[string]interface{}, error) {
+	switch v := data.(type) {
+	case map[string]interface{}:
+		// 已经是目标类型，直接返回
+		return v, nil
+	case map[string]string:
+		// 转换 map[string]string 为 map[string]interface{}
+		result := make(map[string]interface{}, len(v))
+		for key, value := range v {
+			result[key] = value
+		}
+		return result, nil
+	default:
+		return nil, fmt.Errorf("unsupported data type: %T, expected map type", data)
 	}
 }
 

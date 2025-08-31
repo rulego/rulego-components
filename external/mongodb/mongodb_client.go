@@ -29,6 +29,7 @@ import (
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/components/base"
+	"github.com/rulego/rulego/utils/el"
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/str"
 	"go.mongodb.org/mongo-driver/bson"
@@ -78,14 +79,19 @@ type ClientNode struct {
 	base.SharedNode[*mongo.Client]
 	// 节点配置
 	Config ClientNodeConfiguration
-	// 数据库名称
-	DatabaseNameTemplate str.Template
-	// 集合名称
-	CollectionNameTemplate str.Template
+	// DatabaseNameTemplate 数据库名称模板，用于解析动态数据库名称
+	// DatabaseNameTemplate template for resolving dynamic database names
+	DatabaseNameTemplate el.Template
+	// CollectionNameTemplate 集合名称模板，用于解析动态集合名称
+	// CollectionNameTemplate template for resolving dynamic collection names
+	CollectionNameTemplate el.Template
 	// 过滤
 	FilterTemplate *vm.Program
 	// 文档
 	DocTemplate *vm.Program
+	// hasVar 标识模板是否包含变量
+	// hasVar indicates whether the template contains variables
+	hasVar bool
 }
 
 // Type 返回组件类型
@@ -115,12 +121,26 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 	if x.Config.Database == "" {
 		return errors.New("databaseName can not be empty")
 	} else {
-		x.DatabaseNameTemplate = str.NewTemplate(strings.TrimSpace(x.Config.Database))
+		if template, err := el.NewTemplate(strings.TrimSpace(x.Config.Database)); err != nil {
+			return err
+		} else {
+			x.DatabaseNameTemplate = template
+			if template.HasVar() {
+				x.hasVar = true
+			}
+		}
 	}
 	if x.Config.Collection == "" {
 		return errors.New("collectionName can not be empty")
 	} else {
-		x.CollectionNameTemplate = str.NewTemplate(strings.TrimSpace(x.Config.Collection))
+		if template, err := el.NewTemplate(strings.TrimSpace(x.Config.Collection)); err != nil {
+			return err
+		} else {
+			x.CollectionNameTemplate = template
+			if template.HasVar() {
+				x.hasVar = true
+			}
+		}
 	}
 	if x.Config.OpType == "" {
 		return errors.New("opType can not be empty")
@@ -156,8 +176,8 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	} else {
 		evn := base.NodeUtils.GetEvnAndMetadata(ctx, msg)
 
-		databaseName := x.DatabaseNameTemplate.Execute(evn)
-		collectionName := x.CollectionNameTemplate.Execute(evn)
+		databaseName := x.DatabaseNameTemplate.ExecuteAsString(evn)
+		collectionName := x.CollectionNameTemplate.ExecuteAsString(evn)
 		collection := client.Database(databaseName).Collection(collectionName)
 		x.processMessage(ctx, evn, collection, msg, x.Config.OpType)
 	}

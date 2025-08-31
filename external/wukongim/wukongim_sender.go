@@ -25,6 +25,7 @@ import (
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/components/base"
+	"github.com/rulego/rulego/utils/el"
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/str"
 )
@@ -81,8 +82,9 @@ type WukongimSender struct {
 	base.SharedNode[*wksdk.Client]
 	//节点配置
 	Config              WukongimSenderConfiguration
-	channelIdTemplate   str.Template
-	channelTypeTemplate str.Template
+	channelIdTemplate   el.Template
+	channelTypeTemplate el.Template
+	hasVar              bool
 }
 
 // Type 返回组件类型
@@ -121,9 +123,23 @@ func (x *WukongimSender) Init(ruleConfig types.Config, configuration types.Confi
 			return client.Disconnect()
 		})
 	}
-	x.channelIdTemplate = str.NewTemplate(x.Config.ChannelID)
-	x.channelTypeTemplate = str.NewTemplate(x.Config.ChannelType)
-	return err
+	// 初始化频道ID模板
+	channelIdTemplate, err := el.NewTemplate(x.Config.ChannelID)
+	if err != nil {
+		return err
+	}
+	x.channelIdTemplate = channelIdTemplate
+
+	// 初始化频道类型模板
+	channelTypeTemplate, err := el.NewTemplate(x.Config.ChannelType)
+	if err != nil {
+		return err
+	}
+	x.channelTypeTemplate = channelTypeTemplate
+
+	// 设置统一的 hasVar 变量
+	x.hasVar = channelIdTemplate.HasVar() || channelTypeTemplate.HasVar()
+	return nil
 }
 
 // OnMsg 处理消息
@@ -132,10 +148,10 @@ func (x *WukongimSender) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	cid := x.Config.ChannelID
 	var utype uint64 = 1
 	var err error
-	if !x.channelIdTemplate.IsNotVar() || !x.channelTypeTemplate.IsNotVar() {
+	if x.hasVar {
 		evn := base.NodeUtils.GetEvnAndMetadata(ctx, msg)
-		ctype = x.channelTypeTemplate.Execute(evn)
-		cid = x.channelIdTemplate.Execute(evn)
+		ctype = x.channelTypeTemplate.ExecuteAsString(evn)
+		cid = x.channelIdTemplate.ExecuteAsString(evn)
 	}
 	client, err := x.SharedNode.GetSafely()
 	if err != nil {

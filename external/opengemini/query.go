@@ -23,6 +23,7 @@ import (
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/components/base"
+	"github.com/rulego/rulego/utils/el"
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/str"
 )
@@ -51,7 +52,9 @@ type QueryConfig struct {
 type QueryNode struct {
 	*WriteNode
 	Config          QueryConfig
-	commandTemplate str.Template
+	commandTemplate el.Template
+	// 标识模板是否包含变量，用于性能优化
+	commandHasVar bool
 }
 
 // New 实现 Node 接口，创建新实例
@@ -80,7 +83,13 @@ func (x *QueryNode) Init(ruleConfig types.Config, configuration types.Configurat
 	if err = x.WriteNode.Init(ruleConfig, configuration); err != nil {
 		return err
 	}
-	x.commandTemplate = str.NewTemplate(x.Config.Command)
+	// 初始化命令模板
+	commandTemplate, err := el.NewTemplate(x.Config.Command)
+	if err != nil {
+		return err
+	}
+	x.commandTemplate = commandTemplate
+	x.commandHasVar = commandTemplate.HasVar()
 	return nil
 }
 
@@ -88,10 +97,10 @@ func (x *QueryNode) Init(ruleConfig types.Config, configuration types.Configurat
 func (x *QueryNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	database := x.Config.Database
 	command := x.Config.Command
-	if !x.databaseTemplate.IsNotVar() || !x.commandTemplate.IsNotVar() {
+	if x.databaseTemplate.HasVar() || x.commandHasVar {
 		evn := base.NodeUtils.GetEvnAndMetadata(ctx, msg)
-		database = str.ExecuteTemplate(database, evn)
-		command = str.ExecuteTemplate(command, evn)
+		database = x.databaseTemplate.ExecuteAsString(evn)
+		command = x.commandTemplate.ExecuteAsString(evn)
 	}
 
 	q := opengemini.Query{

@@ -29,8 +29,8 @@ import (
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/components/base"
+	"github.com/rulego/rulego/utils/el"
 	"github.com/rulego/rulego/utils/maps"
-	"github.com/rulego/rulego/utils/str"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -63,10 +63,10 @@ type ClientConfig struct {
 type ClientNode struct {
 	base.SharedNode[*Client]
 	Config          ClientConfig
-	serviceTemplate str.Template
-	methodTemplate  str.Template
-	requestTemplate str.Template
-	headersTemplate map[str.Template]str.Template
+	serviceTemplate el.Template
+	methodTemplate  el.Template
+	requestTemplate el.Template
+	headersTemplate map[el.Template]el.Template
 	hasVar          bool
 }
 
@@ -98,18 +98,49 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 		// 清理回调函数
 		return client.conn.Close()
 	})
-	x.serviceTemplate = str.NewTemplate(x.Config.Service)
-	x.methodTemplate = str.NewTemplate(x.Config.Method)
-	x.requestTemplate = str.NewTemplate(x.Config.Request)
-	if !x.serviceTemplate.IsNotVar() || !x.methodTemplate.IsNotVar() || !x.requestTemplate.IsNotVar() {
+	// 初始化服务模板
+	serviceTemplate, err := el.NewTemplate(x.Config.Service)
+	if err != nil {
+		return err
+	}
+	x.serviceTemplate = serviceTemplate
+	if serviceTemplate.HasVar() {
 		x.hasVar = true
 	}
-	var headerTemplates = make(map[str.Template]str.Template)
+
+	// 初始化方法模板
+	methodTemplate, err := el.NewTemplate(x.Config.Method)
+	if err != nil {
+		return err
+	}
+	x.methodTemplate = methodTemplate
+	if methodTemplate.HasVar() {
+		x.hasVar = true
+	}
+
+	// 初始化请求模板
+	requestTemplate, err := el.NewTemplate(x.Config.Request)
+	if err != nil {
+		return err
+	}
+	x.requestTemplate = requestTemplate
+	if requestTemplate.HasVar() {
+		x.hasVar = true
+	}
+
+	// 初始化头部模板
+	var headerTemplates = make(map[el.Template]el.Template)
 	for key, value := range x.Config.Headers {
-		keyTmpl := str.NewTemplate(key)
-		valueTmpl := str.NewTemplate(value)
+		keyTmpl, err := el.NewTemplate(key)
+		if err != nil {
+			return err
+		}
+		valueTmpl, err := el.NewTemplate(value)
+		if err != nil {
+			return err
+		}
 		headerTemplates[keyTmpl] = valueTmpl
-		if !keyTmpl.IsNotVar() || !valueTmpl.IsNotVar() {
+		if keyTmpl.HasVar() || valueTmpl.HasVar() {
 			x.hasVar = true
 		}
 	}
@@ -131,9 +162,9 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	if x.hasVar {
 		evn = base.NodeUtils.GetEvnAndMetadata(ctx, msg)
 	}
-	service := x.serviceTemplate.Execute(evn)
-	method := x.methodTemplate.Execute(evn)
-	request := x.requestTemplate.Execute(evn)
+	service := x.serviceTemplate.ExecuteAsString(evn)
+	method := x.methodTemplate.ExecuteAsString(evn)
+	request := x.requestTemplate.ExecuteAsString(evn)
 	if request == "" {
 		request = msg.GetData()
 	}
@@ -171,7 +202,7 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	var headers []string
 	//设置header
 	for key, value := range x.headersTemplate {
-		headers = append(headers, key.Execute(evn)+SeparatorHeader+value.Execute(evn))
+		headers = append(headers, key.ExecuteAsString(evn)+SeparatorHeader+value.ExecuteAsString(evn))
 	}
 	err = grpcurl.InvokeRPC(context.Background(), descSource, client.conn, serviceAndMethod, headers, handler, requestDataSupplier)
 	if err != nil {

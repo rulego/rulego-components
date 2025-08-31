@@ -185,8 +185,15 @@ func (x *StreamTransformNode) isArrayData(data interface{}) bool {
 
 // processSingleData 处理单条数据转换
 func (x *StreamTransformNode) processSingleData(ctx types.RuleContext, msg types.RuleMsg, data interface{}) {
-	// 同步处理数据转换，streamsql内部会自动处理类型转换
-	result, err := x.streamsql.EmitSync(data)
+	// 转换为map[string]interface{}类型，支持多种map类型
+	mapData, err := x.convertToMapStringInterface(data)
+	if err != nil {
+		ctx.TellFailure(msg, fmt.Errorf("data type conversion failed: %w", err))
+		return
+	}
+
+	// 同步处理数据转换
+	result, err := x.streamsql.EmitSync(mapData)
 	if err != nil {
 		ctx.TellFailure(msg, fmt.Errorf("transform processing failed: %w", err))
 		return
@@ -230,8 +237,15 @@ func (x *StreamTransformNode) processArrayData(ctx types.RuleContext, msg types.
 
 	// 遍历数组元素，逐个进行转换
 	for _, item := range inputArray {
-		// streamsql内部会自动处理类型转换
-		result, err := x.streamsql.EmitSync(item)
+		// 转换为map[string]interface{}类型，支持多种map类型
+		mapItem, err := x.convertToMapStringInterface(item)
+		if err != nil {
+			// 类型转换失败，记录失败次数，继续处理下一个元素
+			failedCount++
+			continue
+		}
+
+		result, err := x.streamsql.EmitSync(mapItem)
 		if err != nil {
 			// 转换出错，记录失败次数，继续处理下一个元素
 			failedCount++
@@ -273,6 +287,25 @@ func (x *StreamTransformNode) processArrayData(ctx types.RuleContext, msg types.
 		msg.Metadata.PutValue("failedCount", str.ToString(failedCount))
 
 		ctx.TellFailure(msg, fmt.Errorf("all array elements failed transformation or were filtered out"))
+	}
+}
+
+// convertToMapStringInterface 将不同类型的map转换为map[string]interface{}
+// 支持的类型包括：map[string]interface{}, map[string]string
+func (x *StreamTransformNode) convertToMapStringInterface(data interface{}) (map[string]interface{}, error) {
+	switch v := data.(type) {
+	case map[string]interface{}:
+		// 已经是目标类型，直接返回
+		return v, nil
+	case map[string]string:
+		// 转换 map[string]string 为 map[string]interface{}
+		result := make(map[string]interface{}, len(v))
+		for key, value := range v {
+			result[key] = value
+		}
+		return result, nil
+	default:
+		return nil, fmt.Errorf("unsupported data type: %T, expected map type", data)
 	}
 }
 

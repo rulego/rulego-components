@@ -10,6 +10,7 @@ import (
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/components/base"
+	"github.com/rulego/rulego/utils/el"
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/str"
 )
@@ -78,14 +79,31 @@ type TubeConfiguration struct {
 type TubeNode struct {
 	base.SharedNode[*beanstalk.Conn]
 	//节点配置
-	Config            TubeConfiguration
-	tubeTemplate      str.Template
-	putBodyTemplate   str.Template
-	putPriTemplate    str.Template
-	putDelayTemplate  str.Template
-	putTTRTemplate    str.Template
-	kickBoundTemplate str.Template
-	pauseTimeTemplate str.Template
+	Config TubeConfiguration
+	// tubeTemplate Tube名称模板，用于解析动态Tube名称
+	// tubeTemplate template for resolving dynamic tube names
+	tubeTemplate el.Template
+	// putBodyTemplate 消息内容模板，用于解析动态消息内容
+	// putBodyTemplate template for resolving dynamic message body
+	putBodyTemplate el.Template
+	// putPriTemplate 优先级模板，用于解析动态优先级
+	// putPriTemplate template for resolving dynamic priority
+	putPriTemplate el.Template
+	// putDelayTemplate 延迟时间模板，用于解析动态延迟时间
+	// putDelayTemplate template for resolving dynamic delay time
+	putDelayTemplate el.Template
+	// putTTRTemplate TTR模板，用于解析动态TTR时间
+	// putTTRTemplate template for resolving dynamic TTR time
+	putTTRTemplate el.Template
+	// kickBoundTemplate Kick边界模板，用于解析动态Kick边界
+	// kickBoundTemplate template for resolving dynamic kick bound
+	kickBoundTemplate el.Template
+	// pauseTimeTemplate 暂停时间模板，用于解析动态暂停时间
+	// pauseTimeTemplate template for resolving dynamic pause time
+	pauseTimeTemplate el.Template
+	// hasVar 标识模板是否包含变量，用于优化性能
+	// hasVar indicates whether the template contains variables for performance optimization
+	hasVar bool
 }
 
 // Type 返回组件类型
@@ -114,13 +132,36 @@ func (x *TubeNode) Init(ruleConfig types.Config, configuration types.Configurati
 		})
 	}
 	//初始化模板
-	x.tubeTemplate = str.NewTemplate(x.Config.Tube)
-	x.putBodyTemplate = str.NewTemplate(x.Config.Body)
-	x.putPriTemplate = str.NewTemplate(x.Config.Pri)
-	x.putDelayTemplate = str.NewTemplate(x.Config.Delay)
-	x.putTTRTemplate = str.NewTemplate(x.Config.Ttr)
-	x.kickBoundTemplate = str.NewTemplate(x.Config.KickBound)
-	x.pauseTimeTemplate = str.NewTemplate(x.Config.PauseTime)
+	x.tubeTemplate, err = el.NewTemplate(x.Config.Tube)
+	if err != nil {
+		return err
+	}
+	x.putBodyTemplate, err = el.NewTemplate(x.Config.Body)
+	if err != nil {
+		return err
+	}
+	x.putPriTemplate, err = el.NewTemplate(x.Config.Pri)
+	if err != nil {
+		return err
+	}
+	x.putDelayTemplate, err = el.NewTemplate(x.Config.Delay)
+	if err != nil {
+		return err
+	}
+	x.putTTRTemplate, err = el.NewTemplate(x.Config.Ttr)
+	if err != nil {
+		return err
+	}
+	x.kickBoundTemplate, err = el.NewTemplate(x.Config.KickBound)
+	if err != nil {
+		return err
+	}
+	x.pauseTimeTemplate, err = el.NewTemplate(x.Config.PauseTime)
+	if err != nil {
+		return err
+	}
+	// 检查是否有任何模板包含变量
+	x.hasVar = x.tubeTemplate.HasVar() || x.putBodyTemplate.HasVar() || x.putPriTemplate.HasVar() || x.putDelayTemplate.HasVar() || x.putTTRTemplate.HasVar() || x.kickBoundTemplate.HasVar() || x.pauseTimeTemplate.HasVar()
 	return err
 }
 
@@ -246,16 +287,19 @@ func (x *TubeNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*TubeMsg
 			Pause: DefaultTime,
 		}
 	)
-	evn := base.NodeUtils.GetEvnAndMetadata(ctx, msg)
+	var evn map[string]interface{}
+	if x.hasVar {
+		evn = base.NodeUtils.GetEvnAndMetadata(ctx, msg)
+	}
 	// 获取tube参数
 	if !x.tubeTemplate.IsNotVar() {
-		tube = x.tubeTemplate.Execute(evn)
+		tube = x.tubeTemplate.ExecuteAsString(evn)
 	} else if len(x.Config.Tube) > 0 {
 		tube = x.Config.Tube
 	}
 	// 获取body参数
 	if !x.putBodyTemplate.IsNotVar() {
-		body = x.putBodyTemplate.Execute(evn)
+		body = x.putBodyTemplate.ExecuteAsString(evn)
 	} else if len(x.Config.Body) > 0 {
 		body = x.Config.Body
 	} else {
@@ -264,7 +308,7 @@ func (x *TubeNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*TubeMsg
 	// 获取优先级参数
 	var ti int
 	if !x.putPriTemplate.IsNotVar() {
-		tmp := x.putPriTemplate.Execute(evn)
+		tmp := x.putPriTemplate.ExecuteAsString(evn)
 		ti, err = strconv.Atoi(tmp)
 		pri = uint32(ti)
 	} else if len(x.Config.Pri) > 0 {
@@ -276,7 +320,7 @@ func (x *TubeNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*TubeMsg
 	}
 	// 获取延迟参数
 	if !x.putDelayTemplate.IsNotVar() {
-		tmp := x.putDelayTemplate.Execute(evn)
+		tmp := x.putDelayTemplate.ExecuteAsString(evn)
 		delay, err = time.ParseDuration(tmp)
 	} else if len(x.Config.Delay) > 0 {
 		delay, err = time.ParseDuration(x.Config.Delay)
@@ -286,7 +330,7 @@ func (x *TubeNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*TubeMsg
 	}
 	// 获取TTR参数
 	if !x.putTTRTemplate.IsNotVar() {
-		tmp := x.putTTRTemplate.Execute(evn)
+		tmp := x.putTTRTemplate.ExecuteAsString(evn)
 		ttr, err = time.ParseDuration(tmp)
 	} else if len(x.Config.Ttr) > 0 {
 		ttr, err = time.ParseDuration(x.Config.Ttr)
@@ -296,7 +340,7 @@ func (x *TubeNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*TubeMsg
 	}
 	// 获取Bound数量参数
 	if !x.kickBoundTemplate.IsNotVar() {
-		tmp := x.kickBoundTemplate.Execute(evn)
+		tmp := x.kickBoundTemplate.ExecuteAsString(evn)
 		bound, err = strconv.Atoi(tmp)
 	} else if len(x.Config.KickBound) > 0 {
 		bound, err = strconv.Atoi(x.Config.KickBound)
@@ -306,7 +350,7 @@ func (x *TubeNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*TubeMsg
 	}
 	// 获取暂停时间参数
 	if !x.pauseTimeTemplate.IsNotVar() {
-		tmp := x.pauseTimeTemplate.Execute(evn)
+		tmp := x.pauseTimeTemplate.ExecuteAsString(evn)
 		pause, err = time.ParseDuration(tmp)
 	} else if len(x.Config.PauseTime) > 0 {
 		pause, err = time.ParseDuration(x.Config.PauseTime)

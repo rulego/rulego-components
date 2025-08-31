@@ -21,8 +21,8 @@ import (
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/components/base"
+	"github.com/rulego/rulego/utils/el"
 	"github.com/rulego/rulego/utils/maps"
-	"github.com/rulego/rulego/utils/str"
 )
 
 func init() {
@@ -46,8 +46,11 @@ type ClientNode struct {
 	Config ClientNodeConfiguration
 	// 是否正在连接NATS服务器
 	connecting int32
-	//topic 模板
-	topicTemplate str.Template
+	// topicTemplate 主题模板，用于解析动态主题
+	// topicTemplate template for resolving dynamic topic
+	topicTemplate el.Template
+	// hasVar 标识模板是否包含变量
+	hasVar bool
 }
 
 // Type 组件类型
@@ -73,16 +76,24 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 			client.Close()
 			return nil
 		})
-		x.topicTemplate = str.NewTemplate(x.Config.Topic)
+		x.topicTemplate, err = el.NewTemplate(x.Config.Topic)
+		if err != nil {
+			return err
+		}
+		// 检查模板是否包含变量
+		x.hasVar = x.topicTemplate.HasVar()
 	}
 	return err
 }
 
 // OnMsg 处理消息
 func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
-	topic := x.topicTemplate.ExecuteFn(func() map[string]any {
-		return base.NodeUtils.GetEvnAndMetadata(ctx, msg)
-	})
+	var topic string
+	if x.hasVar {
+		topic = x.topicTemplate.ExecuteAsString(base.NodeUtils.GetEvnAndMetadata(ctx, msg))
+	} else {
+		topic = x.Config.Topic
+	}
 	client, err := x.SharedNode.GetSafely()
 	if err != nil {
 		ctx.TellFailure(msg, err)

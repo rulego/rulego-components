@@ -23,8 +23,8 @@ import (
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/components/base"
+	"github.com/rulego/rulego/utils/el"
 	"github.com/rulego/rulego/utils/maps"
-	"github.com/rulego/rulego/utils/str"
 )
 
 const (
@@ -136,7 +136,9 @@ type ClientNode struct {
 	// 通道池
 	channelPool *channelPool
 	// 路由键模板
-	keyTemplate str.Template
+	keyTemplate el.Template
+	// 标识模板是否包含变量，用于性能优化
+	hasVar bool
 }
 
 // Type 组件类型
@@ -182,17 +184,23 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 		return x.createChannel()
 	})
 
-	x.keyTemplate = str.NewTemplate(x.Config.Key)
+	// 初始化路由键模板
+	template, err := el.NewTemplate(x.Config.Key)
+	if err != nil {
+		return err
+	}
+	x.keyTemplate = template
+	x.hasVar = template.HasVar()
 	return nil
 }
 
 // OnMsg 处理消息
 func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	var evn map[string]interface{}
-	if !x.keyTemplate.IsNotVar() {
+	if x.hasVar {
 		evn = base.NodeUtils.GetEvnAndMetadata(ctx, msg)
 	}
-	key := x.keyTemplate.Execute(evn)
+	key := x.keyTemplate.ExecuteAsString(evn)
 
 	// 使用通道池获取通道
 	ch, err := x.channelPool.Get()

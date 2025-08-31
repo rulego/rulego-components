@@ -69,13 +69,13 @@ func parseLineProtocol(line string) (*opengemini.Point, error) {
 
 	// 解析时间戳
 	if len(parts) < 3 {
-		p.Time = time.Now()
+		p.Timestamp = time.Now().UnixNano()
 	} else {
 		timestamp, err := strconv.ParseInt(parts[len(parts)-1], 10, 64)
 		if err != nil {
 			return nil, fmt.Errorf("invalid timestamp format: %s", parts[len(parts)-1])
 		}
-		p.Time = time.Unix(0, timestamp)
+		p.Timestamp = timestamp
 	}
 
 	return &p, nil
