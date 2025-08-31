@@ -19,10 +19,6 @@ package opengemini
 import (
 	"context"
 	"fmt"
-	"strconv"
-	"strings"
-	"time"
-
 	"github.com/openGemini/opengemini-client-go/opengemini"
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
@@ -30,6 +26,8 @@ import (
 	"github.com/rulego/rulego/utils/el"
 	"github.com/rulego/rulego/utils/json"
 	"github.com/rulego/rulego/utils/maps"
+	"strconv"
+	"strings"
 )
 
 func init() {
@@ -128,11 +126,6 @@ func (x *WriteNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 			if points, err = parseMultiLineProtocol(msg.GetData()); err != nil {
 				ctx.TellFailure(msg, err)
 				return
-			}
-		}
-		for _, point := range points {
-			if point.Time.IsZero() {
-				point.Time = time.Now()
 			}
 		}
 		if err = client.WriteBatchPoints(context.Background(), database, points); err != nil {

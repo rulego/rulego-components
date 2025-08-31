@@ -96,7 +96,7 @@ func TestWriteNode(t *testing.T) {
 			Fields: map[string]interface{}{
 				"value": 98.6,
 			},
-			Time: time.Now(),
+			Timestamp: time.Now().UnixNano(),
 		}
 		insertPoints := []opengemini.Point{insertPoint1, insertPoint2}
 		insertData1, _ := json.Marshal(insertPoint1)
