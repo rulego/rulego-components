@@ -27,9 +27,9 @@ import (
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/components/base"
+	"github.com/rulego/rulego/utils/el"
 	"github.com/rulego/rulego/utils/json"
 	"github.com/rulego/rulego/utils/maps"
-	"github.com/rulego/rulego/utils/str"
 )
 
 func init() {
@@ -55,7 +55,9 @@ type WriteNode struct {
 	base.SharedNode[opengemini.Client]
 	Config           WriteConfig
 	opengeminiConfig *opengemini.Config
-	databaseTemplate str.Template
+	// databaseTemplate 数据库模板，用于解析动态数据库名称
+	// databaseTemplate template for resolving dynamic database name
+	databaseTemplate el.Template
 }
 
 // New 实现 Node 接口，创建新实例
@@ -84,7 +86,10 @@ func (x *WriteNode) Init(ruleConfig types.Config, configuration types.Configurat
 	} else {
 		x.opengeminiConfig = opengeminiConfig
 	}
-	x.databaseTemplate = str.NewTemplate(x.Config.Database)
+	x.databaseTemplate, err = el.NewTemplate(x.Config.Database)
+	if err != nil {
+		return err
+	}
 	_ = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (opengemini.Client, error) {
 		return x.initClient()
 	}, func(client opengemini.Client) error {
@@ -99,9 +104,12 @@ func (x *WriteNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	if client, err := x.SharedNode.GetSafely(); err != nil {
 		ctx.TellFailure(msg, err)
 	} else {
-		database := x.databaseTemplate.ExecuteFn(func() map[string]any {
-			return base.NodeUtils.GetEvnAndMetadata(ctx, msg)
-		})
+		var database string
+		if x.databaseTemplate.HasVar() {
+			database = x.databaseTemplate.ExecuteAsString(base.NodeUtils.GetEvnAndMetadata(ctx, msg))
+		} else {
+			database = x.Config.Database
+		}
 		var points []*opengemini.Point
 		if msg.DataType == types.JSON {
 			var point opengemini.Point

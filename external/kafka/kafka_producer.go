@@ -26,8 +26,8 @@ import (
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/components/base"
+	"github.com/rulego/rulego/utils/el"
 	"github.com/rulego/rulego/utils/maps"
-	"github.com/rulego/rulego/utils/str"
 )
 
 const (
@@ -81,10 +81,15 @@ type ProducerNode struct {
 	Config NodeConfiguration
 	// brokers kafka服务器地址列表
 	brokers []string
-	//topic 模板
-	topicTemplate str.Template
-	//key 模板
-	keyTemplate str.Template
+	// topicTemplate 主题模板，用于解析动态主题
+	// topicTemplate template for resolving dynamic topic
+	topicTemplate el.Template
+	// keyTemplate 分区键模板，用于解析动态分区键
+	// keyTemplate template for resolving dynamic partition key
+	keyTemplate el.Template
+	// hasVar 标识模板是否包含变量
+	// hasVar indicates whether the template contains variables
+	hasVar bool
 }
 
 // Type 返回组件类型
@@ -121,21 +126,28 @@ func (x *ProducerNode) Init(ruleConfig types.Config, configuration types.Configu
 			return client.Close()
 		})
 
-		x.topicTemplate = str.NewTemplate(x.Config.Topic)
-		x.keyTemplate = str.NewTemplate(x.Config.Key)
+		x.topicTemplate, err = el.NewTemplate(x.Config.Topic)
+		if err != nil {
+			return err
+		}
+		x.keyTemplate, err = el.NewTemplate(x.Config.Key)
+		if err != nil {
+			return err
+		}
+		// 检查是否有任何模板包含变量
+		x.hasVar = x.topicTemplate.HasVar() || x.keyTemplate.HasVar()
 	}
 	return err
 }
 
 // OnMsg 处理消息
 func (x *ProducerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
-	topic := x.Config.Topic
-	key := x.Config.Key
-	if !x.topicTemplate.IsNotVar() || !x.keyTemplate.IsNotVar() {
-		evn := base.NodeUtils.GetEvnAndMetadata(ctx, msg)
-		topic = str.ExecuteTemplate(topic, evn)
-		key = str.ExecuteTemplate(key, evn)
+	var evn map[string]interface{}
+	if x.hasVar {
+		evn = base.NodeUtils.GetEvnAndMetadata(ctx, msg)
 	}
+	topic := x.topicTemplate.ExecuteAsString(evn)
+	key := x.keyTemplate.ExecuteAsString(evn)
 
 	client, err := x.SharedNode.GetSafely()
 	if err != nil {

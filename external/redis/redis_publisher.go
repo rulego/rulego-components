@@ -8,6 +8,7 @@ import (
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/components/base"
+	"github.com/rulego/rulego/utils/el"
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/str"
 )
@@ -23,16 +24,16 @@ const KeyResult = "result"
 // PublisherNodeConfiguration 节点配置
 type PublisherNodeConfiguration struct {
 	// Server redis服务器地址
-	Server string
+	Server string `json:"server"`
 	// Password 密码
-	Password string
+	Password string `json:"password"`
 	// PoolSize 连接池大小
-	PoolSize int
+	PoolSize int `json:"poolSize"`
 	// Db 数据库index
-	Db int
+	Db int `json:"db"`
 	// Channel 发布频道
 	// 支持${metadata.key}占位符读取metadata元数据
-	Channel string
+	Channel string `json:"channel"`
 }
 
 // PublisherNode redis发布节点
@@ -42,7 +43,9 @@ type PublisherNode struct {
 	base.SharedNode[*redis.Client]
 	//节点配置
 	Config          PublisherNodeConfiguration
-	channelTemplate str.Template
+	channelTemplate el.Template
+	// hasVar 标识模板是否包含变量
+	hasVar bool
 }
 
 // Type 返回组件类型
@@ -69,15 +72,25 @@ func (x *PublisherNode) Init(ruleConfig types.Config, configuration types.Config
 			// 清理回调函数
 			return client.Close()
 		})
-		x.channelTemplate = str.NewTemplate(strings.TrimSpace(x.Config.Channel))
+		x.channelTemplate, err = el.NewTemplate(strings.TrimSpace(x.Config.Channel))
+		if err != nil {
+			return err
+		}
+		// 检查模板是否包含变量
+		x.hasVar = x.channelTemplate.HasVar()
 	}
 	return err
 }
 
 // OnMsg 处理消息
 func (x *PublisherNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
-	evn := base.NodeUtils.GetEvnAndMetadata(ctx, msg)
-	var channel = x.channelTemplate.Execute(evn)
+	var channel string
+	if x.hasVar {
+		evn := base.NodeUtils.GetEvnAndMetadata(ctx, msg)
+		channel = x.channelTemplate.ExecuteAsString(evn)
+	} else {
+		channel = x.Config.Channel
+	}
 	client, err := x.SharedNode.GetSafely()
 	if err != nil {
 		ctx.TellFailure(msg, err)
