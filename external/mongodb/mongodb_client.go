@@ -247,13 +247,23 @@ func (x *ClientNode) toBsonMList(evn map[string]interface{}, template *el.ExprTe
 }
 
 func (x *ClientNode) insert(ctx types.RuleContext, evn map[string]interface{}, collection *mongo.Collection, msg types.RuleMsg) {
+	// 检查DocTemplate是否为空
+	if x.DocTemplate == nil {
+		ctx.TellFailure(msg, errors.New("doc template is required for INSERT operation"))
+		return
+	}
+	
 	if x.Config.One {
 		if doc, err := x.toBsonM(evn, x.DocTemplate); err != nil {
 			ctx.TellFailure(msg, err)
 		} else {
 			// 插入文档
 			_, err = collection.InsertOne(ctx.GetContext(), doc)
-			ctx.TellSuccess(msg)
+			if err != nil {
+				ctx.TellFailure(msg, err)
+			} else {
+				ctx.TellSuccess(msg)
+			}
 		}
 	} else {
 		if docs, err := x.toBsonMList(evn, x.DocTemplate); err != nil {
@@ -271,6 +281,12 @@ func (x *ClientNode) insert(ctx types.RuleContext, evn map[string]interface{}, c
 }
 
 func (x *ClientNode) query(ctx types.RuleContext, evn map[string]interface{}, collection *mongo.Collection, msg types.RuleMsg) {
+	// 检查FilterTemplate是否为空
+	if x.FilterTemplate == nil {
+		ctx.TellFailure(msg, errors.New("filter template is required for QUERY operation"))
+		return
+	}
+	
 	if filter, err := x.toBsonM(evn, x.FilterTemplate); err != nil {
 		ctx.TellFailure(msg, err)
 	} else {
@@ -302,6 +318,16 @@ func (x *ClientNode) query(ctx types.RuleContext, evn map[string]interface{}, co
 	}
 }
 func (x *ClientNode) update(ctx types.RuleContext, evn map[string]interface{}, collection *mongo.Collection, msg types.RuleMsg) {
+	// 检查DocTemplate和FilterTemplate是否为空
+	if x.DocTemplate == nil {
+		ctx.TellFailure(msg, errors.New("doc template is required for UPDATE operation"))
+		return
+	}
+	if x.FilterTemplate == nil {
+		ctx.TellFailure(msg, errors.New("filter template is required for UPDATE operation"))
+		return
+	}
+	
 	var err error
 	var doc interface{}
 	var filter interface{}
@@ -335,6 +361,12 @@ func (x *ClientNode) update(ctx types.RuleContext, evn map[string]interface{}, c
 
 }
 func (x *ClientNode) delete(ctx types.RuleContext, evn map[string]interface{}, collection *mongo.Collection, msg types.RuleMsg) {
+	// 检查FilterTemplate是否为空
+	if x.FilterTemplate == nil {
+		ctx.TellFailure(msg, errors.New("filter template is required for DELETE operation"))
+		return
+	}
+	
 	if filter, err := x.toBsonM(evn, x.FilterTemplate); err != nil {
 		ctx.TellFailure(msg, err)
 	} else {
