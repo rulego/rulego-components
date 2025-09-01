@@ -23,9 +23,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/expr-lang/expr"
-	"github.com/expr-lang/expr/vm"
-
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/components/base"
@@ -57,20 +54,26 @@ func init() {
 }
 
 // ClientNodeConfiguration 节点配置
+// ClientNodeConfiguration MongoDB客户端节点配置结构体
 type ClientNodeConfiguration struct {
-	// 服务器地址， 示例：mongodb://username:password@localhost:27017/?authSource=admin
+	// Server MongoDB服务器连接地址，支持完整的连接字符串
+	// 示例：mongodb://username:password@localhost:27017/?authSource=admin
 	Server string
-	//数据库名称，支持${}占位符
+	// Database 数据库名称，支持${msg.xx}、${metadata.xx}、${node1.msg.xx}等表达式占位符
 	Database string
-	//集合名称，支持${}占位符
+	// Collection 集合名称，支持${msg.xx}、${metadata.xx}、${node1.msg.xx}等表达式占位符
 	Collection string
-	//操作类型 INSERT,UPDATE,DELETE,QUERY,SELECT,FIND
+	// OpType 操作类型，支持的操作：INSERT(插入)、UPDATE(更新)、DELETE(删除)、QUERY/SELECT/FIND(查询)
 	OpType string
-	// 过滤条件，可以使用expr表达式。示例：{"age": {"$gte": 18}}
+	// Filter 过滤条件，支持MongoDB查询语法和表达式
+	// 支持${msg.xx}、${metadata.xx}、${node1.msg.xx}等表达式占位符
+	// 示例：{"age": {"$gte": 18}} 或 {"name": "${msg.name}"} 或 ${msg.filter}
 	Filter string
-	//更新/插入文档。可以使用expr表达式。示例：{"name":"test","age":18}
+	// Doc 更新或插入的文档内容，支持MongoDB文档格式和表达式
+	// 支持${msg.xx}、${metadata.xx}、${node1.msg.xx}等表达式占位符
+	// 示例：{"name":"test","age":18} 或 {"name":"${msg.name}","timestamp":"${msg.ts}"} 或 ${msg.filter}
 	Doc string
-	// 是否只操作一条数据
+	// One 是否只操作单条数据，true表示只操作一条，false表示操作多条
 	One bool
 }
 
@@ -86,9 +89,9 @@ type ClientNode struct {
 	// CollectionNameTemplate template for resolving dynamic collection names
 	CollectionNameTemplate el.Template
 	// 过滤
-	FilterTemplate *vm.Program
+	FilterTemplate *el.ExprTemplate
 	// 文档
-	DocTemplate *vm.Program
+	DocTemplate *el.ExprTemplate
 	// hasVar 标识模板是否包含变量
 	// hasVar indicates whether the template contains variables
 	hasVar bool
@@ -146,17 +149,23 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 		return errors.New("opType can not be empty")
 	}
 	if x.Config.Filter != "" {
-		if program, err := expr.Compile(strings.TrimSpace(x.Config.Filter), expr.AllowUndefinedVariables()); err != nil {
+		if template, err := el.NewExprTemplate(strings.TrimSpace(x.Config.Filter)); err != nil {
 			return err
 		} else {
-			x.FilterTemplate = program
+			x.FilterTemplate = template
+			if template.HasVar() {
+				x.hasVar = true
+			}
 		}
 	}
 	if x.Config.Doc != "" {
-		if program, err := expr.Compile(strings.TrimSpace(x.Config.Doc), expr.AllowUndefinedVariables()); err != nil {
+		if template, err := el.NewExprTemplate(strings.TrimSpace(x.Config.Doc)); err != nil {
 			return err
 		} else {
-			x.DocTemplate = program
+			x.DocTemplate = template
+			if template.HasVar() {
+				x.hasVar = true
+			}
 		}
 	}
 	// 初始化客户端
@@ -203,8 +212,8 @@ func (x *ClientNode) processMessage(ctx types.RuleContext, evn map[string]interf
 	}
 }
 
-func (x *ClientNode) toBsonM(evn map[string]interface{}, template *vm.Program) (interface{}, error) {
-	if out, err := vm.Run(template, evn); err != nil {
+func (x *ClientNode) toBsonM(evn map[string]interface{}, template *el.ExprTemplate) (interface{}, error) {
+	if out, err := template.Execute(evn); err != nil {
 		return nil, err
 	} else {
 		if r, ok := out.(map[string]interface{}); ok {
@@ -215,8 +224,8 @@ func (x *ClientNode) toBsonM(evn map[string]interface{}, template *vm.Program) (
 	}
 }
 
-func (x *ClientNode) toBsonMList(evn map[string]interface{}, template *vm.Program) ([]interface{}, error) {
-	if out, err := vm.Run(template, evn); err != nil {
+func (x *ClientNode) toBsonMList(evn map[string]interface{}, template *el.ExprTemplate) ([]interface{}, error) {
+	if out, err := template.Execute(evn); err != nil {
 		return nil, err
 	} else {
 		if r, ok := out.([]interface{}); ok {
