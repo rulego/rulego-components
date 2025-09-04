@@ -177,11 +177,15 @@ func (r *ResponseMessage) GetError() error {
 
 type Config struct {
 	// NATS服务器地址
-	Server string
+	Server string `json:"server"`
 	// NATS用户名
-	Username string
+	Username string `json:"username"`
 	// NATS密码
-	Password string
+	Password string `json:"password"`
+	// GroupId 消费者组Id
+	// 组ID不为空，则使用 QueueSubscribe 模式，
+	// 即多个消费者共享订阅主题，消息在组内以 负载均衡 方式分发，确保每条消息仅被组内一个消费者处理
+	GroupId string `json:"groupId"`
 }
 
 // Nats NATS接收端端点
@@ -278,27 +282,13 @@ func (x *Nats) AddRouter(router endpointApi.Router, params ...interface{}) (stri
 	if _, ok := x.subscriptions[routerId]; ok {
 		return routerId, fmt.Errorf("routerId %s already exists", routerId)
 	}
-	subscription, err := client.Subscribe(router.FromToString(), func(msg *nats.Msg) {
-		defer func() {
-			if e := recover(); e != nil {
-				x.Printf("nats endpoint handler err :\n%v", runtime.Stack())
-			}
-		}()
 
-		exchange := &endpointApi.Exchange{
-			In: &RequestMessage{
-				request: msg,
-			},
-			Out: &ResponseMessage{
-				request:  msg,
-				response: client,
-				log: func(format string, v ...interface{}) {
-					x.Printf(format, v...)
-				},
-			},
-		}
-		x.DoProcess(context.Background(), router, exchange)
-	})
+	var subscription *nats.Subscription
+	if x.Config.GroupId != "" {
+		subscription, err = client.QueueSubscribe(router.FromToString(), x.Config.GroupId, x.createMsgHandler(client, router))
+	} else {
+		subscription, err = client.Subscribe(router.FromToString(), x.createMsgHandler(client, router))
+	}
 	if err != nil {
 		return "", err
 	}
@@ -328,6 +318,32 @@ func (x *Nats) Start() error {
 		})
 	}
 	return nil
+}
+
+// createMsgHandler 创建NATS消息处理器
+// 该函数返回一个处理NATS消息的回调函数，用于处理订阅的消息
+func (x *Nats) createMsgHandler(client *nats.Conn, router endpointApi.Router) func(msg *nats.Msg) {
+	return func(msg *nats.Msg) {
+		defer func() {
+			if e := recover(); e != nil {
+				x.Printf("nats endpoint handler err :\n%v", runtime.Stack())
+			}
+		}()
+
+		exchange := &endpointApi.Exchange{
+			In: &RequestMessage{
+				request: msg,
+			},
+			Out: &ResponseMessage{
+				request:  msg,
+				response: client,
+				log: func(format string, v ...interface{}) {
+					x.Printf(format, v...)
+				},
+			},
+		}
+		x.DoProcess(context.Background(), router, exchange)
+	}
 }
 
 func (x *Nats) Printf(format string, v ...interface{}) {
