@@ -6,45 +6,45 @@ toolchain go1.24.3
 
 require (
 	github.com/IBM/sarama v1.46.0
-	github.com/WuKongIM/WuKongIMGoProto v1.0.8
+	github.com/WuKongIM/WuKongIMGoProto v1.2.3
 	github.com/WuKongIM/WuKongIMGoSDK v1.0.0
-	github.com/apache/pulsar-client-go v0.16.0
+	github.com/apache/pulsar-client-go v0.17.0
 	github.com/beanstalkd/go-beanstalk v0.2.0
-	github.com/expr-lang/expr v1.17.6
-	github.com/fasthttp/router v1.5.3
+	github.com/expr-lang/expr v1.17.7-0.20251210132847-775fc3aca520
+	github.com/fasthttp/router v1.5.4
 	github.com/fasthttp/websocket v1.5.12
 	github.com/fullstorydev/grpcurl v1.9.3
 	github.com/golang/protobuf v1.5.4
 	github.com/jhump/protoreflect v1.17.0
-	github.com/nats-io/nats.go v1.45.0
-	github.com/nsqio/go-nsq v1.1.0
+	github.com/nats-io/nats.go v1.47.0
+	github.com/nsqio/go-nsq v1.1.1-0.20250723164658-7188fbbac4d5
 	github.com/openGemini/opengemini-client-go v0.9.1
 	github.com/rabbitmq/amqp091-go v1.10.1-0.20240821123418-dc67c21576c2
-	github.com/redis/go-redis/v9 v9.12.1
-	github.com/rulego/rulego v0.33.0-alpha.3.0.20250831123805-063299cf7bc8
-	github.com/rulego/streamsql v0.10.3
+	github.com/redis/go-redis/v9 v9.18.0-beta.2
+	github.com/rulego/rulego v0.34.5-0.20251210114621-48e71462e43c
+	github.com/rulego/streamsql v0.10.4
 	github.com/stretchr/testify v1.11.1
-	github.com/vadv/gopher-lua-libs v0.5.0
-	github.com/valyala/fasthttp v1.58.0
+	github.com/vadv/gopher-lua-libs v0.8.0
+	github.com/valyala/fasthttp v1.65.0
 	github.com/yuin/gopher-lua v1.1.1
-	go.mongodb.org/mongo-driver v1.16.1
+	go.mongodb.org/mongo-driver v1.17.6
 	go.opentelemetry.io/otel v1.38.0
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.38.0
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.38.0
 	go.opentelemetry.io/otel/metric v1.38.0
 	go.opentelemetry.io/otel/sdk/metric v1.38.0
-	google.golang.org/grpc v1.75.0
+	google.golang.org/grpc v1.75.1
 )
 
 require (
+	al.essio.dev/pkg/shellescape v1.5.1 // indirect
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
 	github.com/99designs/keyring v1.2.1 // indirect
 	github.com/AthenZ/athenz v1.12.13 // indirect
 	github.com/DataDog/zstd v1.5.0 // indirect
 	github.com/VividCortex/ewma v1.1.1 // indirect
-	github.com/alessio/shellescape v1.4.1 // indirect
-	github.com/andybalholm/brotli v1.1.1 // indirect
+	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/ardielle/ardielle-go v1.5.2 // indirect
 	github.com/aws/aws-sdk-go v1.34.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -75,6 +75,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/go-sql-driver/mysql v1.8.1 // indirect
+	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/godbus/dbus v0.0.0-20190726142602-4481cbc300e2 // indirect
 	github.com/gofrs/uuid/v5 v5.0.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
@@ -87,7 +88,7 @@ require (
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.2 // indirect
 	github.com/gsterjov/go-libsecret v0.0.0-20161001094733-a6f4afe4910c // indirect
-	github.com/hamba/avro/v2 v2.26.0 // indirect
+	github.com/hamba/avro/v2 v2.29.0 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
 	github.com/jcmturner/aescts/v2 v2.0.0 // indirect
 	github.com/jcmturner/dnsutils/v2 v2.0.0 // indirect
@@ -135,7 +136,7 @@ require (
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/scram v1.1.2 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
-	github.com/youmark/pkcs8 v0.0.0-20181117223130-1be2e3e5546d // indirect
+	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	github.com/yuin/gluamapper v0.0.0-20150323120927-d836955830e7 // indirect
 	github.com/zeebo/errs v1.4.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
