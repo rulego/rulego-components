@@ -385,6 +385,8 @@ github.com/rulego/rulego v0.34.5-0.20251210114621-48e71462e43c h1:pR9VzSGC7nKL59
 github.com/rulego/rulego v0.34.5-0.20251210114621-48e71462e43c/go.mod h1:AmnMby85wUZjeF8OYCJ8vv/JPll5Kq4XKhr9AvJ2usw=
 github.com/rulego/streamsql v0.10.4 h1:TadUWOIDpsOIQotlXlMly5h0rGzRbWKamfbdw25w09g=
 github.com/rulego/streamsql v0.10.4/go.mod h1:LibML8rzKKHIZXu/ZewILUcWzV0oB/CRSI5vOkMZMA8=
+github.com/rulego/streamsql v0.10.6-0.20251216094023-16778f2ac3bb h1:VyGlnYe3mOhDM7b/E1RetM1gsAMyE3Z7hL89lmI0trM=
+github.com/rulego/streamsql v0.10.6-0.20251216094023-16778f2ac3bb/go.mod h1:LibML8rzKKHIZXu/ZewILUcWzV0oB/CRSI5vOkMZMA8=
 github.com/savsgio/gotils v0.0.0-20240704082632-aef3928b8a38 h1:D0vL7YNisV2yqE55+q0lFuGse6U8lxlg7fYTctlT5Gc=
 github.com/savsgio/gotils v0.0.0-20240704082632-aef3928b8a38/go.mod h1:sM7Mt7uEoCeFSCBM+qBrqvEo+/9vdmj19wzp3yzUhmg=
 github.com/shirou/gopsutil/v3 v3.23.12 h1:z90NtUkp3bMtmICZKpC4+WaknU1eXtp5vtbQ11DgpE4=
