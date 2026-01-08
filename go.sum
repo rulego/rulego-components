@@ -381,10 +381,8 @@ github.com/robfig/cron/v3 v3.0.1/go.mod h1:eQICP3HwyT7UooqI/z+Ov+PtYAWygg1TEWWzG
 github.com/rogpeppe/go-internal v1.6.1/go.mod h1:xXDCJY+GAPziupqXw64V24skbSoqbTEfhy4qGm1nDQc=
 github.com/rogpeppe/go-internal v1.13.1 h1:KvO1DLK/DRN07sQ1LQKScxyZJuNnedQ5/wKSR38lUII=
 github.com/rogpeppe/go-internal v1.13.1/go.mod h1:uMEvuHeurkdAXX61udpOXGD/AzZDWNMNyH2VO9fmH0o=
-github.com/rulego/rulego v0.34.5-0.20251210114621-48e71462e43c h1:pR9VzSGC7nKL5955pHIZkyYGCDokp0n3g8mOl0x5Ck4=
-github.com/rulego/rulego v0.34.5-0.20251210114621-48e71462e43c/go.mod h1:AmnMby85wUZjeF8OYCJ8vv/JPll5Kq4XKhr9AvJ2usw=
-github.com/rulego/streamsql v0.10.4 h1:TadUWOIDpsOIQotlXlMly5h0rGzRbWKamfbdw25w09g=
-github.com/rulego/streamsql v0.10.4/go.mod h1:LibML8rzKKHIZXu/ZewILUcWzV0oB/CRSI5vOkMZMA8=
+github.com/rulego/rulego v0.35.2-0.20260108104900-e63391e58338 h1:ecJpZnR1qwr7B3QCEJ3z2JHgIKwwoo4nbmxqiXxl9cQ=
+github.com/rulego/rulego v0.35.2-0.20260108104900-e63391e58338/go.mod h1:AmnMby85wUZjeF8OYCJ8vv/JPll5Kq4XKhr9AvJ2usw=
 github.com/rulego/streamsql v0.10.6-0.20251216094023-16778f2ac3bb h1:VyGlnYe3mOhDM7b/E1RetM1gsAMyE3Z7hL89lmI0trM=
 github.com/rulego/streamsql v0.10.6-0.20251216094023-16778f2ac3bb/go.mod h1:LibML8rzKKHIZXu/ZewILUcWzV0oB/CRSI5vOkMZMA8=
 github.com/savsgio/gotils v0.0.0-20240704082632-aef3928b8a38 h1:D0vL7YNisV2yqE55+q0lFuGse6U8lxlg7fYTctlT5Gc=
