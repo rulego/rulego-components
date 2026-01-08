@@ -447,6 +447,11 @@ func (fh *FastHttp) Restart() error {
 	if err := fh.Start(); err != nil {
 		return err
 	}
+
+	if fh.OnEvent != nil {
+		fh.OnEvent(endpointApi.EventRestart, oldRouter)
+	}
+
 	for _, router := range oldRouter {
 		if len(router.GetParams()) == 0 {
 			router.SetParams("GET")
