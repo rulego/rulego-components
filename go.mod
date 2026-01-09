@@ -24,7 +24,7 @@ require (
 	github.com/rulego/rulego v0.35.2-0.20260108104900-e63391e58338
 	github.com/rulego/streamsql v0.10.6-0.20251216094023-16778f2ac3bb
 	github.com/stretchr/testify v1.11.1
-	github.com/vadv/gopher-lua-libs v0.8.0
+	github.com/vadv/gopher-lua-libs v0.5.0
 	github.com/valyala/fasthttp v1.65.0
 	github.com/yuin/gopher-lua v1.1.1
 	go.mongodb.org/mongo-driver v1.17.6
@@ -37,13 +37,13 @@ require (
 )
 
 require (
-	al.essio.dev/pkg/shellescape v1.5.1 // indirect
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
 	github.com/99designs/keyring v1.2.1 // indirect
 	github.com/AthenZ/athenz v1.12.13 // indirect
 	github.com/DataDog/zstd v1.5.0 // indirect
 	github.com/VividCortex/ewma v1.1.1 // indirect
+	github.com/alessio/shellescape v1.4.1 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/ardielle/ardielle-go v1.5.2 // indirect
 	github.com/aws/aws-sdk-go v1.34.0 // indirect
