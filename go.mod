@@ -20,7 +20,7 @@ require (
 	github.com/nsqio/go-nsq v1.1.1-0.20250723164658-7188fbbac4d5
 	github.com/openGemini/opengemini-client-go v0.9.1
 	github.com/rabbitmq/amqp091-go v1.10.1-0.20240821123418-dc67c21576c2
-	github.com/redis/go-redis/v9 v9.18.0-beta.2
+	github.com/redis/go-redis/v9 v9.17.2
 	github.com/rulego/rulego v0.35.2-0.20260108104900-e63391e58338
 	github.com/rulego/streamsql v0.10.6-0.20251216094023-16778f2ac3bb
 	github.com/stretchr/testify v1.11.1
