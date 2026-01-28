@@ -30,6 +30,7 @@ import (
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/str"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -46,6 +47,7 @@ const (
 	MatchedCount  = "matchedCount"
 	ModifiedCount = "modifiedCount"
 	DeletedCount  = "deletedCount"
+	KeyId         = "_id"
 )
 
 // 注册节点
@@ -217,9 +219,66 @@ func (x *ClientNode) toBsonM(evn map[string]interface{}, template *el.ExprTempla
 		return nil, err
 	} else {
 		if r, ok := out.(map[string]interface{}); ok {
+			x.tryConvertId(r)
+			return r, nil
+		} else if s, ok := out.(string); ok {
+			var r bson.M
+			if err := bson.UnmarshalExtJSON([]byte(s), true, &r); err != nil {
+				return nil, err
+			}
+			x.tryConvertId(r)
 			return r, nil
 		} else {
-			return nil, errors.New("expr result is not map[string]interface{}")
+			return nil, errors.New("expr result is not map[string]interface{} or json string")
+		}
+	}
+}
+
+// tryConvertId 尝试将_id转换为ObjectID
+func (x *ClientNode) tryConvertId(m map[string]interface{}) {
+	if id, ok := m[KeyId]; ok {
+		if idStr, ok := id.(string); ok {
+			if oid, err := primitive.ObjectIDFromHex(idStr); err == nil {
+				m[KeyId] = oid
+			}
+		} else if idMap, ok := id.(map[string]interface{}); ok {
+			// 处理嵌套的 map，例如 {"$in": ["id1", "id2"]}
+			x.convertNestedId(idMap)
+		} else if idMap, ok := id.(bson.M); ok {
+			x.convertNestedId(map[string]interface{}(idMap))
+		}
+	}
+}
+
+// convertNestedId 递归处理嵌套的 _id 查询条件
+func (x *ClientNode) convertNestedId(m map[string]interface{}) {
+	for k, v := range m {
+		// 处理数组类型的值，例如 $in, $nin
+		if k == "$in" || k == "$nin" {
+			if vList, ok := v.([]interface{}); ok {
+				for i, item := range vList {
+					if itemStr, ok := item.(string); ok {
+						if oid, err := primitive.ObjectIDFromHex(itemStr); err == nil {
+							vList[i] = oid
+						}
+					}
+				}
+			} else if vList, ok := v.(bson.A); ok {
+				for i, item := range vList {
+					if itemStr, ok := item.(string); ok {
+						if oid, err := primitive.ObjectIDFromHex(itemStr); err == nil {
+							vList[i] = oid
+						}
+					}
+				}
+			}
+		} else if k == "$eq" || k == "$ne" || k == "$gt" || k == "$gte" || k == "$lt" || k == "$lte" {
+			// 处理单个值类型，例如 $eq, $ne
+			if itemStr, ok := v.(string); ok {
+				if oid, err := primitive.ObjectIDFromHex(itemStr); err == nil {
+					m[k] = oid
+				}
+			}
 		}
 	}
 }
@@ -228,21 +287,53 @@ func (x *ClientNode) toBsonMList(evn map[string]interface{}, template *el.ExprTe
 	if out, err := template.Execute(evn); err != nil {
 		return nil, err
 	} else {
-		if r, ok := out.([]interface{}); ok {
-			return r, nil
-		} else if r, ok := out.(map[string]interface{}); ok {
-			var interfaceList []interface{}
-			interfaceList = append(interfaceList, r)
-			return interfaceList, nil
-		} else if r, ok := out.([]map[string]interface{}); ok {
+		return x.processBsonList(out)
+	}
+}
+
+func (x *ClientNode) processBsonList(out interface{}) ([]interface{}, error) {
+	if r, ok := out.([]interface{}); ok {
+		for _, item := range r {
+			if m, ok := item.(map[string]interface{}); ok {
+				x.tryConvertId(m)
+			} else if m, ok := item.(bson.M); ok {
+				x.tryConvertId(m)
+			}
+		}
+		return r, nil
+	} else if r, ok := out.(map[string]interface{}); ok {
+		x.tryConvertId(r)
+		return []interface{}{r}, nil
+	} else if r, ok := out.(bson.M); ok {
+		x.tryConvertId(r)
+		return []interface{}{r}, nil
+	} else if r, ok := out.([]map[string]interface{}); ok {
+		var interfaceList []interface{}
+		for _, item := range r {
+			x.tryConvertId(item)
+			interfaceList = append(interfaceList, item)
+		}
+		return interfaceList, nil
+	} else if s, ok := out.(string); ok {
+		// 尝试解析为JSON数组
+		var r []bson.M
+		if err := bson.UnmarshalExtJSON([]byte(s), true, &r); err == nil {
 			var interfaceList []interface{}
 			for _, item := range r {
+				x.tryConvertId(item)
 				interfaceList = append(interfaceList, item)
 			}
 			return interfaceList, nil
-		} else {
-			return nil, errors.New("expr result is not []map[string]interface{} or []interface{}")
 		}
+		// 尝试解析为单个JSON对象
+		var single bson.M
+		if err := bson.UnmarshalExtJSON([]byte(s), true, &single); err == nil {
+			x.tryConvertId(single)
+			return []interface{}{single}, nil
+		}
+		return nil, errors.New("expr result is not valid json")
+	} else {
+		return nil, errors.New("expr result is not []map[string]interface{} or []interface{}")
 	}
 }
 
@@ -252,7 +343,7 @@ func (x *ClientNode) insert(ctx types.RuleContext, evn map[string]interface{}, c
 		ctx.TellFailure(msg, errors.New("doc template is required for INSERT operation"))
 		return
 	}
-	
+
 	if x.Config.One {
 		if doc, err := x.toBsonM(evn, x.DocTemplate); err != nil {
 			ctx.TellFailure(msg, err)
@@ -286,7 +377,7 @@ func (x *ClientNode) query(ctx types.RuleContext, evn map[string]interface{}, co
 		ctx.TellFailure(msg, errors.New("filter template is required for QUERY operation"))
 		return
 	}
-	
+
 	if filter, err := x.toBsonM(evn, x.FilterTemplate); err != nil {
 		ctx.TellFailure(msg, err)
 	} else {
@@ -327,7 +418,7 @@ func (x *ClientNode) update(ctx types.RuleContext, evn map[string]interface{}, c
 		ctx.TellFailure(msg, errors.New("filter template is required for UPDATE operation"))
 		return
 	}
-	
+
 	var err error
 	var doc interface{}
 	var filter interface{}
@@ -366,7 +457,7 @@ func (x *ClientNode) delete(ctx types.RuleContext, evn map[string]interface{}, c
 		ctx.TellFailure(msg, errors.New("filter template is required for DELETE operation"))
 		return
 	}
-	
+
 	if filter, err := x.toBsonM(evn, x.FilterTemplate); err != nil {
 		ctx.TellFailure(msg, err)
 	} else {
