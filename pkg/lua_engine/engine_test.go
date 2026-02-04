@@ -1,6 +1,7 @@
 package luaEngine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -538,8 +539,12 @@ func (m *MockCache) Set(key string, value interface{}, ttlStr string) error {
 	return nil
 }
 
-func (m *MockCache) Get(key string) interface{} {
-	return m.store[key]
+func (m *MockCache) Get(key string) (interface{}, error) {
+	v, ok := m.store[key]
+	if !ok {
+		return nil, errors.New("not found")
+	}
+	return v, nil
 }
 
 func (m *MockCache) Has(key string) bool {

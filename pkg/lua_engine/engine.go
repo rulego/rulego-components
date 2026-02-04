@@ -233,7 +233,7 @@ func createLuaCacheBinding(L *lua.LState, cacheGoInstance types.Cache) *lua.LTab
 		}
 
 		key := ls.CheckString(1 + argOffset)
-		value := cacheGoInstance.Get(key)
+		value, _ := cacheGoInstance.Get(key)
 		// Using GoToLua from the same package (tools.go)
 		ls.Push(GoToLua(ls, value))
 		return 1
