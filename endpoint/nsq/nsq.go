@@ -26,6 +26,7 @@ import (
 	"net/textproto"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/nsqio/go-nsq"
@@ -122,15 +123,55 @@ func (r *RequestMessage) GetError() error {
 	return r.err
 }
 
+// nsqPublisher 对单连接或多 nsqd 轮询发布抽象，便于运行期负载均衡
+type nsqPublisher interface {
+	Publish(topic string, body []byte) error
+	Stop()
+}
+
+// roundRobinProducers 在多个 *nsq.Producer 上按消息轮询（round-robin）发布；
+// 单次 Publish 若失败会依次尝试其余节点，兼顾负载均衡与单节点短暂不可用时的容错。
+type roundRobinProducers struct {
+	prods []*nsq.Producer
+	rr    uint32
+}
+
+func (p *roundRobinProducers) Publish(topic string, body []byte) error {
+	n := len(p.prods)
+	if n == 0 {
+		return errors.New("no nsqd producer in pool")
+	}
+	// 每次从轮询游标起算，使流量在节点间分散
+	start := int(atomic.AddUint32(&p.rr, 1)-1) % n
+	var lastErr error
+	for i := 0; i < n; i++ {
+		idx := (start + i) % n
+		err := p.prods[idx].Publish(topic, body)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+	}
+	return lastErr
+}
+
+func (p *roundRobinProducers) Stop() {
+	for _, pr := range p.prods {
+		if pr != nil {
+			pr.Stop()
+		}
+	}
+}
+
 // ResponseMessage 响应消息
 type ResponseMessage struct {
-	topic    string
-	message  *nsq.Message
-	producer *nsq.Producer
-	body     []byte
-	msg      *types.RuleMsg
-	headers  textproto.MIMEHeader
-	err      error
+	topic     string
+	message   *nsq.Message
+	publisher nsqPublisher
+	body      []byte
+	msg       *types.RuleMsg
+	headers   textproto.MIMEHeader
+	err       error
 }
 
 // Body 获取响应体
@@ -188,8 +229,8 @@ func (r *ResponseMessage) getMetadataValue(metadataName, headerName string) stri
 func (r *ResponseMessage) SetBody(body []byte) {
 	r.body = body
 	topic := r.getMetadataValue(KeyResponseTopic, KeyResponseTopic)
-	if topic != "" && r.producer != nil {
-		err := r.producer.Publish(topic, r.body)
+	if topic != "" && r.publisher != nil {
+		err := r.publisher.Publish(topic, r.body)
 		if err != nil {
 			r.SetError(err)
 		}
@@ -210,8 +251,9 @@ func (r *ResponseMessage) GetError() error {
 type Config struct {
 	// NSQ服务器地址，支持多种格式：
 	// 1. 单个nsqd: "127.0.0.1:4150"
-	// 2. 多个nsqd: "127.0.0.1:4150,127.0.0.1:4151"
-	// 3. lookupd地址: "http://127.0.0.1:4161,http://127.0.0.1:4162"
+	// 2. 多个nsqd: "127.0.0.1:4150,127.0.0.1:4151"（对全部可达节点建连，运行期按消息轮询发布，见 README.md）
+	// 3. lookupd地址: "http://127.0.0.1:4161,http://127.0.0.1:4162"（按序尝试各 lookupd 的 /nodes，对返回的 nsqd 建连并轮询发布）
+	// 使用说明与示例见同目录 README.md
 	Server string `json:"server" label:"NSQ服务器地址" desc:"NSQ服务器地址，多个地址用逗号分隔" required:"true"`
 	// 默认频道名称，如果AddRouter时未指定则使用此值
 	Channel string `json:"channel" label:"默认频道" desc:"默认频道名称"`
@@ -234,8 +276,8 @@ type Nsq struct {
 	Config Config
 	// 消费者映射关系，用于停止消费，key为routerId
 	consumers map[string]*nsq.Consumer
-	// 生产者
-	producer *nsq.Producer
+	// 发布端（单节点或多节点轮询）
+	publisher nsqPublisher
 	// 互斥锁
 	mu sync.RWMutex
 }
@@ -301,39 +343,33 @@ func (x *Nsq) Init(ruleConfig types.Config, configuration types.Configuration) e
 	if x.Config.Server != "" {
 		// 解析地址配置
 		nsqdAddrs, lookupdAddrs := x.parseAddresses()
-		
-		// NSQ生产者只能连接到单个nsqd，不支持lookupd
-		// 如果配置了lookupd地址，需要先通过lookupd发现nsqd地址
-		var targetAddr string
-		if len(nsqdAddrs) > 0 {
-			// 使用第一个nsqd地址
-			targetAddr = nsqdAddrs[0]
-		} else if len(lookupdAddrs) > 0 {
-			// 通过lookupd API发现nsqd地址
-			nsqdAddr, discoverErr := x.discoverNsqdFromLookupd(lookupdAddrs[0])
-			if discoverErr != nil {
-				return fmt.Errorf("failed to discover nsqd from lookupd %s: %w", lookupdAddrs[0], discoverErr)
-			}
-			targetAddr = nsqdAddr
-		} else {
-			// 使用原始Server配置
-			targetAddr = x.Config.Server
-		}
-		
-		if targetAddr != "" {
-			producerConfig := nsq.NewConfig()
-			// 设置鉴权配置
-			if x.Config.AuthToken != "" {
-				producerConfig.AuthSecret = x.Config.AuthToken
-			}
-			// 使用目标地址创建producer
-			x.producer, err = nsq.NewProducer(targetAddr, producerConfig)
-			if err != nil {
-				return err
-			}
 
-			// 禁用NSQ内部日志输出
-			x.producer.SetLoggerLevel(nsq.LogLevelError)
+		// 多地址时对所有可达 nsqd 建立 Producer，运行期由 roundRobinProducers 轮询发布
+		producerConfig := nsq.NewConfig()
+		if x.Config.AuthToken != "" {
+			producerConfig.AuthSecret = x.Config.AuthToken
+		}
+
+		var nsqdCandidates []string
+		if len(nsqdAddrs) > 0 {
+			nsqdCandidates = nsqdAddrs
+		} else if len(lookupdAddrs) > 0 {
+			discovered, discoverErr := discoverNsqdProducersFromLookupds(lookupdAddrs)
+			if discoverErr != nil {
+				return discoverErr
+			}
+			nsqdCandidates = discovered
+		} else {
+			nsqdCandidates = []string{strings.TrimSpace(x.Config.Server)}
+		}
+
+		if len(nsqdCandidates) > 0 {
+			nsqdCandidates = dedupeAddrsStable(nsqdCandidates)
+			prods, connectErr := buildReachableProducers(nsqdCandidates, producerConfig)
+			if connectErr != nil {
+				return connectErr
+			}
+			x.publisher = &roundRobinProducers{prods: prods}
 		}
 	}
 
@@ -365,10 +401,10 @@ func (x *Nsq) Close() error {
 	}
 	x.consumers = make(map[string]*nsq.Consumer)
 
-	// 停止生产者
-	if x.producer != nil {
-		x.producer.Stop()
-		x.producer = nil
+	// 停止发布端
+	if x.publisher != nil {
+		x.publisher.Stop()
+		x.publisher = nil
 	}
 
 	x.BaseEndpoint.Destroy()
@@ -489,9 +525,9 @@ func (x *Nsq) handleMessage(message *nsq.Message, router endpointApi.Router, top
 			topic:   topic,
 		},
 		Out: &ResponseMessage{
-			message:  message,
-			producer: x.producer,
-			topic:    topic,
+			message:   message,
+			publisher: x.publisher,
+			topic:     topic,
 		},
 	}
 	x.DoProcess(context.Background(), router, exchange)
@@ -503,66 +539,150 @@ func (x *Nsq) Start() error {
 	return nil
 }
 
-// discoverNsqdFromLookupd 通过lookupd API发现可用的nsqd地址
-// 查询lookupd的/nodes接口获取所有可用的nsqd节点信息
-func (x *Nsq) discoverNsqdFromLookupd(lookupdAddr string) (string, error) {
-	// 构建lookupd API URL
-	apiURL := fmt.Sprintf("%s/nodes", strings.TrimSuffix(lookupdAddr, "/"))
-	
-	// 创建HTTP客户端，设置超时
-	client := &http.Client{
-		Timeout: 10 * time.Second,
+// lookupdNodesProducer 对应 lookupd /nodes 中的单个 producer
+type lookupdNodesProducer struct {
+	RemoteAddress    string `json:"remote_address"`
+	Hostname         string `json:"hostname"`
+	BroadcastAddress string `json:"broadcast_address"`
+	TCPPort          int    `json:"tcp_port"`
+	HTTPPort         int    `json:"http_port"`
+	Version          string `json:"version"`
+}
+
+func nsqdAddrFromLookupdProducer(p lookupdNodesProducer) (string, bool) {
+	if p.TCPPort <= 0 || p.TCPPort > 65535 {
+		return "", false
 	}
-	
-	// 发送GET请求到lookupd
-	resp, err := client.Get(apiURL)
+	// 与历史行为一致：优先 broadcast + tcp_port，否则 remote + tcp_port
+	if p.BroadcastAddress != "" {
+		return fmt.Sprintf("%s:%d", p.BroadcastAddress, p.TCPPort), true
+	}
+	if p.RemoteAddress != "" {
+		return fmt.Sprintf("%s:%d", p.RemoteAddress, p.TCPPort), true
+	}
+	return "", false
+}
+
+// dedupeAddrsStable 按首次出现顺序去重
+func dedupeAddrsStable(addrs []string) []string {
+	seen := make(map[string]struct{}, len(addrs))
+	out := make([]string, 0, len(addrs))
+	for _, a := range addrs {
+		a = strings.TrimSpace(a)
+		if a == "" {
+			continue
+		}
+		if _, ok := seen[a]; ok {
+			continue
+		}
+		seen[a] = struct{}{}
+		out = append(out, a)
+	}
+	return out
+}
+
+// fetchNsqdProducersFromLookupd 请求单个 lookupd 的 /nodes，返回可拨号的 nsqd 地址列表
+func fetchNsqdProducersFromLookupd(lookupdAddr string) ([]string, error) {
+	apiURL := fmt.Sprintf("%s/nodes", strings.TrimSuffix(lookupdAddr, "/"))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to query lookupd API: %w", err)
+		return nil, fmt.Errorf("build lookupd request: %w", err)
+	}
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("query lookupd API: %w", err)
 	}
 	defer resp.Body.Close()
-	
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("lookupd API returned status %d", resp.StatusCode)
+		return nil, fmt.Errorf("lookupd API status %d", resp.StatusCode)
 	}
-	
-	// 读取响应体
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("failed to read lookupd response: %w", err)
+		return nil, fmt.Errorf("read lookupd response: %w", err)
 	}
-	
-	// 解析JSON响应
 	var response struct {
-		Producers []struct {
-			RemoteAddress    string `json:"remote_address"`
-			Hostname         string `json:"hostname"`
-			BroadcastAddress string `json:"broadcast_address"`
-			TCPPort          int    `json:"tcp_port"`
-			HTTPPort         int    `json:"http_port"`
-			Version          string `json:"version"`
-		} `json:"producers"`
+		Producers []lookupdNodesProducer `json:"producers"`
 	}
-	
-	err = json.Unmarshal(body, &response)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse lookupd response: %w", err)
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("parse lookupd response: %w", err)
 	}
-	
-	// 检查是否有可用的nsqd节点
 	if len(response.Producers) == 0 {
-		return "", errors.New("no nsqd nodes found from lookupd")
+		return nil, nil
 	}
-	
-	// 返回第一个可用的nsqd地址
-	producer := response.Producers[0]
-	var nsqdAddr string
-	if producer.BroadcastAddress != "" {
-		nsqdAddr = fmt.Sprintf("%s:%d", producer.BroadcastAddress, producer.TCPPort)
-	} else {
-		nsqdAddr = fmt.Sprintf("%s:%d", producer.RemoteAddress, producer.TCPPort)
+	candidates := make([]string, 0, len(response.Producers))
+	for _, pr := range response.Producers {
+		if addr, ok := nsqdAddrFromLookupdProducer(pr); ok {
+			candidates = append(candidates, addr)
+		}
 	}
-	
-	return nsqdAddr, nil
+	return dedupeAddrsStable(candidates), nil
+}
+
+// discoverNsqdProducersFromLookupds 按顺序尝试多个 lookupd，在首次成功且返回非空
+// 的 nsqd 列表时即采用该列表。全部失败时汇聚错误返回。
+func discoverNsqdProducersFromLookupds(lookupdAddrs []string) ([]string, error) {
+	if len(lookupdAddrs) == 0 {
+		return nil, errors.New("no lookupd address configured")
+	}
+	var errs []error
+	for _, u := range lookupdAddrs {
+		u = strings.TrimSpace(u)
+		if u == "" {
+			continue
+		}
+		addrs, err := fetchNsqdProducersFromLookupd(u)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("lookupd %s: %w", u, err))
+			continue
+		}
+		if len(addrs) == 0 {
+			errs = append(errs, fmt.Errorf("lookupd %s: no nsqd nodes in /nodes response", u))
+			continue
+		}
+		return addrs, nil
+	}
+	if len(errs) == 0 {
+		return nil, errors.New("no non-empty lookupd address in configuration")
+	}
+	return nil, fmt.Errorf("all lookupd failed: %w", errors.Join(errs...))
+}
+
+// buildReachableProducers 为每个候选地址建立 Producer 并 Ping，保留所有成功的实例；不可达会 Stop 并跳过。
+// 多实例供 roundRobinProducers 在运行期做负载均衡与发布失败时向其他节点重试。
+func buildReachableProducers(candidates []string, cfg *nsq.Config) ([]*nsq.Producer, error) {
+	if len(candidates) == 0 {
+		return nil, errors.New("no nsqd address candidates")
+	}
+	var out []*nsq.Producer
+	var lastErr error
+	for _, addr := range candidates {
+		addr = strings.TrimSpace(addr)
+		if addr == "" {
+			continue
+		}
+		p, err := nsq.NewProducer(addr, cfg)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if err := p.Ping(); err != nil {
+			p.Stop()
+			lastErr = err
+			continue
+		}
+		p.SetLoggerLevel(nsq.LogLevelError)
+		out = append(out, p)
+	}
+	if len(out) == 0 {
+		if lastErr == nil {
+			lastErr = errors.New("no valid non-empty address in nsqd candidate list")
+		}
+		return nil, fmt.Errorf("no reachable nsqd: %w", lastErr)
+	}
+	return out, nil
 }
 
 // Printf 打印日志

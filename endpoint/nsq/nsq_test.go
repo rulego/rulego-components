@@ -17,8 +17,12 @@
 package nsq
 
 import (
+	"encoding/json"
+	"fmt"
 	"io"
 	"log"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -83,7 +87,7 @@ func TestNsqEndpoint(t *testing.T) {
 	count := int32(0)
 	// 模拟获取响应
 	router2 := endpoint.NewRouter().SetId("router2").From("device_msg_response").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
-		//fmt.Println("接收到数据：device_msg_response", exchange.In.GetMsg())
+		fmt.Println("接收到数据：device_msg_response", exchange.In.GetMsg())
 		assert.Equal(t, "this is response", exchange.In.GetMsg().GetData())
 		atomic.AddInt32(&count, 1)
 		return true
@@ -91,7 +95,7 @@ func TestNsqEndpoint(t *testing.T) {
 
 	// 模拟获取响应,相同主题
 	router3 := endpoint.NewRouter().SetId("router3").From("device_msg_response").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
-		//fmt.Println("接收到数据：device_msg_response", exchange.In.GetMsg())
+		fmt.Println("接收到数据：device_msg_response", exchange.In.GetMsg())
 		assert.Equal(t, "this is response", exchange.In.GetMsg().GetData())
 		atomic.AddInt32(&count, 1)
 		return true
@@ -130,6 +134,7 @@ func TestNsqEndpoint(t *testing.T) {
 
 	// 测试发布消息
 	producerConfig := nsq.NewConfig()
+	fmt.Println("producerConfig", producerConfig)
 	producer, err := nsq.NewProducer(nsqdAddress, producerConfig)
 	if err != nil {
 		t.Skipf("NSQ server not available: %v", err)
@@ -152,7 +157,7 @@ func TestNsqEndpoint(t *testing.T) {
 	assert.Equal(t, int32(1), atomic.LoadInt32(&count))
 
 	atomic.StoreInt32(&count, 0)
-	//删除router3
+	// 删除router3
 	_ = nsqEndpoint.RemoveRouter(router3Id)
 	// 发布消息到device_msg_request
 	err = producer.Publish("device_msg_request", []byte("test message"))
@@ -248,4 +253,47 @@ func TestNsqEndpointWithNsqd(t *testing.T) {
 
 	// 清理
 	nsqEndpoint.Destroy()
+}
+
+func TestDiscoverNsqdProducersFromLookupds_Fallback(t *testing.T) {
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "nope", http.StatusInternalServerError)
+	}))
+	defer bad.Close()
+
+	goodBody, _ := json.Marshal(map[string]any{
+		"producers": []map[string]any{
+			{"broadcast_address": "a.example", "tcp_port": 4150},
+		},
+	})
+	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(goodBody)
+	}))
+	defer good.Close()
+
+	addrs, err := discoverNsqdProducersFromLookupds([]string{bad.URL, good.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(addrs) != 1 || addrs[0] != "a.example:4150" {
+		t.Fatalf("got %v", addrs)
+	}
+}
+
+func TestBuildReachableProducers_None(t *testing.T) {
+	cfg := nsq.NewConfig()
+	_, err := buildReachableProducers([]string{"127.0.0.1:1", "127.0.0.1:2"}, cfg)
+	if err == nil {
+		t.Fatal("expected error for unreachable nsqd")
+	}
+	if !strings.Contains(err.Error(), "no reachable nsqd") {
+		t.Fatalf("unexpected: %v", err)
+	}
+}
+
+func TestRoundRobinProducers_EmptyPool(t *testing.T) {
+	empty := &roundRobinProducers{prods: nil}
+	if err := empty.Publish("t", []byte("x")); err == nil {
+		t.Fatal("expected error for empty pool")
+	}
 }
