@@ -334,6 +334,18 @@ func (r *ResponseMessage) GetError() error {
 	return r.err
 }
 
+// Flush sends any buffered data to the client immediately.
+// This is particularly important for streaming responses like SSE.
+//
+// Flush 立即将缓冲数据发送到客户端。
+// 这对于 SSE 等流式响应特别重要。
+func (r *ResponseMessage) Flush() {
+	if r.ctx != nil {
+		// For fasthttp, we need to manually flush by writing empty bytes
+		// since fasthttp doesn't have a built-in Flush method like net/http
+		r.ctx.SetBody(r.ctx.Response.Body())
+	}
+}
 func (r *ResponseMessage) RequestCtx() *fasthttp.RequestCtx {
 	return r.ctx
 }
