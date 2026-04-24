@@ -42,3 +42,7 @@ vendor/
 
 # coverage file
 coverage.html
+
+### Python template
+__pycache__/
+*.pyc

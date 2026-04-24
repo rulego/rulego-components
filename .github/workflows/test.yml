@@ -121,6 +121,14 @@ jobs:
       with:
         go-version: ${{ matrix.go-version }}
 
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    - name: Verify Python
+      run: python3 --version
+
     - name: Install protoc Go plugins
       run: |
         go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
