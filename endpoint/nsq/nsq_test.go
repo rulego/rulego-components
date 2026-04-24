@@ -17,8 +17,11 @@
 package nsq
 
 import (
+	"encoding/json"
 	"io"
 	"log"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -248,4 +251,85 @@ func TestNsqEndpointWithNsqd(t *testing.T) {
 
 	// 清理
 	nsqEndpoint.Destroy()
+}
+
+func TestFetchNsqdProducersFromLookupd_HTTPServer(t *testing.T) {
+	payload := map[string]any{
+		"producers": []map[string]any{
+			{
+				"broadcast_address": "10.0.0.1", "tcp_port": 4150,
+				"remote_address": "192.168.0.1:5000",
+			},
+			{
+				"broadcast_address": "10.0.0.2", "tcp_port": 4150,
+			},
+		},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/nodes" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	addrs, err := fetchNsqdProducersFromLookupd(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(addrs) != 2 {
+		t.Fatalf("expected 2 addrs, got %v", addrs)
+	}
+	if addrs[0] != "10.0.0.1:4150" || addrs[1] != "10.0.0.2:4150" {
+		t.Fatalf("unexpected addrs: %v", addrs)
+	}
+}
+
+func TestDiscoverNsqdProducersFromLookupds_Fallback(t *testing.T) {
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "nope", http.StatusInternalServerError)
+	}))
+	defer bad.Close()
+
+	goodBody, _ := json.Marshal(map[string]any{
+		"producers": []map[string]any{
+			{"broadcast_address": "a.example", "tcp_port": 4150},
+		},
+	})
+	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(goodBody)
+	}))
+	defer good.Close()
+
+	addrs, err := discoverNsqdProducersFromLookupds([]string{bad.URL, good.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(addrs) != 1 || addrs[0] != "a.example:4150" {
+		t.Fatalf("got %v", addrs)
+	}
+}
+
+func TestBuildReachableProducers_None(t *testing.T) {
+	cfg := nsq.NewConfig()
+	_, err := buildReachableProducers([]string{"127.0.0.1:1", "127.0.0.1:2"}, cfg)
+	if err == nil {
+		t.Fatal("expected error for unreachable nsqd")
+	}
+	if !strings.Contains(err.Error(), "no reachable nsqd") {
+		t.Fatalf("unexpected: %v", err)
+	}
+}
+
+func TestRoundRobinProducers_EmptyPool(t *testing.T) {
+	empty := &roundRobinProducers{prods: nil}
+	if err := empty.Publish("t", []byte("x")); err == nil {
+		t.Fatal("expected error for empty pool")
+	}
 }
