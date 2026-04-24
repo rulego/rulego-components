@@ -18,6 +18,7 @@ package nsq
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -86,7 +87,7 @@ func TestNsqEndpoint(t *testing.T) {
 	count := int32(0)
 	// 模拟获取响应
 	router2 := endpoint.NewRouter().SetId("router2").From("device_msg_response").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
-		//fmt.Println("接收到数据：device_msg_response", exchange.In.GetMsg())
+		fmt.Println("接收到数据：device_msg_response", exchange.In.GetMsg())
 		assert.Equal(t, "this is response", exchange.In.GetMsg().GetData())
 		atomic.AddInt32(&count, 1)
 		return true
@@ -94,7 +95,7 @@ func TestNsqEndpoint(t *testing.T) {
 
 	// 模拟获取响应,相同主题
 	router3 := endpoint.NewRouter().SetId("router3").From("device_msg_response").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
-		//fmt.Println("接收到数据：device_msg_response", exchange.In.GetMsg())
+		fmt.Println("接收到数据：device_msg_response", exchange.In.GetMsg())
 		assert.Equal(t, "this is response", exchange.In.GetMsg().GetData())
 		atomic.AddInt32(&count, 1)
 		return true
@@ -133,6 +134,7 @@ func TestNsqEndpoint(t *testing.T) {
 
 	// 测试发布消息
 	producerConfig := nsq.NewConfig()
+	fmt.Println("producerConfig", producerConfig)
 	producer, err := nsq.NewProducer(nsqdAddress, producerConfig)
 	if err != nil {
 		t.Skipf("NSQ server not available: %v", err)
@@ -155,7 +157,7 @@ func TestNsqEndpoint(t *testing.T) {
 	assert.Equal(t, int32(1), atomic.LoadInt32(&count))
 
 	atomic.StoreInt32(&count, 0)
-	//删除router3
+	// 删除router3
 	_ = nsqEndpoint.RemoveRouter(router3Id)
 	// 发布消息到device_msg_request
 	err = producer.Publish("device_msg_request", []byte("test message"))

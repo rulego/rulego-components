@@ -251,9 +251,9 @@ func (r *ResponseMessage) GetError() error {
 type Config struct {
 	// NSQ服务器地址，支持多种格式：
 	// 1. 单个nsqd: "127.0.0.1:4150"
-	// 2. 多个nsqd: "127.0.0.1:4150,127.0.0.1:4151"（对全部可达节点建连，运行期按消息轮询发布，见 DISCOVERY.md）
+	// 2. 多个nsqd: "127.0.0.1:4150,127.0.0.1:4151"（对全部可达节点建连，运行期按消息轮询发布，见 README.md）
 	// 3. lookupd地址: "http://127.0.0.1:4161,http://127.0.0.1:4162"（按序尝试各 lookupd 的 /nodes，对返回的 nsqd 建连并轮询发布）
-	// 说明见同目录 DISCOVERY.md
+	// 使用说明与示例见同目录 README.md
 	Server string `json:"server" label:"NSQ服务器地址" desc:"NSQ服务器地址，多个地址用逗号分隔" required:"true"`
 	// 默认频道名称，如果AddRouter时未指定则使用此值
 	Channel string `json:"channel" label:"默认频道" desc:"默认频道名称"`
