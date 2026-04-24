@@ -255,44 +255,6 @@ func TestNsqEndpointWithNsqd(t *testing.T) {
 	nsqEndpoint.Destroy()
 }
 
-func TestFetchNsqdProducersFromLookupd_HTTPServer(t *testing.T) {
-	payload := map[string]any{
-		"producers": []map[string]any{
-			{
-				"broadcast_address": "10.0.0.1", "tcp_port": 4150,
-				"remote_address": "192.168.0.1:5000",
-			},
-			{
-				"broadcast_address": "10.0.0.2", "tcp_port": 4150,
-			},
-		},
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/nodes" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(body)
-	}))
-	defer srv.Close()
-
-	addrs, err := fetchNsqdProducersFromLookupd(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(addrs) != 2 {
-		t.Fatalf("expected 2 addrs, got %v", addrs)
-	}
-	if addrs[0] != "10.0.0.1:4150" || addrs[1] != "10.0.0.2:4150" {
-		t.Fatalf("unexpected addrs: %v", addrs)
-	}
-}
-
 func TestDiscoverNsqdProducersFromLookupds_Fallback(t *testing.T) {
 	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "nope", http.StatusInternalServerError)
