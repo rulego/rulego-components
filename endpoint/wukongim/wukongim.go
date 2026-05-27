@@ -161,22 +161,14 @@ func (r *ResponseMessage) SetStatusCode(statusCode int) {
 }
 
 type Config struct {
-	// Wukongim服务器地址
-	Server string
-	// 用户UID
-	UID string
-	// 登录密码
-	Token string
-	// 连接超时，单位秒
-	ConnectTimeout int64
-	// Proto版本
-	ProtoVersion int
-	// 心跳间隔，单位秒
-	PingInterval int64
-	// 是否自动重连
-	Reconnect bool
-	// 是否自动确认
-	AutoAck bool
+	Server         string `json:"server" label:"Server" desc:"WuKongIM server address, format: tcp://host:port" required:"true"`
+	UID            string `json:"uid" label:"UID" desc:"Login user UID" required:"true"`
+	Token          string `json:"token" label:"Token" desc:"Login authentication token" required:"true"`
+	ConnectTimeout int64  `json:"connectTimeout" label:"Connect Timeout (s)" desc:"Connection timeout in seconds"`
+	ProtoVersion   int    `json:"protoVersion" label:"Proto Version" desc:"Communication protocol version"`
+	PingInterval   int64  `json:"pingInterval" label:"Ping Interval (s)" desc:"Heartbeat interval in seconds"`
+	Reconnect      bool   `json:"reconnect" label:"Reconnect" desc:"Whether to auto-reconnect on disconnect"`
+	AutoAck        bool   `json:"autoAck" label:"Auto Ack" desc:"Whether to auto-acknowledge messages"`
 }
 
 // Wukongim 接收端端点
@@ -205,6 +197,15 @@ func (x *Wukongim) New() types.Node {
 			PingInterval:   30,
 			Reconnect:      true,
 			AutoAck:        true,
+		},
+	}
+}
+
+func (x *Wukongim) Def() types.ComponentForm {
+	return types.ComponentForm{
+		Desc: "WuKongIM client endpoint for receiving and processing IM messages",
+		RouterForm: &types.RouterForm{
+			Hide: true,
 		},
 	}
 }

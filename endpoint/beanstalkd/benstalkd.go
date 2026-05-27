@@ -38,12 +38,9 @@ func init() {
 
 // beanstalk Tubeset 配置
 type TubesetConfig struct {
-	// 服务器地址
-	Server string
-	// tube 列表
-	Tubesets []string
-	// 超时参数
-	Timeout int64
+	Server   string   `json:"server" label:"Server" desc:"Beanstalkd server address, format: host:port" required:"true"`
+	Tubesets []string `json:"tubesets" label:"Tubes" desc:"List of tube names to watch"`
+	Timeout  int64    `json:"timeout" label:"Timeout" desc:"Reserve operation timeout in seconds"`
 }
 
 type BeanstalkdTubeSet struct {
@@ -72,6 +69,15 @@ func (x *BeanstalkdTubeSet) New() types.Node {
 			Server:   "127.0.0.1:11300",
 			Tubesets: []string{DefaultTube},
 			Timeout:  300,
+		},
+	}
+}
+
+func (x *BeanstalkdTubeSet) Def() types.ComponentForm {
+	return types.ComponentForm{
+		Desc: "Beanstalkd consumer endpoint for watching tubes and processing jobs",
+		RouterForm: &types.RouterForm{
+			Hide: true,
 		},
 	}
 }

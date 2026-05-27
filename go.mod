@@ -10,6 +10,7 @@ require (
 	github.com/WuKongIM/WuKongIMGoSDK v1.0.0
 	github.com/apache/pulsar-client-go v0.17.0
 	github.com/beanstalkd/go-beanstalk v0.2.0
+	github.com/emersion/go-imap v1.2.1
 	github.com/expr-lang/expr v1.17.7-0.20251210132847-775fc3aca520
 	github.com/fasthttp/router v1.5.4
 	github.com/fasthttp/websocket v1.5.12
@@ -33,6 +34,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.38.0
 	go.opentelemetry.io/otel/metric v1.38.0
 	go.opentelemetry.io/otel/sdk/metric v1.38.0
+	golang.org/x/text v0.28.0
 	google.golang.org/grpc v1.75.1
 )
 
@@ -66,6 +68,7 @@ require (
 	github.com/eapache/go-xerial-snappy v0.0.0-20230731223053-c322873962e3 // indirect
 	github.com/eapache/queue v1.1.0 // indirect
 	github.com/eclipse/paho.mqtt.golang v1.4.3 // indirect
+	github.com/emersion/go-sasl v0.0.0-20200509203442-7bfe0ed36a21 // indirect
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.2.1 // indirect
 	github.com/fatih/color v1.7.0 // indirect
@@ -151,7 +154,6 @@ require (
 	golang.org/x/sync v0.16.0 // indirect
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/term v0.34.0 // indirect
-	golang.org/x/text v0.28.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250825161204-c5933d9347a5 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250825161204-c5933d9347a5 // indirect
 	google.golang.org/protobuf v1.36.8 // indirect
@@ -168,6 +170,6 @@ require (
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
-//replace github.com/rulego/rulego => ../rulego
+replace github.com/rulego/rulego => ../rulego
 
 //replace github.com/rulego/streamsql => ../streamsql

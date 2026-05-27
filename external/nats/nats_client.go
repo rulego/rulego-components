@@ -31,13 +31,13 @@ func init() {
 
 type ClientNodeConfiguration struct {
 	// NATS服务器地址
-	Server string `json:"server"`
+	Server string `json:"server" label:"Server" desc:"NATS server address, e.g. nats://127.0.0.1:4222" required:"true"`
 	// NATS用户名
-	Username string `json:"username"`
+	Username string `json:"username" label:"Username" desc:"NATS username"`
 	// NATS密码
-	Password string `json:"password"`
+	Password string `json:"password" label:"Password" desc:"NATS password"`
 	// 发布主题
-	Topic string `json:"topic"`
+	Topic string `json:"topic" label:"Topic" desc:"Publish topic. Supports ${metadata.key} and ${msg.key} substitution" required:"true"`
 }
 
 type ClientNode struct {
@@ -109,6 +109,11 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 
 func (x *ClientNode) Destroy() {
 	_ = x.SharedNode.Close()
+}
+
+// Desc returns the component description
+func (x *ClientNode) Desc() string {
+	return "NATS client for publishing messages. Topic supports ${metadata.key} and ${msg.key} substitution. Routes to Success/Failure"
 }
 
 func (x *ClientNode) initClient() (*nats.Conn, error) {

@@ -116,17 +116,17 @@ func init() {
 
 type ClientNodeConfiguration struct {
 	// RabbitMQ服务器地址，格式为"amqp://用户名:密码@服务器地址:端口号"
-	Server string
+	Server string `json:"server" label:"Server" desc:"RabbitMQ server address, e.g. amqp://user:pass@host:5672" required:"true"`
 	// 路由键
-	Key string
+	Key string `json:"key" label:"Routing Key" desc:"Routing key. Supports ${metadata.key} and ${msg.key} substitution" required:"true"`
 	// 交换机名称
-	Exchange string
+	Exchange string `json:"exchange" label:"Exchange" desc:"Exchange name" required:"true"`
 	// 交换机类型 direct, fanout, topic
-	ExchangeType string
-	//表示交换器是否持久化。如果设置为 true，即使消息服务器重启，交换器也会被保留。
-	Durable bool
-	//表示交换器是否自动删除。如果设置为 true，则当没有绑定的队列时，交换器会被自动删除。
-	AutoDelete bool
+	ExchangeType string `json:"exchangeType" label:"Exchange Type" desc:"Exchange type: direct, fanout, topic"`
+	//表示交换器是否持久化
+	Durable bool `json:"durable" label:"Durable" desc:"true=persistent exchange survives server restart"`
+	//表示交换器是否自动删除
+	AutoDelete bool `json:"autoDelete" label:"Auto Delete" desc:"true=auto-delete when no queues bound"`
 }
 
 type ClientNode struct {
@@ -225,6 +225,11 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 // Destroy 销毁
 func (x *ClientNode) Destroy() {
 	_ = x.SharedNode.Close()
+}
+
+// Desc returns the component description
+func (x *ClientNode) Desc() string {
+	return "RabbitMQ client for publishing messages. Key supports ${metadata.key} and ${msg.key} substitution. Routes to Success/Failure"
 }
 
 func (x *ClientNode) getContentType(msg types.RuleMsg) string {

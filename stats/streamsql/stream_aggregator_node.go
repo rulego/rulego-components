@@ -40,14 +40,9 @@ func init() {
 
 // StreamAggregatorNodeConfiguration 流聚合器节点配置
 type StreamAggregatorNodeConfiguration struct {
-	// SQL查询语句，仅支持聚合查询（包含GROUP BY、聚合函数、窗口函数等）
-	// 聚合查询示例：
-	//   SELECT AVG(temperature) as avg_temp FROM stream GROUP BY TumblingWindow('5s')
-	//   SELECT deviceId, MAX(temperature) as max_temp FROM stream GROUP BY deviceId, SlidingWindow('1m', '30s')
-	//   SELECT COUNT(*) as count, SUM(value) as total FROM stream GROUP BY TumblingWindow('10s')
-	// 支持的聚合函数：COUNT, SUM, AVG, MAX, MIN, FIRST, LAST等
-	// 支持的窗口函数：TumblingWindow, SlidingWindow, SessionWindow等
-	SQL string `json:"sql"`
+	// SQL is the aggregation query statement (must contain GROUP BY, aggregation or window functions).
+	// Example: SELECT AVG(temperature) as avg_temp FROM stream GROUP BY TumblingWindow('5s')
+	SQL string `json:"sql" label:"SQL" desc:"Aggregation SQL query. Must contain GROUP BY/window functions. Example: SELECT AVG(temperature) FROM stream GROUP BY TumblingWindow('5s')" required:"true"`
 }
 
 // StreamAggregatorNode 流聚合器节点
@@ -282,10 +277,17 @@ func (x *StreamAggregatorNode) convertToMapStringInterface(data interface{}) (ma
 }
 
 // Destroy 销毁节点，释放资源
-// 该方法在节点被卸载时调用，用于清理StreamSQL实例和相关资源
 func (x *StreamAggregatorNode) Destroy() {
 	if x.streamsql != nil {
 		x.streamsql.Stop()
 		x.streamsql = nil
+	}
+}
+
+// Def returns the component form definition
+func (x *StreamAggregatorNode) Def() types.ComponentForm {
+	return types.ComponentForm{
+		Desc:          "Stream aggregation node. Processes aggregation SQL with window functions. Original data passes via Success, aggregation results via window_event",
+		RelationTypes: &[]string{types.Success, types.Failure, RelationTypeWindowEvent},
 	}
 }

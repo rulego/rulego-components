@@ -24,16 +24,15 @@ const KeyResult = "result"
 // PublisherNodeConfiguration 节点配置
 type PublisherNodeConfiguration struct {
 	// Server redis服务器地址
-	Server string `json:"server"`
+	Server string `json:"server" label:"Server" desc:"Redis server address, e.g. 127.0.0.1:6379" required:"true"`
 	// Password 密码
-	Password string `json:"password"`
+	Password string `json:"password" label:"Password" desc:"Redis password"`
 	// PoolSize 连接池大小
-	PoolSize int `json:"poolSize"`
+	PoolSize int `json:"poolSize" label:"Pool Size" desc:"Connection pool size"`
 	// Db 数据库index
-	Db int `json:"db"`
+	Db int `json:"db" label:"DB" desc:"Redis database index"`
 	// Channel 发布频道
-	// 支持${metadata.key}占位符读取metadata元数据
-	Channel string `json:"channel"`
+	Channel string `json:"channel" label:"Channel" desc:"Pub/sub channel. Supports ${metadata.key} substitution" required:"true"`
 }
 
 // PublisherNode redis发布节点
@@ -109,6 +108,11 @@ func (x *PublisherNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 
 func (x *PublisherNode) Destroy() {
 	_ = x.SharedNode.Close()
+}
+
+// Desc returns the component description
+func (x *PublisherNode) Desc() string {
+	return "Redis pub/sub publisher. Channel supports ${metadata.key} substitution. Subscriber count stored in metadata.result. Routes to Success/Failure"
 }
 
 func (x *PublisherNode) initClient() (*redis.Client, error) {

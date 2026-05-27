@@ -38,12 +38,12 @@ func init() {
 
 // Config gRPC流配置
 type Config struct {
-	Server        string            // gRPC服务器地址
-	Service       string            // gRPC服务名称
-	Method        string            // gRPC方法名称
-	Headers       map[string]string // 请求头
-	Request       string            // 请求数据(如果为nil，发送空数据，看服务端的处理逻辑)
-	CheckInterval int               // gRPC服务器检查间隔(ms)
+	Server        string            `json:"server" label:"Server" desc:"gRPC server address, format: host:port" required:"true"`
+	Service       string            `json:"service" label:"Service" desc:"gRPC service name, e.g. pkg.ServiceName" required:"true"`
+	Method        string            `json:"method" label:"Method" desc:"gRPC method name, e.g. StreamData" required:"true"`
+	Headers       map[string]string `json:"headers" label:"Headers" desc:"Custom gRPC request headers"`
+	Request       string            `json:"request" label:"Request" desc:"Initial request data, sends empty data if not set"`
+	CheckInterval int               `json:"checkInterval" label:"Check Interval (ms)" desc:"Connection health check interval in milliseconds"`
 }
 
 // GrpcStream 提供了基于 gRPC 流式通信的端点实现。
@@ -218,6 +218,15 @@ func (x *GrpcStream) New() types.Node {
 			Service:       "ble.DataService",
 			Method:        "StreamData",
 			CheckInterval: 10 * 1000,
+		},
+	}
+}
+
+func (x *GrpcStream) Def() types.ComponentForm {
+	return types.ComponentForm{
+		Desc: "gRPC stream endpoint for receiving and processing streaming data from gRPC services",
+		RouterForm: &types.RouterForm{
+			Hide: true,
 		},
 	}
 }

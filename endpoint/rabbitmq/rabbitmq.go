@@ -212,15 +212,11 @@ func (r *ResponseMessage) getMetadataValue(metadataName, headerName string) stri
 }
 
 type Config struct {
-	Server string
-	// 交换机名称
-	Exchange string
-	// 交换机类型 如果交换机不存在，则会使用该类型创建，默认为direct
-	ExchangeType string
-	//表示交换器是否持久化。如果设置为 true，即使消息服务器重启，交换器也会被保留。
-	Durable bool
-	//表示交换器是否自动删除。如果设置为 true，则当没有绑定的队列时，交换器会被自动删除。
-	AutoDelete bool
+	Server       string `json:"server" label:"Server" desc:"RabbitMQ server address, format: amqp://user:pass@host:port/" required:"true"`
+	Exchange     string `json:"exchange" label:"Exchange" desc:"RabbitMQ exchange name" required:"true"`
+	ExchangeType string `json:"exchangeType" label:"Exchange Type" desc:"Exchange type: direct, topic, fanout, headers, default is topic"`
+	Durable      bool   `json:"durable" label:"Durable" desc:"Whether the exchange persists across server restarts"`
+	AutoDelete   bool   `json:"autoDelete" label:"Auto Delete" desc:"Whether the exchange is auto-deleted when no queues are bound"`
 }
 
 type RabbitMQ struct {
@@ -252,6 +248,23 @@ func (x *RabbitMQ) New() types.Node {
 			AutoDelete:   true,
 		},
 		channels: make(map[string]*amqp.Channel),
+	}
+}
+
+func (x *RabbitMQ) Def() types.ComponentForm {
+	return types.ComponentForm{
+		Desc: "RabbitMQ consumer endpoint for receiving messages via exchange and routing key binding",
+		RouterForm: &types.RouterForm{
+			From: &types.RouterFormField{
+				Path: types.ComponentFormField{
+					Name:     "path",
+					Type:     "string",
+					Label:    "Routing Key",
+					Desc:     "RabbitMQ routing key to bind to the exchange, supports patterns, e.g. orders.*",
+					Required: true,
+				},
+			},
+		},
 	}
 }
 

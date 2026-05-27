@@ -37,42 +37,20 @@ func init() {
 
 // WukongimSenderConfiguration 节点配置
 type WukongimSenderConfiguration struct {
-	// 服务器地址
-	Server string
-	// 用户UID
-	UID string
-	// 登录密码
-	Token string
-	// 频道类型 允许使用 ${} 占位符变量
-	//	ChannelTypePerson uint8 = 1 // 个人频道
-	//	ChannelTypeGroup           uint8 = 2 // 群组频道
-	//	ChannelTypeCustomerService uint8 = 3 // 客服频道
-	//	ChannelTypeCommunity       uint8 = 4 // 社区频道
-	//	ChannelTypeCommunityTopic  uint8 = 5 // 社区话题频道
-	//	ChannelTypeInfo            uint8 = 6 // 资讯频道（有临时订阅者的概念，查看资讯的时候加入临时订阅，退出资讯的时候退出临时订阅）
-	//	ChannelTypeData            uint8 = 7 // 数据频道
-	ChannelType string
-	// 频道ID 允许使用 ${} 占位符变量
-	// 如果 ChannelType=1 则填写用户：UID
-	ChannelID string
-	// 连接超时，单位秒
-	ConnectTimeout int64
-	// Proto版本
-	ProtoVersion int
-	// 心跳间隔，单位秒
-	PingInterval int64
-	// 是否自动重连
-	Reconnect bool
-	// 是否自动确认消息
-	AutoAck bool
-	// 是否不存储，默认 false
-	NoPersist bool
-	// 是否同步一次(写模式)，默认 false
-	SyncOnce bool
-	// 是否显示红点，默认true
-	RedDot bool
-	// 是否不需要加密，默认false
-	NoEncrypt bool
+	Server         string `json:"server" label:"Server" desc:"WuKongIM server address, format: tcp://host:port" required:"true"`
+	UID            string `json:"uid" label:"UID" desc:"Login user UID" required:"true"`
+	Token          string `json:"token" label:"Token" desc:"Login authentication token" required:"true"`
+	ChannelType    string `json:"channelType" label:"Channel Type" desc:"Channel type: 1(personal), 2(group), 3(customer service)"`
+	ChannelID      string `json:"channelId" label:"Channel ID" desc:"Target channel ID, supports ${metadata.key} and ${msg.key} substitution" required:"true"`
+	ConnectTimeout int64  `json:"connectTimeout" label:"Connect Timeout (s)" desc:"Connection timeout in seconds"`
+	ProtoVersion   int    `json:"protoVersion" label:"Proto Version" desc:"Communication protocol version"`
+	PingInterval   int64  `json:"pingInterval" label:"Ping Interval (s)" desc:"Heartbeat interval in seconds"`
+	Reconnect      bool   `json:"reconnect" label:"Reconnect" desc:"Auto-reconnect on disconnect"`
+	AutoAck        bool   `json:"autoAck" label:"Auto Ack" desc:"Auto-acknowledge messages"`
+	NoPersist      bool   `json:"noPersist" label:"No Persist" desc:"Do not persist messages"`
+	SyncOnce       bool   `json:"syncOnce" label:"Sync Once" desc:"Sync send, only online users receive"`
+	RedDot         bool   `json:"redDot" label:"Red Dot" desc:"Show red dot on receiver side"`
+	NoEncrypt      bool   `json:"noEncrypt" label:"No Encrypt" desc:"Do not encrypt messages"`
 }
 
 // WukongimSender wksdk.Client客户端节点，
@@ -182,6 +160,11 @@ func (x *WukongimSender) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 
 func (x *WukongimSender) Destroy() {
 	_ = x.SharedNode.Close()
+}
+
+// Desc returns the component description
+func (x *WukongimSender) Desc() string {
+	return "WuKongIM client for sending messages. Routes to Success/Failure"
 }
 
 func (x *WukongimSender) initClient() (*wksdk.Client, error) {

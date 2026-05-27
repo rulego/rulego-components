@@ -204,14 +204,10 @@ func (r *ResponseMessage) GetError() error {
 }
 
 type Config struct {
-	// Redis服务器地址
-	Server string
-	// Redis密码
-	Password string
-	// Redis数据库index
-	Db int
-	// Redis消费者组ID
-	GroupId string
+	Server   string `json:"server" label:"Server" desc:"Redis server address, format: host:port" required:"true"`
+	Password string `json:"password" label:"Password" desc:"Redis authentication password"`
+	Db       int    `json:"db" label:"DB Index" desc:"Redis database index, default is 0"`
+	GroupId  string `json:"groupId" label:"Group ID" desc:"Redis Stream consumer group ID, default is rulego" required:"true"`
 }
 
 // Redis Redis接收端端点
@@ -241,6 +237,23 @@ func (x *Redis) New() types.Node {
 			Server:  "127.0.0.1:6379",
 			Db:      0,
 			GroupId: "rulego",
+		},
+	}
+}
+
+func (x *Redis) Def() types.ComponentForm {
+	return types.ComponentForm{
+		Desc: "Redis Stream endpoint for consuming messages from Redis Streams via consumer groups",
+		RouterForm: &types.RouterForm{
+			From: &types.RouterFormField{
+				Path: types.ComponentFormField{
+					Name:     "path",
+					Type:     "string",
+					Label:    "Stream",
+					Desc:     "Redis Stream name to consume, supports multiple streams separated by comma, e.g. stream1,stream2",
+					Required: true,
+				},
+			},
 		},
 	}
 }

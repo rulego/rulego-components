@@ -37,13 +37,7 @@ const FunctionNameFilter = "Filter"
 
 // LuaFilterConfiguration node configuration
 type LuaFilterConfiguration struct {
-	//Script configures the function body content or the script file path with `.lua` as the suffix
-	//Only need to provide the function body content, if it is a file path, then need to provide the complete script function:
-	//function Filter(msg, metadata, msgType, dataType) ${Script} \n end
-	//return bool
-	//The parameter msg, if the data type of msg is JSON, then it will be converted to the Lua table type before calling the function
-	//If the data type of msg is BINARY, then it will be converted to a Lua userdata (byte array) before calling the function
-	Script string
+	Script string `json:"script" label:"Script" desc:"Lua function body or .lua file path, function signature: Filter(msg, metadata, msgType, dataType) returns bool" required:"true"`
 }
 
 // LuaFilter is a component that filters messages based on Lua scripts.
@@ -135,4 +129,9 @@ func (x *LuaFilter) Destroy() {
 	if x.pool != nil {
 		x.pool.Shutdown()
 	}
+}
+
+// Desc returns the component description
+func (x *LuaFilter) Desc() string {
+	return "Filter messages using Lua script. Script must return boolean. Routes to True/False"
 }

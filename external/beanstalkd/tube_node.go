@@ -53,24 +53,15 @@ type TubeMsgParams struct {
 
 // TubeConfiguration 节点配置
 type TubeConfiguration struct {
-	// 服务器地址
-	Server string
-	// Tube名称 允许使用 ${} 占位符变量
-	Tube string
-	// 命令名称，支持Put、PeekReady、PeekDelayed、PeekBuried、Kick、Stat、Pause
-	Cmd string
-	// 消息内容：body 允许使用 ${} 占位符变量
-	Body string
-	// 优先级：pri 允许使用 ${} 占位符变量
-	Pri string
-	// 延迟时间：delay 允许使用 ${} 占位符变量
-	Delay string
-	// 最大执行秒数:ttr 允许使用 ${} 占位符变量
-	Ttr string
-	// Kick命令参数bound 允许使用 ${} 占位符变量
-	KickBound string
-	// Pause命令参数time 允许使用 ${} 占位符变量
-	PauseTime string
+	Server    string `json:"server" label:"Server" desc:"Beanstalkd server address, format: host:port" required:"true"`
+	Tube      string `json:"tube" label:"Tube" desc:"Tube name, supports ${metadata.key} and ${msg.key} substitution" required:"true"`
+	Cmd       string `json:"cmd" label:"Command" desc:"Command: put, kick, kickBound, pause, peek, peekReady, peekDelayed, peekBuried" required:"true"`
+	Body      string `json:"body" label:"Body" desc:"Message body for put command, supports ${metadata.key} and ${msg.key} substitution"`
+	Pri       string `json:"pri" label:"Priority" desc:"Message priority, lower number means higher priority"`
+	Delay     string `json:"delay" label:"Delay (s)" desc:"Delay before message becomes ready, in seconds"`
+	Ttr       string `json:"ttr" label:"TTR (s)" desc:"Time to run, max time for worker to process the job before re-queueing"`
+	KickBound string `json:"kickBound" label:"Kick Bound" desc:"Number of messages to kick for kickBound command"`
+	PauseTime string `json:"pauseTime" label:"Pause Time (s)" desc:"Seconds to pause the tube for pause command"`
 }
 
 // TubeNode 客户端节点，
@@ -386,4 +377,9 @@ func (x *TubeNode) initClient() (*beanstalk.Conn, error) {
 
 func (x *TubeNode) Destroy() {
 	_ = x.SharedNode.Close()
+}
+
+// Desc returns the component description
+func (x *TubeNode) Desc() string {
+	return "Beanstalkd tube for publishing jobs. Routes to Success/Failure"
 }

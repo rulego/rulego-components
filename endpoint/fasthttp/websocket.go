@@ -282,6 +282,23 @@ func (ws *FastHttpWebsocket) New() types.Node {
 	}
 }
 
+func (ws *FastHttpWebsocket) Def() types.ComponentForm {
+	return types.ComponentForm{
+		Desc: "FastHTTP WebSocket server endpoint for receiving and processing WebSocket messages",
+		RouterForm: &types.RouterForm{
+			From: &types.RouterFormField{
+				Path: types.ComponentFormField{
+					Name:     "path",
+					Type:     "string",
+					Label:    "Path",
+					Desc:     "WebSocket request path, e.g. /api/ws",
+					Required: true,
+				},
+			},
+		},
+	}
+}
+
 // Init 初始化
 func (ws *FastHttpWebsocket) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &ws.Config)
@@ -343,9 +360,8 @@ func (ws *FastHttpWebsocket) Restart() error {
 			oldRouter[id] = router
 		}
 	}
-	ws.Unlock()
-
 	ws.RouterStorage = make(map[string]endpointApi.Router)
+	ws.Unlock()
 	ws.started = false
 
 	if err := ws.Start(); err != nil {

@@ -47,16 +47,11 @@ const SeparatorHeader = ":"
 
 // ClientConfig 定义 gRPC 客户端配置
 type ClientConfig struct {
-	// Server 服务器地址，格式：host:port
-	Server string
-	// Service gRPC 服务名称，允许使用 ${} 占位符变量
-	Service string
-	// Method gRPC 方法名称，允许使用 ${} 占位符变量
-	Method string
-	// 请求参数 如果空，则使用当前消息负荷。参数使用JSON编码，必须和service/method要求一致。允许使用 ${} 占位符变量
-	Request string
-	//Headers 请求头,可以使用 ${metadata.key} 读取元数据中的变量或者使用 ${msg.key} 读取消息负荷中的变量进行替换
-	Headers map[string]string
+	Server  string            `json:"server" label:"Server" desc:"gRPC server address, format: host:port" required:"true"`
+	Service string            `json:"service" label:"Service" desc:"gRPC service name, e.g. pkg.ServiceName" required:"true"`
+	Method  string            `json:"method" label:"Method" desc:"gRPC method name" required:"true"`
+	Request string            `json:"request" label:"Request" desc:"Request JSON data, supports ${metadata.key} and ${msg.key} substitution"`
+	Headers map[string]string `json:"headers" label:"Headers" desc:"Custom gRPC request headers"`
 }
 
 // ClientNode gRPC 查询节点
@@ -216,6 +211,11 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 
 func (x *ClientNode) Destroy() {
 	_ = x.SharedNode.Close()
+}
+
+// Desc returns the component description
+func (x *ClientNode) Desc() string {
+	return "gRPC client for calling remote gRPC services. Routes to Success/Failure"
 }
 
 func (x *ClientNode) initClient() (*Client, error) {

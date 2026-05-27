@@ -34,21 +34,9 @@ func init() {
 
 // StreamTransformNodeConfiguration 流转换器节点配置
 type StreamTransformNodeConfiguration struct {
-	// SQL查询语句，仅支持非聚合查询（过滤、转换、字段选择等）
-	// 转换查询示例：
-	//   SELECT temperature, humidity FROM stream WHERE temperature > 20
-	//   SELECT deviceId, temperature * 1.8 + 32 as temp_fahrenheit FROM stream
-	//   SELECT *, CASE WHEN status = 'active' THEN 1 ELSE 0 END as status_code FROM stream
-	//   SELECT deviceId, UPPER(deviceName) as name, temperature FROM stream WHERE deviceId LIKE 'sensor_%'
-	// 支持的操作：
-	// - 字段选择：SELECT field1, field2 FROM stream
-	// - 字段重命名：SELECT field1 as new_name FROM stream
-	// - 数学运算：SELECT field1 * 2 + 10 as calculated FROM stream
-	// - 条件过滤：WHERE 子句进行数据过滤
-	// - 字符串函数：UPPER, LOWER, SUBSTR, CONCAT等
-	// - 数学函数：ABS, ROUND, CEIL, FLOOR等
-	// - 条件表达式：CASE WHEN ... THEN ... ELSE ... END
-	SQL string `json:"sql"`
+	// SQL is the non-aggregation query statement (filter, transform, field selection).
+	// Example: SELECT temperature, humidity FROM stream WHERE temperature > 20
+	SQL string `json:"sql" label:"SQL" desc:"Non-aggregation SQL for filtering/transforming. Example: SELECT temperature FROM stream WHERE temperature > 20" required:"true"`
 }
 
 // StreamTransformNode 流转换器节点
@@ -310,10 +298,14 @@ func (x *StreamTransformNode) convertToMapStringInterface(data interface{}) (map
 }
 
 // Destroy 销毁节点，释放资源
-// 该方法在节点被卸载时调用，用于清理StreamSQL实例和相关资源
 func (x *StreamTransformNode) Destroy() {
 	if x.streamsql != nil {
 		x.streamsql.Stop()
 		x.streamsql = nil
 	}
+}
+
+// Desc returns the component description
+func (x *StreamTransformNode) Desc() string {
+	return "Stream transform node. Processes non-aggregation SQL for filtering and field transformation. Supports single and array JSON input. Routes to Success/Failure"
 }

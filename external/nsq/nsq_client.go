@@ -42,19 +42,16 @@ func init() {
 
 // ClientNodeConfiguration NSQ客户端节点配置
 type ClientNodeConfiguration struct {
-	// NSQ服务器地址，支持多种格式：
-	// 1. 单个nsqd: "127.0.0.1:4150"
-	// 2. 多个nsqd: "127.0.0.1:4150,127.0.0.1:4151"
-	// 3. lookupd地址: "http://127.0.0.1:4161,http://127.0.0.1:4162"
-	Server string `json:"server" label:"NSQ服务器地址" desc:"NSQ服务器地址，多个地址用逗号分隔" required:"true"`
+	// NSQ服务器地址
+	Server string `json:"server" label:"Server" desc:"NSQ server address, comma-separated for multiple" required:"true"`
 	// 发布主题，支持${}变量
-	Topic string `json:"topic" label:"发布主题" desc:"消息发布的主题名称" required:"true"`
+	Topic string `json:"topic" label:"Topic" desc:"Publish topic. Supports ${metadata.key} and ${msg.key} substitution" required:"true"`
 	// 鉴权令牌
-	AuthToken string `json:"authToken" label:"鉴权令牌" desc:"NSQ鉴权令牌"`
+	AuthToken string `json:"authToken" label:"Auth Token" desc:"NSQ authentication token"`
 	// TLS证书文件
-	CertFile string `json:"certFile" label:"TLS证书文件" desc:"TLS证书文件路径"`
+	CertFile string `json:"certFile" label:"Cert File" desc:"TLS certificate file path"`
 	// TLS私钥文件
-	CertKeyFile string `json:"certKeyFile" label:"TLS私钥文件" desc:"TLS私钥文件路径"`
+	CertKeyFile string `json:"certKeyFile" label:"Cert Key File" desc:"TLS private key file path"`
 }
 
 // ClientNode NSQ客户端节点
@@ -128,6 +125,11 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 // Destroy 销毁
 func (x *ClientNode) Destroy() {
 	_ = x.SharedNode.Close()
+}
+
+// Desc returns the component description
+func (x *ClientNode) Desc() string {
+	return "NSQ client for publishing messages. Topic supports ${metadata.key} and ${msg.key} substitution. Routes to Success/Failure"
 }
 
 // parseAddresses 解析Server字段中的地址

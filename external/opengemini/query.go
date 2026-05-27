@@ -34,18 +34,12 @@ func init() {
 
 // QueryConfig 定义 OpenGemini 客户端配置
 type QueryConfig struct {
-	// Server 服务器地址，格式：host:port，多个地址用逗号分隔
-	Server string
-	// Database 数据库，允许使用 ${} 占位符变量
-	Database string
-	// Username 用户名
-	Username string
-	// Password 密码
-	Password string
-	// Token 如果token 不为空，则使用token认证，否则使用用户名密码认证
-	Token string
-	// 查询语句，允许使用 ${} 占位符变量
-	Command string
+	Server   string `json:"server" label:"Server" desc:"OpenGemini server address, format: http://host:port" required:"true"`
+	Database string `json:"database" label:"Database" desc:"Database name" required:"true"`
+	Username string `json:"username" label:"Username" desc:"Authentication username"`
+	Password string `json:"password" label:"Password" desc:"Authentication password"`
+	Token    string `json:"token" label:"Token" desc:"Authentication token"`
+	Command  string `json:"command" label:"Query" desc:"SQL query, supports ${metadata.key} and ${msg.key} substitution" required:"true"`
 }
 
 // QueryNode opengemini 查询节点
@@ -127,6 +121,11 @@ func (x *QueryNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 
 func (x *QueryNode) Destroy() {
 	_ = x.SharedNode.Close()
+}
+
+// Desc returns the component description
+func (x *QueryNode) Desc() string {
+	return "OpenGemini client for querying time-series data. Routes to Success/Failure"
 }
 
 func hasError(result *opengemini.QueryResult) error {

@@ -211,12 +211,9 @@ func resolvePath(ctx types.RuleContext, msg types.RuleMsg, pathTemplate el.Templ
 
 // FileReadNodeConfiguration 文件读取节点配置
 type FileReadNodeConfiguration struct {
-	// Path 文件路径，支持变量替换。如果是相对路径，优先相对于 context 中的 workDir，如果未配置，则相对于当前进程工作目录。
-	Path string `json:"path"`
-	// DataType 编码格式，支持 text, base64
-	DataType string `json:"dataType"`
-	// Recursive 是否递归查找子目录，默认false
-	Recursive bool `json:"recursive"`
+	Path      string `json:"path" label:"Path" desc:"File or directory path, supports ${metadata.key} and ${msg.key} substitution" required:"true"`
+	DataType  string `json:"dataType" label:"Data Type" desc:"Read data type: TEXT, JSON, BINARY, default TEXT"`
+	Recursive bool   `json:"recursive" label:"Recursive" desc:"Recursively read subdirectories when path is a directory"`
 }
 
 // FileReadNode read file content
@@ -342,14 +339,16 @@ func (x *FileReadNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 func (x *FileReadNode) Destroy() {
 }
 
+// Desc returns the component description
+func (x *FileReadNode) Desc() string {
+	return "Read file content. Path supports ${metadata.key} substitution. Routes to Success/Failure"
+}
+
 // FileWriteNodeConfiguration 文件写入节点配置
 type FileWriteNodeConfiguration struct {
-	// Path 文件路径，支持变量替换。如果是相对路径，优先相对于 context 中的 workDir，如果未配置，则相对于当前进程工作目录。
-	Path string `json:"path"`
-	// Content 文件内容，支持变量替换。如果是base64字符串，会自动解码写入
-	Content string `json:"content"`
-	// Append 是否追加写入，默认false
-	Append bool `json:"append"`
+	Path    string `json:"path" label:"Path" desc:"File path, supports ${metadata.key} and ${msg.key} substitution" required:"true"`
+	Content string `json:"content" label:"Content" desc:"Content to write, supports ${metadata.key} and ${msg.key} substitution" required:"true"`
+	Append  bool   `json:"append" label:"Append" desc:"true=append to file, false=overwrite file"`
 }
 
 // FileWriteNode write data to file
@@ -449,10 +448,14 @@ func (x *FileWriteNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 func (x *FileWriteNode) Destroy() {
 }
 
+// Desc returns the component description
+func (x *FileWriteNode) Desc() string {
+	return "Write content to file. Path and content support ${metadata.key} substitution. Routes to Success/Failure"
+}
+
 // FileDeleteNodeConfiguration 文件删除节点配置
 type FileDeleteNodeConfiguration struct {
-	// Path 文件路径，支持变量替换。如果是相对路径，优先相对于 context 中的 workDir，如果未配置，则相对于当前进程工作目录。
-	Path string `json:"path"`
+	Path string `json:"path" label:"Path" desc:"File path to delete, supports ${metadata.key} and ${msg.key} substitution" required:"true"`
 }
 
 // FileDeleteNode delete file
@@ -555,12 +558,15 @@ func (x *FileDeleteNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 func (x *FileDeleteNode) Destroy() {
 }
 
+// Desc returns the component description
+func (x *FileDeleteNode) Desc() string {
+	return "Delete file. Path supports ${metadata.key} substitution. Routes to Success/Failure"
+}
+
 // FileListNodeConfiguration 文件列表节点配置
 type FileListNodeConfiguration struct {
-	// Path 文件路径模式，支持通配符 and 变量替换。如果是相对路径，优先相对于 context 中的 workDir，如果未配置，则相对于当前进程工作目录。
-	Path string `json:"path"`
-	// Recursive 是否递归查找子目录，默认false
-	Recursive bool `json:"recursive"`
+	Path      string `json:"path" label:"Path" desc:"Directory path, supports ${metadata.key} and ${msg.key} substitution" required:"true"`
+	Recursive bool   `json:"recursive" label:"Recursive" desc:"Recursively list files in subdirectories"`
 }
 
 // FileListNode list files
@@ -645,4 +651,9 @@ func (x *FileListNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 }
 
 func (x *FileListNode) Destroy() {
+}
+
+// Desc returns the component description
+func (x *FileListNode) Desc() string {
+	return "List files matching path pattern. Supports wildcards and ${metadata.key} substitution. Routes to Success/Failure"
 }

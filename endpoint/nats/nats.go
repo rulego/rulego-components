@@ -176,16 +176,10 @@ func (r *ResponseMessage) GetError() error {
 }
 
 type Config struct {
-	// NATS服务器地址
-	Server string `json:"server"`
-	// NATS用户名
-	Username string `json:"username"`
-	// NATS密码
-	Password string `json:"password"`
-	// GroupId 消费者组Id
-	// 组ID不为空，则使用 QueueSubscribe 模式，
-	// 即多个消费者共享订阅主题，消息在组内以 负载均衡 方式分发，确保每条消息仅被组内一个消费者处理
-	GroupId string `json:"groupId"`
+	Server   string `json:"server" label:"Server" desc:"NATS server address, format: nats://host:port" required:"true"`
+	Username string `json:"username" label:"Username" desc:"NATS authentication username"`
+	Password string `json:"password" label:"Password" desc:"NATS authentication password"`
+	GroupId  string `json:"groupId" label:"Group ID" desc:"Queue group ID, uses QueueSubscribe mode for load-balanced delivery when set"`
 }
 
 // Nats NATS接收端端点
@@ -215,6 +209,23 @@ func (x *Nats) New() types.Node {
 	return &Nats{
 		Config: Config{
 			Server: "nats://127.0.0.1:4222",
+		},
+	}
+}
+
+func (x *Nats) Def() types.ComponentForm {
+	return types.ComponentForm{
+		Desc: "NATS client endpoint for subscribing to subjects and processing messages",
+		RouterForm: &types.RouterForm{
+			From: &types.RouterFormField{
+				Path: types.ComponentFormField{
+					Name:     "path",
+					Type:     "string",
+					Label:    "Subject",
+					Desc:     "NATS subject to subscribe, supports wildcards, e.g. orders.*",
+					Required: true,
+				},
+			},
 		},
 	}
 }

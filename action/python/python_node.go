@@ -51,37 +51,10 @@ const FunctionNameProcess = "Process"
 
 // PythonNodeConfiguration node configuration
 type PythonNodeConfiguration struct {
-	// Script configures the function body content or the script file path with `.py` as the suffix.
-	// For inline script, only the function body is needed:
-	//   def Process(msg, metadata, msgType, dataType, vars={}, globalProps={}):
-	//       ${Script}
-	// For file path (.py suffix), the file must define a Process function:
-	//   def Process(msg, metadata, msgType, dataType, vars={}, globalProps={}): ...
-	//
-	// Script function input parameters:
-	//   - msg:         message data. If msg.DataType is JSON, it's parsed as a Python dict/list; otherwise it's a string
-	//   - metadata:    a Python dict of string->string key-value pairs
-	//   - msgType:     message type string
-	//   - dataType:    message data type string (e.g. "JSON", "TEXT", "BINARY")
-	//   - vars:        (optional) node configuration variables, a Python dict of string->string
-	//   - globalProps: (optional) global properties from rule engine config, a Python dict of string->string
-	//
-	// Script function return value supports 3 forms:
-	//   1. Tuple:   return msg, metadata, msgType          — return up to 3 elements
-	//   2. Dict:    return {"msg": ..., "metadata": ..., "msgType": ...}
-	//   3. Single:  return value                           — treated as new msg data
-	Script string
-
-	// PythonPath is the python3 executable path. Default: auto-detect ("python3" or "python")
-	PythonPath string
-
-	// Timeout is the maximum execution time for the script.
-	// Supports Go duration string format ("5s", "1000ms", "1m") or plain number in seconds ("5" = 5 seconds).
-	// Default: "" (use ScriptMaxExecutionTime from rulego config)
-	Timeout string
-
-	// MaxRunning is the maximum number of concurrent python processes. Default: 10
-	MaxRunning int
+	Script     string `json:"script" label:"Script" desc:"Python script content or .py file path" required:"true"`
+	PythonPath string `json:"pythonPath" label:"Python Path" desc:"Python interpreter path, uses system PATH by default"`
+	Timeout    string `json:"timeout" label:"Timeout" desc:"Script execution timeout, e.g. 10s, 1m"`
+	MaxRunning int    `json:"maxRunning" label:"Max Running" desc:"Max concurrent executions, default 1"`
 }
 
 // PythonNode is an action component that executes Python scripts.
@@ -235,6 +208,11 @@ func (x *PythonNode) Destroy() {
 	if x.pool != nil {
 		x.pool.Shutdown()
 	}
+}
+
+// Desc returns the component description
+func (x *PythonNode) Desc() string {
+	return "Execute Python script for message transformation. Script must return dict with msg, metadata, msgType. Routes to Success/Failure"
 }
 
 // hasFunctionDef checks if an inline script contains a top-level function definition

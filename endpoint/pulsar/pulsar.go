@@ -267,19 +267,19 @@ func (r *ResponseMessage) GetError() error {
 // Config Pulsar配置
 type Config struct {
 	// Pulsar服务器地址
-	Server string `json:"server" label:"Pulsar服务器地址" desc:"Pulsar服务器地址，格式为pulsar://host:port" required:"true"`
+	Server string `json:"server" label:"Server" desc:"Pulsar server address, format: pulsar://host:port" required:"true"`
 	// 默认订阅名称
-	SubName string `json:"subName" label:"订阅名称" desc:"默认订阅名称，如果AddRouter时未指定则使用此值" required:"true"`
+	SubName string `json:"subName" label:"Subscription Name" desc:"Subscription name, used as default when AddRouter does not specify one" required:"true"`
 	// 订阅类型
-	SubType string `json:"subType" label:"订阅类型" desc:"订阅类型：Exclusive、Shared、Failover、KeyShared" required:"true"`
+	SubType string `json:"subType" label:"Subscription Type" desc:"Subscription type: Exclusive, Shared, Failover, KeyShared" required:"true"`
 	// 消息通道缓冲池大小
-	PoolSize int `json:"poolSize" label:"消息通道缓冲池大小" desc:"消息通道缓冲区大小，默认为100"`
+	PoolSize int `json:"poolSize" label:"Pool Size" desc:"Message channel buffer size, default is 100"`
 	// 鉴权令牌
-	AuthToken string `json:"authToken" label:"鉴权令牌" desc:"Pulsar JWT鉴权令牌"`
+	AuthToken string `json:"authToken" label:"Auth Token" desc:"Pulsar JWT authentication token"`
 	// TLS证书文件
-	CertFile string `json:"certFile" label:"TLS证书文件" desc:"TLS证书文件路径"`
+	CertFile string `json:"certFile" label:"Cert File" desc:"TLS certificate file path"`
 	// TLS私钥文件
-	CertKeyFile string `json:"certKeyFile" label:"TLS私钥文件" desc:"TLS私钥文件路径"`
+	CertKeyFile string `json:"certKeyFile" label:"Cert Key File" desc:"TLS private key file path"`
 }
 
 // parseSubscriptionType 解析订阅类型字符串为pulsar.SubType（大小写不敏感）
@@ -336,6 +336,23 @@ func (x *Pulsar) New() types.Node {
 			SubName:  "default",
 			SubType:  "Shared",
 			PoolSize: 100,
+		},
+	}
+}
+
+func (x *Pulsar) Def() types.ComponentForm {
+	return types.ComponentForm{
+		Desc: "Pulsar consumer endpoint for subscribing to topics and processing messages",
+		RouterForm: &types.RouterForm{
+			From: &types.RouterFormField{
+				Path: types.ComponentFormField{
+					Name:     "path",
+					Type:     "string",
+					Label:    "Topic",
+					Desc:     "Pulsar topic to subscribe, e.g. persistent://public/default/orders",
+					Required: true,
+				},
+			},
 		},
 	}
 }

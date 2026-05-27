@@ -207,34 +207,22 @@ func (r *ResponseMessage) GetError() error {
 }
 
 type Config struct {
-	// kafka服务器地址列表，多个与逗号隔开
-	Server string `json:"server"`
-	// GroupId 消费者组Id
-	GroupId string `json:"groupId"`
-	// SASL认证配置
-	SASL SASLConfig `json:"sasl"`
-	// TLS配置
-	TLS TLSConfig `json:"tls"`
+	Server  string     `json:"server" label:"Server" desc:"Kafka broker addresses, comma-separated for multiple" required:"true"`
+	GroupId string     `json:"groupId" label:"Group ID" desc:"Kafka consumer group ID"`
+	SASL    SASLConfig `json:"sasl" label:"SASL Auth" desc:"SASL authentication configuration"`
+	TLS     TLSConfig  `json:"tls" label:"TLS" desc:"TLS encryption configuration"`
 }
 
-// SASLConfig SASL认证配置
 type SASLConfig struct {
-	// Enable 是否启用SASL认证
-	Enable bool `json:"enable"`
-	// Mechanism 认证机制，支持 PLAIN, SCRAM-SHA-256, SCRAM-SHA-512
-	Mechanism string `json:"mechanism"`
-	// Username 用户名
-	Username string `json:"username"`
-	// Password 密码
-	Password string `json:"password"`
+	Enable    bool   `json:"enable" label:"Enable" desc:"Enable SASL authentication"`
+	Mechanism string `json:"mechanism" label:"Mechanism" desc:"SASL mechanism: PLAIN, SCRAM-SHA-256, SCRAM-SHA-512"`
+	Username  string `json:"username" label:"Username" desc:"SASL authentication username"`
+	Password  string `json:"password" label:"Password" desc:"SASL authentication password"`
 }
 
-// TLSConfig TLS配置
 type TLSConfig struct {
-	// Enable 是否启用TLS
-	Enable bool `json:"enable"`
-	// InsecureSkipVerify 是否跳过证书验证
-	InsecureSkipVerify bool `json:"insecureSkipVerify"`
+	Enable            bool `json:"enable" label:"Enable" desc:"Enable TLS encryption"`
+	InsecureSkipVerify bool `json:"insecureSkipVerify" label:"Skip Verify" desc:"Skip server certificate verification, disable in production"`
 }
 
 // Kafka Kafka 接收端端点
@@ -276,6 +264,23 @@ func (x *Kafka) New() types.Node {
 		},
 		shutdownComplete: make(chan struct{}),
 		shutdownTimeout:  30 * time.Second,
+	}
+}
+
+func (x *Kafka) Def() types.ComponentForm {
+	return types.ComponentForm{
+		Desc: "Kafka consumer endpoint for subscribing to topics and processing messages",
+		RouterForm: &types.RouterForm{
+			From: &types.RouterFormField{
+				Path: types.ComponentFormField{
+					Name:     "path",
+					Type:     "string",
+					Label:    "Topic",
+					Desc:     "Kafka topic to subscribe, supports multiple topics separated by comma, e.g. topic1,topic2",
+					Required: true,
+				},
+			},
+		},
 	}
 }
 

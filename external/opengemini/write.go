@@ -36,16 +36,11 @@ func init() {
 
 // WriteConfig 定义 OpenGemini 客户端配置
 type WriteConfig struct {
-	// Server 服务器地址，格式：host:port，多个地址用逗号分隔
-	Server string
-	// Database 数据库，允许使用 ${} 占位符变量
-	Database string
-	// Username 用户名
-	Username string
-	// Password 密码
-	Password string
-	// Token 如果 Token 不为空，使用 opengemini.AuthTypeToken 认证
-	Token string
+	Server   string `json:"server" label:"Server" desc:"OpenGemini server address, format: http://host:port" required:"true"`
+	Database string `json:"database" label:"Database" desc:"Database name" required:"true"`
+	Username string `json:"username" label:"Username" desc:"Authentication username"`
+	Password string `json:"password" label:"Password" desc:"Authentication password"`
+	Token    string `json:"token" label:"Token" desc:"Authentication token"`
 }
 
 // WriteNode opengemini 写节点
@@ -142,6 +137,11 @@ func (x *WriteNode) GetInstance() (interface{}, error) {
 
 func (x *WriteNode) Destroy() {
 	_ = x.SharedNode.Close()
+}
+
+// Desc returns the component description
+func (x *WriteNode) Desc() string {
+	return "OpenGemini client for writing time-series data. Routes to Success/Failure"
 }
 
 // initClient 初始化客户端

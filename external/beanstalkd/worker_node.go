@@ -46,18 +46,12 @@ type WorkerMsgParams struct {
 
 // WorkerConfiguration 节点配置
 type WorkerConfiguration struct {
-	// 服务器地址
-	Server string
-	// Tube名称 允许使用 ${} 占位符变量
-	Tube string
-	// 命令名称，支持Delete Release Bury KickJob Touch Peek ReserveJob  StatsJob Stats  ListTubes
-	Cmd string
-	// JobId  允许使用 ${} 占位符变量
-	JobId string
-	// 优先级: pri 允许使用 ${} 占位符变量
-	Pri string
-	// 延迟时间: delay 允许使用 ${} 占位符变量
-	Delay string
+	Server string `json:"server" label:"Server" desc:"Beanstalkd server address, format: host:port" required:"true"`
+	Tube   string `json:"tube" label:"Tube" desc:"Tube name" required:"true"`
+	Cmd    string `json:"cmd" label:"Command" desc:"Command: reserve, release, delete, bury" required:"true"`
+	JobId  string `json:"jobId" label:"Job ID" desc:"Job ID, supports ${metadata.key} substitution"`
+	Pri    string `json:"pri" label:"Priority" desc:"Priority for release command"`
+	Delay  string `json:"delay" label:"Delay (s)" desc:"Delay for release command, in seconds"`
 }
 
 // WorkerNode 客户端节点，
@@ -321,4 +315,9 @@ func (x *WorkerNode) initClient() (*beanstalk.Conn, error) {
 
 func (x *WorkerNode) Destroy() {
 	_ = x.SharedNode.Close()
+}
+
+// Desc returns the component description
+func (x *WorkerNode) Desc() string {
+	return "Beanstalkd worker for consuming jobs from tube. Routes to Success/Failure"
 }

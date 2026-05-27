@@ -42,38 +42,26 @@ func init() {
 
 // NodeConfiguration 节点配置
 type NodeConfiguration struct {
-	// kafka服务器地址列表，多个与逗号隔开
-	Server string `json:"server"`
-	// Topic 发布主题，可以使用 ${metadata.key} 读取元数据中的变量或者使用 ${msg.key} 读取消息负荷中的变量进行替换
-	Topic string `json:"topic"`
-	// Key 分区键，可以使用 ${metadata.key} 读取元数据中的变量或者使用 ${msg.key} 读取消息负荷中的变量进行替换
-	Key string `json:"key"`
-	//Partition 分区编号
-	Partition int32 `json:"partition"`
-	// SASL认证配置
-	SASL SASLConfig `json:"sasl"`
-	// TLS配置
-	TLS TLSConfig `json:"tls"`
+	Server    string     `json:"server" label:"Server" desc:"Kafka server address, multiple addresses separated by commas" required:"true"`
+	Topic     string     `json:"topic" label:"Topic" desc:"Publish topic, supports ${metadata.key} and ${msg.key} replacement" required:"true"`
+	Key       string     `json:"key" label:"Key" desc:"Message partition key, supports ${metadata.key} and ${msg.key} replacement"`
+	Partition int32      `json:"partition" label:"Partition" desc:"Partition number, -1 for auto selection"`
+	SASL      SASLConfig `json:"sasl" label:"SASL Auth" desc:"SASL authentication configuration"`
+	TLS       TLSConfig  `json:"tls" label:"TLS" desc:"TLS encryption configuration"`
 }
 
 // SASLConfig SASL认证配置
 type SASLConfig struct {
-	// Enable 是否启用SASL认证
-	Enable bool `json:"enable"`
-	// Mechanism 认证机制，支持 PLAIN, SCRAM-SHA-256, SCRAM-SHA-512
-	Mechanism string `json:"mechanism"`
-	// Username 用户名
-	Username string `json:"username"`
-	// Password 密码
-	Password string `json:"password"`
+	Enable    bool   `json:"enable" label:"Enable" desc:"Enable SASL authentication"`
+	Mechanism string `json:"mechanism" label:"Mechanism" desc:"SASL mechanism: PLAIN, SCRAM-SHA-256, SCRAM-SHA-512"`
+	Username  string `json:"username" label:"Username" desc:"SASL authentication username"`
+	Password  string `json:"password" label:"Password" desc:"SASL authentication password"`
 }
 
 // TLSConfig TLS配置
 type TLSConfig struct {
-	// Enable 是否启用TLS
-	Enable bool `json:"enable"`
-	// InsecureSkipVerify 是否跳过证书验证
-	InsecureSkipVerify bool `json:"insecureSkipVerify"`
+	Enable             bool `json:"enable" label:"Enable" desc:"Enable TLS encryption"`
+	InsecureSkipVerify bool `json:"insecureSkipVerify" label:"Skip Verify" desc:"Skip server certificate verification"`
 }
 
 type ProducerNode struct {
@@ -187,6 +175,11 @@ func (x *ProducerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 
 func (x *ProducerNode) Destroy() {
 	_ = x.SharedNode.Close()
+}
+
+// Desc returns the component description
+func (x *ProducerNode) Desc() string {
+	return "Kafka producer for publishing messages. Topic and key support ${metadata.key} and ${msg.key} substitution. Routes to Success/Failure"
 }
 
 func (x *ProducerNode) getBrokerFromOldVersion(configuration types.Configuration) []string {

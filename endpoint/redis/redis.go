@@ -189,12 +189,9 @@ func (r *ResponseMessage) GetError() error {
 }
 
 type Config struct {
-	// Redis服务器地址
-	Server string
-	// Redis密码
-	Password string
-	// Redis数据库index
-	Db int
+	Server   string `json:"server" label:"Server" desc:"Redis server address, format: host:port" required:"true"`
+	Password string `json:"password" label:"Password" desc:"Redis authentication password"`
+	Db       int    `json:"db" label:"DB Index" desc:"Redis database index, default is 0"`
 }
 
 // Redis Redis接收端端点
@@ -225,6 +222,23 @@ func (x *Redis) New() types.Node {
 		Config: Config{
 			Server: "127.0.0.1:6379",
 			Db:     0,
+		},
+	}
+}
+
+func (x *Redis) Def() types.ComponentForm {
+	return types.ComponentForm{
+		Desc: "Redis Pub/Sub endpoint for subscribing to channels and processing messages",
+		RouterForm: &types.RouterForm{
+			From: &types.RouterFormField{
+				Path: types.ComponentFormField{
+					Name:     "path",
+					Type:     "string",
+					Label:    "Channel",
+					Desc:     "Redis channel pattern to subscribe, supports glob-style patterns, e.g. orders.*",
+					Required: true,
+				},
+			},
 		},
 	}
 }

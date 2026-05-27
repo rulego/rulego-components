@@ -57,23 +57,12 @@ func init() {
 
 // MetricConfig 单个指标配置
 type MetricConfig struct {
-	// 指标名称
-	MetricName string `json:"metricName"`
-	// 指标描述
-	Description string `json:"description"`
-	// Unit 指标的单位，用于描述指标值的度量单位。例如，对于计数器（COUNTER），单位可能是 "1"（表示计数）；
-	// 对于时间度量，单位可能是 "s"（秒）、"ms"（毫秒）、"us"（微秒）或 "ns"（纳秒）；
-	// 对于数据量度量，单位可能是 "B"（字节）；
-	// 对于比例度量，单位可能是 "%"（百分比）。
-	// OpenTelemetry 使用基于 SI（国际单位制）的单位系统，但也支持一些常见的非 SI 单位。
-	// 例如，对于 HTTP 请求的计数，单位可以是 "1"；对于 HTTP 响应时间，单位可以是 "s"。
-	Unit string `json:"unit"`
-	// 操作类型：COUNTER, GAUGE, HISTOGRAM
-	OpType string `json:"opType"`
-	// 指标值，支持动态取值，如：${msg.value} 格式为：float64
-	Value string `json:"value"`
-	// 标签，支持动态取值，如：${msg.labels} 格式为：{"key1":"value1","key2":"value2"}
-	Labels string `json:"labels"`
+	MetricName  string `json:"metricName" label:"Metric Name" desc:"Metric name" required:"true"`
+	Description string `json:"description" label:"Description" desc:"Metric description"`
+	Unit        string `json:"unit" label:"Unit" desc:"Metric unit, e.g. ms, count"`
+	OpType      string `json:"opType" label:"Op Type" desc:"Metric operation: counter(increment), gauge(set), histogram(record)" required:"true"`
+	Value       string `json:"value" label:"Value" desc:"Metric value expression, supports ${metadata.key} and ${msg.key} substitution"`
+	Labels      string `json:"labels" label:"Labels" desc:"Metric labels in JSON format, e.g. {\"host\":\"server1\"}"`
 }
 
 // MetricValue 单个指标配置，已经获取 Value和 Labels 值
@@ -110,35 +99,10 @@ func (m MetricValue) GetConfig() MetricConfig {
 
 // OtelNodeConfiguration 节点配置
 type OtelNodeConfiguration struct {
-	// OTLP后端系统地址，例如: localhost:4318
-	Server string
-	// 传输协议，支持 grpc 和 http，默认http
-	Protocol string
-	// 动态指标配置和取值表达式，支持单个指标对象或指标对象数组
-	// 如果指标器不存在则，动态创建
-	// MetricExpr 和 Metrics 允许同时存在，合并后发送
-	// 通过expr表达式从消息负荷中获取指标配置
-	// 指标配置示例：
-	// {
-	//  "metrics":[
-	//   {
-	//     "metricName": "http_requests",
-	//     "description": "HTTP requests made",
-	//     "unit": "1",
-	//     "opType": "COUNTER",
-	//     "value": 10,
-	//     "labels": {
-	//       "method": "GET",
-	//       "path": "/api/v1/data"
-	//     }
-	//   }
-	//]
-	//}
-	// 则可以通过 ${msg.metrics} 方式获取指标配置
-	MetricExpr string
-	// 指标配置列表，会在初始化创建指标器
-	// MetricExpr 和 Metrics 允许同时存在，合并后发送
-	Metrics []MetricConfig
+	Server     string        `json:"server" label:"Server" desc:"OTel Collector address, format: host:port" required:"true"`
+	Protocol   string        `json:"protocol" label:"Protocol" desc:"Export protocol: grpc, http, default grpc"`
+	MetricExpr string        `json:"metricExpr" label:"Metric Expression" desc:"JSON expression to extract metrics from message"`
+	Metrics    []MetricConfig `json:"metrics" label:"Metrics" desc:"Custom metric configuration list"`
 }
 
 // Metric 指标实例
@@ -427,6 +391,11 @@ func (x *OtelNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 
 func (x *OtelNode) Destroy() {
 	_ = x.SharedNode.Close()
+}
+
+// Desc returns the component description
+func (x *OtelNode) Desc() string {
+	return "OpenTelemetry client for sending metrics/traces/logs via OTLP. Supports grpc and http protocols. Routes to Success/Failure"
 }
 
 // getOrCreateMetric 获取或创建指标

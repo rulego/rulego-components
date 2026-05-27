@@ -40,17 +40,17 @@ func init() {
 // ClientNodeConfiguration Redis客户端节点配置
 type ClientNodeConfiguration struct {
 	// Server Redis服务器地址，格式：host:port
-	Server string `json:"server"`
+	Server string `json:"server" label:"Server" desc:"Redis server address, e.g. 127.0.0.1:6379" required:"true"`
 	// Password Redis密码
-	Password string `json:"password"`
+	Password string `json:"password" label:"Password" desc:"Redis password"`
 	// DB Redis数据库索引
-	Db int `json:"db"`
+	Db int `json:"db" label:"DB" desc:"Redis database index"`
 	// PoolSize 连接池大小
-	PoolSize int `json:"poolSize"`
-	// Cmd Redis命令，支持${metadata.key}和${data}变量替换，也支持命令和参数一起提供（如"SET key value"）
-	Cmd string `json:"cmd"`
+	PoolSize int `json:"poolSize" label:"Pool Size" desc:"Connection pool size"`
+	// Cmd Redis命令，支持${metadata.key}和${data}变量替换
+	Cmd string `json:"cmd" label:"Command" desc:"Redis command, e.g. GET, SET. Supports ${metadata.key} substitution" required:"true"`
 	// Params 命令参数，支持${metadata.key}和${data}变量替换
-	Params []interface{} `json:"params"`
+	Params []interface{} `json:"params" label:"Params" desc:"Command parameters. Supports ${metadata.key} substitution"`
 }
 
 // ClientNode redis客户端节点，
@@ -241,6 +241,11 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 
 func (x *ClientNode) Destroy() {
 	_ = x.SharedNode.Close()
+}
+
+// Desc returns the component description
+func (x *ClientNode) Desc() string {
+	return "Redis client for executing commands (GET, SET, etc.). cmd and params support ${metadata.key} substitution. Routes to Success/Failure"
 }
 
 func (x *ClientNode) initClient() (*redis.Client, error) {

@@ -58,25 +58,20 @@ func init() {
 // ClientNodeConfiguration 节点配置
 // ClientNodeConfiguration MongoDB客户端节点配置结构体
 type ClientNodeConfiguration struct {
-	// Server MongoDB服务器连接地址，支持完整的连接字符串
-	// 示例：mongodb://username:password@localhost:27017/?authSource=admin
-	Server string
-	// Database 数据库名称，支持${msg.xx}、${metadata.xx}、${node1.msg.xx}等表达式占位符
-	Database string
-	// Collection 集合名称，支持${msg.xx}、${metadata.xx}、${node1.msg.xx}等表达式占位符
-	Collection string
-	// OpType 操作类型，支持的操作：INSERT(插入)、UPDATE(更新)、DELETE(删除)、QUERY/SELECT/FIND(查询)
-	OpType string
-	// Filter 过滤条件，支持MongoDB查询语法和表达式
-	// 支持${msg.xx}、${metadata.xx}、${node1.msg.xx}等表达式占位符
-	// 示例：{"age": {"$gte": 18}} 或 {"name": "${msg.name}"} 或 ${msg.filter}
-	Filter string
-	// Doc 更新或插入的文档内容，支持MongoDB文档格式和表达式
-	// 支持${msg.xx}、${metadata.xx}、${node1.msg.xx}等表达式占位符
-	// 示例：{"name":"test","age":18} 或 {"name":"${msg.name}","timestamp":"${msg.ts}"} 或 ${msg.filter}
-	Doc string
-	// One 是否只操作单条数据，true表示只操作一条，false表示操作多条
-	One bool
+	// Server MongoDB服务器连接地址
+	Server string `json:"server" label:"Server" desc:"MongoDB connection string, e.g. mongodb://user:pass@localhost:27017" required:"true"`
+	// Database 数据库名称
+	Database string `json:"database" label:"Database" desc:"Database name. Supports ${metadata.key} and ${msg.key} substitution" required:"true"`
+	// Collection 集合名称
+	Collection string `json:"collection" label:"Collection" desc:"Collection name. Supports ${metadata.key} and ${msg.key} substitution" required:"true"`
+	// OpType 操作类型
+	OpType string `json:"opType" label:"Op Type" desc:"Operation type: INSERT, UPDATE, DELETE, QUERY" required:"true"`
+	// Filter 过滤条件
+	Filter string `json:"filter" label:"Filter" desc:"MongoDB filter query. Supports ${metadata.key} and ${msg.key} substitution"`
+	// Doc 更新或插入的文档内容
+	Doc string `json:"doc" label:"Document" desc:"Document for insert/update. Supports ${metadata.key} and ${msg.key} substitution"`
+	// One 是否只操作单条数据
+	One bool `json:"one" label:"One" desc:"true=operate single document, false=operate multiple"`
 }
 
 // ClientNode mongodb客户端组件，可以对mongodb进行增删改查操作
@@ -484,6 +479,11 @@ func (x *ClientNode) delete(ctx types.RuleContext, evn map[string]interface{}, c
 
 func (x *ClientNode) Destroy() {
 	_ = x.SharedNode.Close()
+}
+
+// Desc returns the component description
+func (x *ClientNode) Desc() string {
+	return "MongoDB client for CRUD operations. OpType: INSERT, UPDATE, DELETE, QUERY. All fields support ${metadata.key} and ${msg.key} substitution. Routes to Success/Failure"
 }
 
 // initClient 初始化客户端

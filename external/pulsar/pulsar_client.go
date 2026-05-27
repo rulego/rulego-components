@@ -39,19 +39,19 @@ func init() {
 // ClientNodeConfiguration Pulsar客户端节点配置
 type ClientNodeConfiguration struct {
 	// Pulsar服务器地址
-	Server string `json:"server" label:"Pulsar服务器地址" desc:"Pulsar服务器地址，格式为pulsar://host:port" required:"true"`
+	Server string `json:"server" label:"Server" desc:"Pulsar server address, e.g. pulsar://host:port" required:"true"`
 	// 发布主题，支持${}变量
-	Topic string `json:"topic" label:"发布主题" desc:"消息发布的主题名称" required:"true"`
+	Topic string `json:"topic" label:"Topic" desc:"Publish topic. Supports ${metadata.key} and ${msg.key} substitution" required:"true"`
 	// 消息键模板，支持${}变量
-	Key string `json:"key" label:"消息键" desc:"消息键模板，可使用变量替换"`
-	// Headers 请求头,可以使用 ${metadata.key} 读取元数据中的变量或者使用 ${msg.key} 读取消息负荷中的变量进行替换
-	Headers map[string]string `json:"headers" label:"请求头"`
+	Key string `json:"key" label:"Key" desc:"Message key. Supports ${metadata.key} and ${msg.key} substitution"`
+	// Headers 请求头
+	Headers map[string]string `json:"headers" label:"Headers" desc:"Message headers. Supports ${metadata.key} and ${msg.key} substitution"`
 	// 鉴权令牌
-	AuthToken string `json:"authToken" label:"鉴权令牌" desc:"Pulsar JWT鉴权令牌"`
+	AuthToken string `json:"authToken" label:"Auth Token" desc:"Pulsar JWT authentication token"`
 	// TLS证书文件
-	CertFile string `json:"certFile" label:"TLS证书文件" desc:"TLS证书文件路径"`
+	CertFile string `json:"certFile" label:"Cert File" desc:"TLS certificate file path"`
 	// TLS私钥文件
-	CertKeyFile string `json:"certKeyFile" label:"TLS私钥文件" desc:"TLS私钥文件路径"`
+	CertKeyFile string `json:"certKeyFile" label:"Cert Key File" desc:"TLS private key file path"`
 }
 
 // ClientNode Pulsar客户端节点
@@ -236,6 +236,11 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 func (x *ClientNode) Destroy() {
 	// SharedNode.Close()会自动调用Init中注册的清理回调函数
 	_ = x.SharedNode.Close()
+}
+
+// Desc returns the component description
+func (x *ClientNode) Desc() string {
+	return "Pulsar client for publishing messages. Topic and key support ${metadata.key} and ${msg.key} substitution. Routes to Success/Failure"
 }
 
 // initClient 初始化Pulsar客户端

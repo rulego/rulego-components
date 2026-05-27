@@ -31,6 +31,7 @@
 package fasthttp
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -218,6 +219,8 @@ type ResponseMessage struct {
 	to   string
 	msg  *types.RuleMsg
 	err  error
+	// 流式响应 writer，由 handler 通过 SetBodyStreamWriter 设置
+	writer *bufio.Writer
 }
 
 // fasthttpResponseWriter 适配器，将 fasthttp.RequestCtx 适配为 http.ResponseWriter
@@ -321,8 +324,10 @@ func (r *ResponseMessage) SetStatusCode(statusCode int) {
 
 func (r *ResponseMessage) SetBody(body []byte) {
 	r.body = body
-	if r.ctx != nil {
-		r.ctx.SetBody(body)
+	if r.writer != nil {
+		r.writer.Write(body)
+	} else if r.ctx != nil {
+		r.ctx.Write(body)
 	}
 }
 
@@ -334,18 +339,13 @@ func (r *ResponseMessage) GetError() error {
 	return r.err
 }
 
-// Flush sends any buffered data to the client immediately.
-// This is particularly important for streaming responses like SSE.
-//
-// Flush 立即将缓冲数据发送到客户端。
-// 这对于 SSE 等流式响应特别重要。
+// Flush 将缓冲数据实时推送到客户端，用于 SSE 流式响应。
 func (r *ResponseMessage) Flush() {
-	if r.ctx != nil {
-		// For fasthttp, we need to manually flush by writing empty bytes
-		// since fasthttp doesn't have a built-in Flush method like net/http
-		r.ctx.SetBody(r.ctx.Response.Body())
+	if r.writer != nil {
+		r.writer.Flush()
 	}
 }
+
 func (r *ResponseMessage) RequestCtx() *fasthttp.RequestCtx {
 	return r.ctx
 }
@@ -815,23 +815,31 @@ func (fh *FastHttp) handler(router endpointApi.Router, isWait bool) fasthttp.Req
 		ctx.QueryArgs().VisitAll(func(key, value []byte) {
 			metadata.PutValue(string(key), string(value))
 		})
-		// 创建带超时的context，防止goroutine泄漏
-		var reqCtx context.Context
-		var cancel context.CancelFunc
-		//异步不是设置超时，让引擎控制
-		if isWait {
-			// 同步处理时也使用带超时的context
-			reqCtx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
-			// 确保context被取消，防止goroutine泄漏
-			defer cancel()
-		} else {
-			reqCtx = context.Background()
+
+		// CORS headers 必须在 SetBodyStreamWriter 之前设置，
+		// 因为 HTTP headers 在 bodyStream 回调执行之前就已发送
+		if fh.Config.AllowCors {
+			ctx.Response.Header.Set(HeaderKeyAccessControlAllowOrigin, HeaderValueAll)
+			ctx.Response.Header.Set(HeaderKeyAccessControlAllowMethods, HeaderValueAll)
+			ctx.Response.Header.Set(HeaderKeyAccessControlAllowHeaders, HeaderValueAll)
 		}
 
-		// 设置context到exchange中
-		exchange.Context = reqCtx
+		ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
+			if resp, ok := exchange.Out.(*ResponseMessage); ok {
+				resp.writer = w
+			}
+			var reqCtx context.Context
+			var cancel context.CancelFunc
+			if isWait {
+				reqCtx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+			} else {
+				reqCtx = context.Background()
+			}
 
-		fh.DoProcess(reqCtx, router, exchange)
+			exchange.Context = reqCtx
+			fh.DoProcess(reqCtx, router, exchange)
+		})
 	}
 }
 

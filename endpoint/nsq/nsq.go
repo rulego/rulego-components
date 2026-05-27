@@ -254,15 +254,15 @@ type Config struct {
 	// 2. 多个nsqd: "127.0.0.1:4150,127.0.0.1:4151"（对全部可达节点建连，运行期按消息轮询发布，见 README.md）
 	// 3. lookupd地址: "http://127.0.0.1:4161,http://127.0.0.1:4162"（按序尝试各 lookupd 的 /nodes，对返回的 nsqd 建连并轮询发布）
 	// 使用说明与示例见同目录 README.md
-	Server string `json:"server" label:"NSQ服务器地址" desc:"NSQ服务器地址，多个地址用逗号分隔" required:"true"`
+	Server string `json:"server" label:"NSQ服务器地址" desc:"NSQ服务器地址，多个地址用逗号分隔" required:"true" ref:"primary"`
 	// 默认频道名称，如果AddRouter时未指定则使用此值
-	Channel string `json:"channel" label:"默认频道" desc:"默认频道名称"`
+	Channel string `json:"channel" label:"Channel" desc:"Default channel name, used when AddRouter does not specify one"`
 	// 鉴权令牌
-	AuthToken string `json:"authToken" label:"鉴权令牌" desc:"NSQ鉴权令牌"`
+	AuthToken string `json:"authToken" label:"Auth Token" desc:"NSQ authentication token"`
 	// TLS证书文件
-	CertFile string `json:"certFile" label:"TLS证书文件" desc:"TLS证书文件路径"`
+	CertFile string `json:"certFile" label:"Cert File" desc:"TLS certificate file path"`
 	// TLS私钥文件
-	CertKeyFile string `json:"certKeyFile" label:"TLS私钥文件" desc:"TLS私钥文件路径"`
+	CertKeyFile string `json:"certKeyFile" label:"Cert Key File" desc:"TLS private key file path"`
 }
 
 // Nsq NSQ接收端端点
@@ -326,6 +326,23 @@ func (x *Nsq) New() types.Node {
 		Config: Config{
 			Server:  "127.0.0.1:4150",
 			Channel: "default",
+		},
+	}
+}
+
+func (x *Nsq) Def() types.ComponentForm {
+	return types.ComponentForm{
+		Desc: "NSQ consumer endpoint for subscribing to topics and processing messages",
+		RouterForm: &types.RouterForm{
+			From: &types.RouterFormField{
+				Path: types.ComponentFormField{
+					Name:     "path",
+					Type:     "string",
+					Label:    "Topic",
+					Desc:     "NSQ topic to subscribe, e.g. orders",
+					Required: true,
+				},
+			},
 		},
 	}
 }
