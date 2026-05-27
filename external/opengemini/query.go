@@ -34,11 +34,11 @@ func init() {
 
 // QueryConfig 定义 OpenGemini 客户端配置
 type QueryConfig struct {
-	Server   string `json:"server" label:"Server" desc:"OpenGemini server address, format: http://host:port" required:"true"`
+	Server   string `json:"server" label:"Server" desc:"OpenGemini server address, format: http://host:port" required:"true" ref:"primary"`
 	Database string `json:"database" label:"Database" desc:"Database name" required:"true"`
-	Username string `json:"username" label:"Username" desc:"Authentication username"`
-	Password string `json:"password" label:"Password" desc:"Authentication password"`
-	Token    string `json:"token" label:"Token" desc:"Authentication token"`
+	Username string `json:"username" label:"Username" desc:"Authentication username" ref:"shared"`
+	Password string `json:"password" label:"Password" desc:"Authentication password" ref:"shared"`
+	Token    string `json:"token" label:"Token" desc:"Authentication token" ref:"shared"`
 	Command  string `json:"command" label:"Query" desc:"SQL query, supports ${metadata.key} and ${msg.key} substitution" required:"true"`
 }
 

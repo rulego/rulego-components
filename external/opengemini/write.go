@@ -36,11 +36,11 @@ func init() {
 
 // WriteConfig 定义 OpenGemini 客户端配置
 type WriteConfig struct {
-	Server   string `json:"server" label:"Server" desc:"OpenGemini server address, format: http://host:port" required:"true"`
+	Server   string `json:"server" label:"Server" desc:"OpenGemini server address, format: http://host:port" required:"true" ref:"primary"`
 	Database string `json:"database" label:"Database" desc:"Database name" required:"true"`
-	Username string `json:"username" label:"Username" desc:"Authentication username"`
-	Password string `json:"password" label:"Password" desc:"Authentication password"`
-	Token    string `json:"token" label:"Token" desc:"Authentication token"`
+	Username string `json:"username" label:"Username" desc:"Authentication username" ref:"shared"`
+	Password string `json:"password" label:"Password" desc:"Authentication password" ref:"shared"`
+	Token    string `json:"token" label:"Token" desc:"Authentication token" ref:"shared"`
 }
 
 // WriteNode opengemini 写节点

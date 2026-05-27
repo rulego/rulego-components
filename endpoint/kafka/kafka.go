@@ -207,7 +207,7 @@ func (r *ResponseMessage) GetError() error {
 }
 
 type Config struct {
-	Server  string     `json:"server" label:"Server" desc:"Kafka broker addresses, comma-separated for multiple" required:"true"`
+	Server  string     `json:"server" label:"Server" desc:"Kafka broker addresses, comma-separated for multiple" required:"true" ref:"primary"`
 	GroupId string     `json:"groupId" label:"Group ID" desc:"Kafka consumer group ID"`
 	SASL    SASLConfig `json:"sasl" label:"SASL Auth" desc:"SASL authentication configuration"`
 	TLS     TLSConfig  `json:"tls" label:"TLS" desc:"TLS encryption configuration"`
@@ -216,8 +216,8 @@ type Config struct {
 type SASLConfig struct {
 	Enable    bool   `json:"enable" label:"Enable" desc:"Enable SASL authentication"`
 	Mechanism string `json:"mechanism" label:"Mechanism" desc:"SASL mechanism: PLAIN, SCRAM-SHA-256, SCRAM-SHA-512"`
-	Username  string `json:"username" label:"Username" desc:"SASL authentication username"`
-	Password  string `json:"password" label:"Password" desc:"SASL authentication password"`
+	Username  string `json:"username" label:"Username" desc:"SASL authentication username" ref:"shared"`
+	Password  string `json:"password" label:"Password" desc:"SASL authentication password" ref:"shared"`
 }
 
 type TLSConfig struct {

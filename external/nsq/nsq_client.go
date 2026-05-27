@@ -43,15 +43,15 @@ func init() {
 // ClientNodeConfiguration NSQ客户端节点配置
 type ClientNodeConfiguration struct {
 	// NSQ服务器地址
-	Server string `json:"server" label:"Server" desc:"NSQ server address, comma-separated for multiple" required:"true"`
+	Server string `json:"server" label:"Server" desc:"NSQ server address, comma-separated for multiple" required:"true" ref:"primary"`
 	// 发布主题，支持${}变量
 	Topic string `json:"topic" label:"Topic" desc:"Publish topic. Supports ${metadata.key} and ${msg.key} substitution" required:"true"`
 	// 鉴权令牌
-	AuthToken string `json:"authToken" label:"Auth Token" desc:"NSQ authentication token"`
+	AuthToken string `json:"authToken" label:"Auth Token" desc:"NSQ authentication token" ref:"shared"`
 	// TLS证书文件
-	CertFile string `json:"certFile" label:"Cert File" desc:"TLS certificate file path"`
+	CertFile string `json:"certFile" label:"Cert File" desc:"TLS certificate file path" ref:"shared"`
 	// TLS私钥文件
-	CertKeyFile string `json:"certKeyFile" label:"Cert Key File" desc:"TLS private key file path"`
+	CertKeyFile string `json:"certKeyFile" label:"Cert Key File" desc:"TLS private key file path" ref:"shared"`
 }
 
 // ClientNode NSQ客户端节点

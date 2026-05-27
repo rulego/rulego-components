@@ -46,7 +46,7 @@ type WorkerMsgParams struct {
 
 // WorkerConfiguration 节点配置
 type WorkerConfiguration struct {
-	Server string `json:"server" label:"Server" desc:"Beanstalkd server address, format: host:port" required:"true"`
+	Server string `json:"server" label:"Server" desc:"Beanstalkd server address, format: host:port" required:"true" ref:"primary"`
 	Tube   string `json:"tube" label:"Tube" desc:"Tube name" required:"true"`
 	Cmd    string `json:"cmd" label:"Command" desc:"Command: reserve, release, delete, bury" required:"true"`
 	JobId  string `json:"jobId" label:"Job ID" desc:"Job ID, supports ${metadata.key} substitution"`

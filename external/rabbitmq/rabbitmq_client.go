@@ -116,7 +116,7 @@ func init() {
 
 type ClientNodeConfiguration struct {
 	// RabbitMQ服务器地址，格式为"amqp://用户名:密码@服务器地址:端口号"
-	Server string `json:"server" label:"Server" desc:"RabbitMQ server address, e.g. amqp://user:pass@host:5672" required:"true"`
+	Server string `json:"server" label:"Server" desc:"RabbitMQ server address, e.g. amqp://user:pass@host:5672" required:"true" ref:"primary"`
 	// 路由键
 	Key string `json:"key" label:"Routing Key" desc:"Routing key. Supports ${metadata.key} and ${msg.key} substitution" required:"true"`
 	// 交换机名称

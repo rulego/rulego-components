@@ -53,7 +53,7 @@ type TubeMsgParams struct {
 
 // TubeConfiguration 节点配置
 type TubeConfiguration struct {
-	Server    string `json:"server" label:"Server" desc:"Beanstalkd server address, format: host:port" required:"true"`
+	Server    string `json:"server" label:"Server" desc:"Beanstalkd server address, format: host:port" required:"true" ref:"primary"`
 	Tube      string `json:"tube" label:"Tube" desc:"Tube name, supports ${metadata.key} and ${msg.key} substitution" required:"true"`
 	Cmd       string `json:"cmd" label:"Command" desc:"Command: put, kick, kickBound, pause, peek, peekReady, peekDelayed, peekBuried" required:"true"`
 	Body      string `json:"body" label:"Body" desc:"Message body for put command, supports ${metadata.key} and ${msg.key} substitution"`

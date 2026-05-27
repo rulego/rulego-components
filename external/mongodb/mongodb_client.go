@@ -59,7 +59,7 @@ func init() {
 // ClientNodeConfiguration MongoDB客户端节点配置结构体
 type ClientNodeConfiguration struct {
 	// Server MongoDB服务器连接地址
-	Server string `json:"server" label:"Server" desc:"MongoDB connection string, e.g. mongodb://user:pass@localhost:27017" required:"true"`
+	Server string `json:"server" label:"Server" desc:"MongoDB connection string, e.g. mongodb://user:pass@localhost:27017" required:"true" ref:"primary"`
 	// Database 数据库名称
 	Database string `json:"database" label:"Database" desc:"Database name. Supports ${metadata.key} and ${msg.key} substitution" required:"true"`
 	// Collection 集合名称

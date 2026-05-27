@@ -37,9 +37,9 @@ func init() {
 
 // WukongimSenderConfiguration 节点配置
 type WukongimSenderConfiguration struct {
-	Server         string `json:"server" label:"Server" desc:"WuKongIM server address, format: tcp://host:port" required:"true"`
+	Server         string `json:"server" label:"Server" desc:"WuKongIM server address, format: tcp://host:port" required:"true" ref:"primary"`
 	UID            string `json:"uid" label:"UID" desc:"Login user UID" required:"true"`
-	Token          string `json:"token" label:"Token" desc:"Login authentication token" required:"true"`
+	Token          string `json:"token" label:"Token" desc:"Login authentication token" required:"true" ref:"shared"`
 	ChannelType    string `json:"channelType" label:"Channel Type" desc:"Channel type: 1(personal), 2(group), 3(customer service)"`
 	ChannelID      string `json:"channelId" label:"Channel ID" desc:"Target channel ID, supports ${metadata.key} and ${msg.key} substitution" required:"true"`
 	ConnectTimeout int64  `json:"connectTimeout" label:"Connect Timeout (s)" desc:"Connection timeout in seconds"`

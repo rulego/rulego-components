@@ -40,9 +40,9 @@ func init() {
 // ClientNodeConfiguration Redis客户端节点配置
 type ClientNodeConfiguration struct {
 	// Server Redis服务器地址，格式：host:port
-	Server string `json:"server" label:"Server" desc:"Redis server address, e.g. 127.0.0.1:6379" required:"true"`
+	Server string `json:"server" label:"Server" desc:"Redis server address, e.g. 127.0.0.1:6379" required:"true" ref:"primary"`
 	// Password Redis密码
-	Password string `json:"password" label:"Password" desc:"Redis password"`
+	Password string `json:"password" label:"Password" desc:"Redis password" ref:"shared"`
 	// DB Redis数据库索引
 	Db int `json:"db" label:"DB" desc:"Redis database index"`
 	// PoolSize 连接池大小

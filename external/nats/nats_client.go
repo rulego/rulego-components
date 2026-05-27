@@ -31,11 +31,11 @@ func init() {
 
 type ClientNodeConfiguration struct {
 	// NATS服务器地址
-	Server string `json:"server" label:"Server" desc:"NATS server address, e.g. nats://127.0.0.1:4222" required:"true"`
+	Server string `json:"server" label:"Server" desc:"NATS server address, e.g. nats://127.0.0.1:4222" required:"true" ref:"primary"`
 	// NATS用户名
-	Username string `json:"username" label:"Username" desc:"NATS username"`
+	Username string `json:"username" label:"Username" desc:"NATS username" ref:"shared"`
 	// NATS密码
-	Password string `json:"password" label:"Password" desc:"NATS password"`
+	Password string `json:"password" label:"Password" desc:"NATS password" ref:"shared"`
 	// 发布主题
 	Topic string `json:"topic" label:"Topic" desc:"Publish topic. Supports ${metadata.key} and ${msg.key} substitution" required:"true"`
 }

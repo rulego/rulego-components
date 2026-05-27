@@ -212,7 +212,7 @@ func (r *ResponseMessage) getMetadataValue(metadataName, headerName string) stri
 }
 
 type Config struct {
-	Server       string `json:"server" label:"Server" desc:"RabbitMQ server address, format: amqp://user:pass@host:port/" required:"true"`
+	Server       string `json:"server" label:"Server" desc:"RabbitMQ server address, format: amqp://user:pass@host:port/" required:"true" ref:"primary"`
 	Exchange     string `json:"exchange" label:"Exchange" desc:"RabbitMQ exchange name" required:"true"`
 	ExchangeType string `json:"exchangeType" label:"Exchange Type" desc:"Exchange type: direct, topic, fanout, headers, default is topic"`
 	Durable      bool   `json:"durable" label:"Durable" desc:"Whether the exchange persists across server restarts"`

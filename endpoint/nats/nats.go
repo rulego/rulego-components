@@ -176,9 +176,9 @@ func (r *ResponseMessage) GetError() error {
 }
 
 type Config struct {
-	Server   string `json:"server" label:"Server" desc:"NATS server address, format: nats://host:port" required:"true"`
-	Username string `json:"username" label:"Username" desc:"NATS authentication username"`
-	Password string `json:"password" label:"Password" desc:"NATS authentication password"`
+	Server   string `json:"server" label:"Server" desc:"NATS server address, format: nats://host:port" required:"true" ref:"primary"`
+	Username string `json:"username" label:"Username" desc:"NATS authentication username" ref:"shared"`
+	Password string `json:"password" label:"Password" desc:"NATS authentication password" ref:"shared"`
 	GroupId  string `json:"groupId" label:"Group ID" desc:"Queue group ID, uses QueueSubscribe mode for load-balanced delivery when set"`
 }
 

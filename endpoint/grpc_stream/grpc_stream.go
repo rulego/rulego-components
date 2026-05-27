@@ -38,7 +38,7 @@ func init() {
 
 // Config gRPC流配置
 type Config struct {
-	Server        string            `json:"server" label:"Server" desc:"gRPC server address, format: host:port" required:"true"`
+	Server        string            `json:"server" label:"Server" desc:"gRPC server address, format: host:port" required:"true" ref:"primary"`
 	Service       string            `json:"service" label:"Service" desc:"gRPC service name, e.g. pkg.ServiceName" required:"true"`
 	Method        string            `json:"method" label:"Method" desc:"gRPC method name, e.g. StreamData" required:"true"`
 	Headers       map[string]string `json:"headers" label:"Headers" desc:"Custom gRPC request headers"`

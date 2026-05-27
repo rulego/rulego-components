@@ -47,7 +47,7 @@ const SeparatorHeader = ":"
 
 // ClientConfig 定义 gRPC 客户端配置
 type ClientConfig struct {
-	Server  string            `json:"server" label:"Server" desc:"gRPC server address, format: host:port" required:"true"`
+	Server  string            `json:"server" label:"Server" desc:"gRPC server address, format: host:port" required:"true" ref:"primary"`
 	Service string            `json:"service" label:"Service" desc:"gRPC service name, e.g. pkg.ServiceName" required:"true"`
 	Method  string            `json:"method" label:"Method" desc:"gRPC method name" required:"true"`
 	Request string            `json:"request" label:"Request" desc:"Request JSON data, supports ${metadata.key} and ${msg.key} substitution"`

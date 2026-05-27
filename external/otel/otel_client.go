@@ -99,7 +99,7 @@ func (m MetricValue) GetConfig() MetricConfig {
 
 // OtelNodeConfiguration 节点配置
 type OtelNodeConfiguration struct {
-	Server     string        `json:"server" label:"Server" desc:"OTel Collector address, format: host:port" required:"true"`
+	Server     string        `json:"server" label:"Server" desc:"OTel Collector address, format: host:port" required:"true" ref:"primary"`
 	Protocol   string        `json:"protocol" label:"Protocol" desc:"Export protocol: grpc, http, default grpc"`
 	MetricExpr string        `json:"metricExpr" label:"Metric Expression" desc:"JSON expression to extract metrics from message"`
 	Metrics    []MetricConfig `json:"metrics" label:"Metrics" desc:"Custom metric configuration list"`

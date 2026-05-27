@@ -161,9 +161,9 @@ func (r *ResponseMessage) SetStatusCode(statusCode int) {
 }
 
 type Config struct {
-	Server         string `json:"server" label:"Server" desc:"WuKongIM server address, format: tcp://host:port" required:"true"`
+	Server         string `json:"server" label:"Server" desc:"WuKongIM server address, format: tcp://host:port" required:"true" ref:"primary"`
 	UID            string `json:"uid" label:"UID" desc:"Login user UID" required:"true"`
-	Token          string `json:"token" label:"Token" desc:"Login authentication token" required:"true"`
+	Token          string `json:"token" label:"Token" desc:"Login authentication token" required:"true" ref:"shared"`
 	ConnectTimeout int64  `json:"connectTimeout" label:"Connect Timeout (s)" desc:"Connection timeout in seconds"`
 	ProtoVersion   int    `json:"protoVersion" label:"Proto Version" desc:"Communication protocol version"`
 	PingInterval   int64  `json:"pingInterval" label:"Ping Interval (s)" desc:"Heartbeat interval in seconds"`

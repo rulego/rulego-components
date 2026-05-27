@@ -100,10 +100,10 @@ type PostActionConfig struct {
 
 // ReceiveEmailConfiguration 接收邮件配置
 type ReceiveEmailConfiguration struct {
-	Server         string          `json:"server" label:"Server" desc:"IMAP server address" required:"true"`
+	Server         string          `json:"server" label:"Server" desc:"IMAP server address" required:"true" ref:"primary"`
 	Port           int             `json:"port" label:"Port" desc:"IMAP server port, default 993"`
-	Username       string          `json:"username" label:"Username" desc:"Email login username" required:"true"`
-	Password       string          `json:"password" label:"Password" desc:"Email login password" required:"true"`
+	Username       string          `json:"username" label:"Username" desc:"Email login username" required:"true" ref:"shared"`
+	Password       string          `json:"password" label:"Password" desc:"Email login password" required:"true" ref:"shared"`
 	EnableTLS      bool            `json:"enableTls" label:"Enable TLS" desc:"Enable TLS encryption"`
 	ConnectTimeout int             `json:"connectTimeout" label:"Connect Timeout (s)" desc:"Connection timeout in seconds"`
 	Search         SearchConfig    `json:"search" label:"Search" desc:"Email search criteria configuration"`

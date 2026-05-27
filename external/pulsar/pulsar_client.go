@@ -39,7 +39,7 @@ func init() {
 // ClientNodeConfiguration Pulsar客户端节点配置
 type ClientNodeConfiguration struct {
 	// Pulsar服务器地址
-	Server string `json:"server" label:"Server" desc:"Pulsar server address, e.g. pulsar://host:port" required:"true"`
+	Server string `json:"server" label:"Server" desc:"Pulsar server address, e.g. pulsar://host:port" required:"true" ref:"primary"`
 	// 发布主题，支持${}变量
 	Topic string `json:"topic" label:"Topic" desc:"Publish topic. Supports ${metadata.key} and ${msg.key} substitution" required:"true"`
 	// 消息键模板，支持${}变量
@@ -47,11 +47,11 @@ type ClientNodeConfiguration struct {
 	// Headers 请求头
 	Headers map[string]string `json:"headers" label:"Headers" desc:"Message headers. Supports ${metadata.key} and ${msg.key} substitution"`
 	// 鉴权令牌
-	AuthToken string `json:"authToken" label:"Auth Token" desc:"Pulsar JWT authentication token"`
+	AuthToken string `json:"authToken" label:"Auth Token" desc:"Pulsar JWT authentication token" ref:"shared"`
 	// TLS证书文件
-	CertFile string `json:"certFile" label:"Cert File" desc:"TLS certificate file path"`
+	CertFile string `json:"certFile" label:"Cert File" desc:"TLS certificate file path" ref:"shared"`
 	// TLS私钥文件
-	CertKeyFile string `json:"certKeyFile" label:"Cert Key File" desc:"TLS private key file path"`
+	CertKeyFile string `json:"certKeyFile" label:"Cert Key File" desc:"TLS private key file path" ref:"shared"`
 }
 
 // ClientNode Pulsar客户端节点

@@ -189,8 +189,8 @@ func (r *ResponseMessage) GetError() error {
 }
 
 type Config struct {
-	Server   string `json:"server" label:"Server" desc:"Redis server address, format: host:port" required:"true"`
-	Password string `json:"password" label:"Password" desc:"Redis authentication password"`
+	Server   string `json:"server" label:"Server" desc:"Redis server address, format: host:port" required:"true" ref:"primary"`
+	Password string `json:"password" label:"Password" desc:"Redis authentication password" ref:"shared"`
 	Db       int    `json:"db" label:"DB Index" desc:"Redis database index, default is 0"`
 }
 

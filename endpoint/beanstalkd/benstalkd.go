@@ -38,7 +38,7 @@ func init() {
 
 // beanstalk Tubeset 配置
 type TubesetConfig struct {
-	Server   string   `json:"server" label:"Server" desc:"Beanstalkd server address, format: host:port" required:"true"`
+	Server   string   `json:"server" label:"Server" desc:"Beanstalkd server address, format: host:port" required:"true" ref:"primary"`
 	Tubesets []string `json:"tubesets" label:"Tubes" desc:"List of tube names to watch"`
 	Timeout  int64    `json:"timeout" label:"Timeout" desc:"Reserve operation timeout in seconds"`
 }

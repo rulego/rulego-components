@@ -42,7 +42,7 @@ func init() {
 
 // NodeConfiguration 节点配置
 type NodeConfiguration struct {
-	Server    string     `json:"server" label:"Server" desc:"Kafka server address, multiple addresses separated by commas" required:"true"`
+	Server    string     `json:"server" label:"Server" desc:"Kafka server address, multiple addresses separated by commas" required:"true" ref:"primary"`
 	Topic     string     `json:"topic" label:"Topic" desc:"Publish topic, supports ${metadata.key} and ${msg.key} replacement" required:"true"`
 	Key       string     `json:"key" label:"Key" desc:"Message partition key, supports ${metadata.key} and ${msg.key} replacement"`
 	Partition int32      `json:"partition" label:"Partition" desc:"Partition number, -1 for auto selection"`
@@ -54,8 +54,8 @@ type NodeConfiguration struct {
 type SASLConfig struct {
 	Enable    bool   `json:"enable" label:"Enable" desc:"Enable SASL authentication"`
 	Mechanism string `json:"mechanism" label:"Mechanism" desc:"SASL mechanism: PLAIN, SCRAM-SHA-256, SCRAM-SHA-512"`
-	Username  string `json:"username" label:"Username" desc:"SASL authentication username"`
-	Password  string `json:"password" label:"Password" desc:"SASL authentication password"`
+	Username  string `json:"username" label:"Username" desc:"SASL authentication username" ref:"shared"`
+	Password  string `json:"password" label:"Password" desc:"SASL authentication password" ref:"shared"`
 }
 
 // TLSConfig TLS配置

@@ -24,9 +24,9 @@ const KeyResult = "result"
 // PublisherNodeConfiguration 节点配置
 type PublisherNodeConfiguration struct {
 	// Server redis服务器地址
-	Server string `json:"server" label:"Server" desc:"Redis server address, e.g. 127.0.0.1:6379" required:"true"`
+	Server string `json:"server" label:"Server" desc:"Redis server address, e.g. 127.0.0.1:6379" required:"true" ref:"primary"`
 	// Password 密码
-	Password string `json:"password" label:"Password" desc:"Redis password"`
+	Password string `json:"password" label:"Password" desc:"Redis password" ref:"shared"`
 	// PoolSize 连接池大小
 	PoolSize int `json:"poolSize" label:"Pool Size" desc:"Connection pool size"`
 	// Db 数据库index
