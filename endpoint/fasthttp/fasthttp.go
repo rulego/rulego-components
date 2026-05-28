@@ -221,6 +221,8 @@ type ResponseMessage struct {
 	err  error
 	// 流式响应 writer，由 handler 通过 SetBodyStreamWriter 设置
 	writer *bufio.Writer
+	// 流式模式下缓存的 headers，避免竞态访问 ctx.Response
+	cachedHeaders textproto.MIMEHeader
 }
 
 // fasthttpResponseWriter 适配器，将 fasthttp.RequestCtx 适配为 http.ResponseWriter
@@ -264,6 +266,9 @@ func (r *ResponseMessage) Headers() textproto.MIMEHeader {
 	if r.ctx == nil {
 		return nil
 	}
+	if r.writer != nil {
+		return r.cachedHeaders
+	}
 	headers := make(textproto.MIMEHeader)
 	r.ctx.Response.Header.VisitAll(func(key, value []byte) {
 		headers.Add(string(key), string(value))
@@ -272,19 +277,19 @@ func (r *ResponseMessage) Headers() textproto.MIMEHeader {
 }
 
 func (r *ResponseMessage) AddHeader(key, value string) {
-	if r.ctx != nil {
+	if r.ctx != nil && r.writer == nil {
 		r.ctx.Response.Header.Add(key, value)
 	}
 }
 
 func (r *ResponseMessage) SetHeader(key, value string) {
-	if r.ctx != nil {
+	if r.ctx != nil && r.writer == nil {
 		r.ctx.Response.Header.Set(key, value)
 	}
 }
 
 func (r *ResponseMessage) DelHeader(key string) {
-	if r.ctx != nil {
+	if r.ctx != nil && r.writer == nil {
 		r.ctx.Response.Header.Del(key)
 	}
 }
@@ -317,7 +322,7 @@ func (r *ResponseMessage) GetMsg() *types.RuleMsg {
 }
 
 func (r *ResponseMessage) SetStatusCode(statusCode int) {
-	if r.ctx != nil {
+	if r.ctx != nil && r.writer == nil {
 		r.ctx.SetStatusCode(statusCode)
 	}
 }
@@ -824,6 +829,15 @@ func (fh *FastHttp) handler(router endpointApi.Router, isWait bool) fasthttp.Req
 			ctx.Response.Header.Set(HeaderKeyAccessControlAllowHeaders, HeaderValueAll)
 		}
 
+		// 缓存 headers，避免 bodyStream 回调内竞态访问 ctx.Response
+		if resp, ok := exchange.Out.(*ResponseMessage); ok && resp.ctx != nil {
+			headers := make(textproto.MIMEHeader)
+			resp.ctx.Response.Header.VisitAll(func(key, value []byte) {
+				headers.Set(string(key), string(value))
+			})
+			resp.cachedHeaders = headers
+		}
+
 		ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
 			if resp, ok := exchange.Out.(*ResponseMessage); ok {
 				resp.writer = w
@@ -978,7 +992,7 @@ func (fh *FastHttp) newRouter() *router.Router {
 		}
 
 		fh.AddInterceptors(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
-			if respMsg, ok := exchange.Out.(*ResponseMessage); ok && respMsg.ctx != nil {
+			if respMsg, ok := exchange.Out.(*ResponseMessage); ok && respMsg.ctx != nil && respMsg.writer == nil {
 				respMsg.ctx.Response.Header.Set(HeaderKeyAccessControlAllowOrigin, HeaderValueAll)
 				respMsg.ctx.Response.Header.Set(HeaderKeyAccessControlAllowMethods, HeaderValueAll)
 				respMsg.ctx.Response.Header.Set(HeaderKeyAccessControlAllowHeaders, HeaderValueAll)
