@@ -189,9 +189,9 @@ func (x *Wukongim) Type() string {
 func (x *Wukongim) New() types.Node {
 	return &Wukongim{
 		Config: Config{
-			Server:         "tcp://175.27.245.108:15100",
-			UID:            "test1",
-			Token:          "test1",
+			Server:         "tcp://127.0.0.1:15100",
+			UID:            "",
+			Token:          "",
 			ConnectTimeout: 5,
 			ProtoVersion:   wkproto.LatestVersion,
 			PingInterval:   30,
@@ -203,7 +203,7 @@ func (x *Wukongim) New() types.Node {
 
 func (x *Wukongim) Def() types.ComponentForm {
 	return types.ComponentForm{
-		Desc: "WuKongIM client endpoint for receiving and processing IM messages",
+		Desc: "WuKongIM client endpoint: logs in with UID/Token and processes IM messages addressed to that UID",
 		RouterForm: &types.RouterForm{
 			Hide: true,
 		},

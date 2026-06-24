@@ -254,7 +254,7 @@ type Config struct {
 	// 2. 多个nsqd: "127.0.0.1:4150,127.0.0.1:4151"（对全部可达节点建连，运行期按消息轮询发布，见 README.md）
 	// 3. lookupd地址: "http://127.0.0.1:4161,http://127.0.0.1:4162"（按序尝试各 lookupd 的 /nodes，对返回的 nsqd 建连并轮询发布）
 	// 使用说明与示例见同目录 README.md
-	Server string `json:"server" label:"NSQ服务器地址" desc:"NSQ服务器地址，多个地址用逗号分隔" required:"true" ref:"primary"`
+	Server string `json:"server" label:"Server" desc:"NSQ server address. Supports nsqd 'host:port' (single or comma-separated multiple) or lookupd 'http://host:port' (comma-separated), e.g. 127.0.0.1:4150 or http://127.0.0.1:4161" required:"true" ref:"primary"`
 	// 默认频道名称，如果AddRouter时未指定则使用此值
 	Channel string `json:"channel" label:"Channel" desc:"Default channel name, used when AddRouter does not specify one"`
 	// 鉴权令牌

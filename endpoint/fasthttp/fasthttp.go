@@ -357,18 +357,18 @@ func (r *ResponseMessage) RequestCtx() *fasthttp.RequestCtx {
 
 // Config FastHttp 服务配置
 type Config struct {
-	Server      string `json:"server"`      //服务器地址
-	CertFile    string `json:"certFile"`    //证书文件
-	CertKeyFile string `json:"certKeyFile"` //密钥文件
+	Server      string `json:"server" label:"Server" desc:"Listen address, format host:port or :port, e.g. :8080" required:"true" ref:"primary"` //服务器地址
+	CertFile    string `json:"certFile" label:"Cert File" desc:"TLS certificate file path; provide together with certKeyFile to enable HTTPS"`    //证书文件
+	CertKeyFile string `json:"certKeyFile" label:"Cert Key File" desc:"TLS private key file path; provide together with certFile to enable HTTPS"` //密钥文件
 	//是否允许跨域
-	AllowCors bool `json:"allowCors"`
+	AllowCors bool `json:"allowCors" label:"Allow CORS" desc:"Whether to allow cross-origin requests"`
 	// FastHTTP服务器配置
-	ReadTimeout      int    `json:"readTimeout"`      // 读取超时时间（秒），0使用默认值10秒
-	WriteTimeout     int    `json:"writeTimeout"`     // 写入超时时间（秒），0使用默认值10秒
-	IdleTimeout      int    `json:"idleTimeout"`      // 空闲超时时间（秒），0使用默认值60秒
-	DisableKeepalive bool   `json:"disableKeepalive"` //  禁用keepalive
-	MaxRequestSize   string `json:"maxRequestSize"`   // 最大请求体大小，支持4M、4m、10K等格式，默认4M
-	Concurrency      int    `json:"concurrency"`      // 并发数，0使用默认值 256 * 1024
+	ReadTimeout      int    `json:"readTimeout" label:"Read Timeout (s)" desc:"Read timeout in seconds; 0 uses default 10"`               // 读取超时时间（秒），0使用默认值10秒
+	WriteTimeout     int    `json:"writeTimeout" label:"Write Timeout (s)" desc:"Write timeout in seconds; 0 uses default 10"`         // 写入超时时间（秒），0使用默认值10秒
+	IdleTimeout      int    `json:"idleTimeout" label:"Idle Timeout (s)" desc:"Idle timeout in seconds; 0 uses default 60"`           // 空闲超时时间（秒），0使用默认值60秒
+	DisableKeepalive bool   `json:"disableKeepalive" label:"Disable Keepalive" desc:"Whether to disable keep-alive"`                     //  禁用keepalive
+	MaxRequestSize   string `json:"maxRequestSize" label:"Max Request Size" desc:"Max request body size, supports 4M/4m/10K formats; default 4M"` // 最大请求体大小，支持4M、4m、10K等格式，默认4M
+	Concurrency      int    `json:"concurrency" label:"Concurrency" desc:"Concurrency; 0 uses default 256 * 1024"`                              // 并发数，0使用默认值 256 * 1024
 	//// 新增配置项用于控制连接和资源管理
 	//MaxConnsPerIP        int           `json:"maxConnsPerIP"`        // 每个IP的最大连接数
 	//MaxRequestsPerConn   int           `json:"maxRequestsPerConn"`   // 每个连接的最大请求数

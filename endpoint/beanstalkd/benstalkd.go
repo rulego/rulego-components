@@ -75,7 +75,7 @@ func (x *BeanstalkdTubeSet) New() types.Node {
 
 func (x *BeanstalkdTubeSet) Def() types.ComponentForm {
 	return types.ComponentForm{
-		Desc: "Beanstalkd consumer endpoint for watching tubes and processing jobs",
+		Desc: "Beanstalkd consumer endpoint: watches tubes (configured via the 'tubesets' field, not from.path) and processes jobs",
 		RouterForm: &types.RouterForm{
 			Hide: true,
 		},

@@ -276,7 +276,7 @@ func (x *RabbitMQ) Init(ruleConfig types.Config, configuration types.Configurati
 	x.GracefulShutdown.InitGracefulShutdown(x.RuleConfig.Logger, 0)
 
 	if x.Config.ExchangeType == "" {
-		x.Config.ExchangeType = "direct"
+		x.Config.ExchangeType = "topic"
 	}
 	_ = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, true, func() (*amqp.Connection, error) {
 		return x.initClient()

@@ -224,7 +224,7 @@ func (x *GrpcStream) New() types.Node {
 
 func (x *GrpcStream) Def() types.ComponentForm {
 	return types.ComponentForm{
-		Desc: "gRPC stream endpoint for receiving and processing streaming data from gRPC services",
+		Desc: "gRPC stream endpoint: receives streaming data from a gRPC service+method (configured via the 'service'/'method' fields, not from.path) and processes each message",
 		RouterForm: &types.RouterForm{
 			Hide: true,
 		},
