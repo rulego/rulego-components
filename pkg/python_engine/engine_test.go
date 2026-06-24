@@ -552,6 +552,38 @@ func TestExecute_SemaphoreTimeout(t *testing.T) {
 	}
 }
 
+// TestReapIdleShrinksToKeepAlive verifies that reapIdle shrinks the ready pool
+// down to the keepAlive floor in a single pass and never below it.
+func TestReapIdleShrinksToKeepAlive(t *testing.T) {
+	checkPythonAvailable(t)
+	const maxRunning = 6 // keepAlive = max(1, maxRunning/3) = 2
+	pool := NewStringProcessPool(types.NewConfig(), "Process", "return msg", pythonPath(), 5*time.Second, maxRunning, nil)
+	defer pool.Shutdown()
+
+	// Wait for warm-up: ready fills to maxRunning.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(pool.ready) >= maxRunning {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if got := len(pool.ready); got < maxRunning {
+		t.Fatalf("warm-up did not fill ready: got %d workers", got)
+	}
+
+	// A single reap should drop to keepAlive=2 in one pass.
+	pool.reapIdle()
+	if got := len(pool.ready); got != 2 {
+		t.Errorf("expected ready shrunk to keepAlive=2, got %d", got)
+	}
+	// Reaping again must not drop below keepAlive.
+	pool.reapIdle()
+	if got := len(pool.ready); got != 2 {
+		t.Errorf("expected ready to stay at keepAlive=2, got %d", got)
+	}
+}
+
 // TestShutdown_WaitsForInFlight tests that Shutdown blocks until all executions complete.
 func TestShutdown_WaitsForInFlight(t *testing.T) {
 	checkPythonAvailable(t)

@@ -37,12 +37,12 @@ const (
 	// componentPrefix is used in error messages
 	componentPrefix = "x/python"
 
-	// defaultIdleTimeout is how long an idle worker sits in the pool before being killed
-	defaultIdleTimeout = 30 * time.Second
 	// initialBackoff is the initial retry delay when starting a worker fails
 	initialBackoff = 100 * time.Millisecond
 	// maxBackoff is the maximum retry delay when starting a worker fails
 	maxBackoff = 10 * time.Second
+	// reapInterval is how often idleReaper checks whether to shrink the pool.
+	reapInterval = 30 * time.Second
 
 	// input data keys (protocol shared with Python script)
 	inputKeyMsg      = "msg"
@@ -108,9 +108,9 @@ type ProcessPool struct {
 	ready       chan *worker    // pre-warmed workers (buffered to maxRunning)
 	demand      chan struct{}   // signals warmLoop to produce a worker (buffered to maxRunning)
 	done        chan struct{}   // closed when pool is shutting down
-	stop        chan struct{}   // signals warmLoop/reaper to stop
-	idleTimeout time.Duration   // idle workers are killed after this duration (0 = no eviction)
-	warmWg      sync.WaitGroup  // tracks warmLoop goroutines
+	stop        chan struct{}   // signals warmLoop/idleReaper to stop
+	keepAlive   int             // floor of warm workers preserved when idle
+	warmWg      sync.WaitGroup  // tracks warmLoop and idleReaper goroutines
 	wg          sync.WaitGroup  // tracks in-flight Execute() calls
 
 	stateMu sync.Mutex
@@ -119,7 +119,6 @@ type ProcessPool struct {
 
 // NewStringProcessPool creates a pool for inline script strings.
 // The functionName is baked into the script at construction time.
-// idleTimeout controls how long an idle worker sits in the pool before being killed (0 = no limit).
 func NewStringProcessPool(config types.Config, functionName string, script string, pythonPath string, timeout time.Duration, maxRunning int, configuration types.Configuration) *ProcessPool {
 	return newProcessPool(config, pythonPath, timeout, maxRunning, configuration,
 		buildInlineScript(functionName, strings.TrimSpace(script)))
@@ -127,7 +126,6 @@ func NewStringProcessPool(config types.Config, functionName string, script strin
 
 // NewFileProcessPool creates a pool for .py file paths.
 // The functionName is baked into the script at construction time.
-// idleTimeout controls how long an idle worker sits in the pool before being killed (0 = no limit).
 func NewFileProcessPool(config types.Config, functionName string, path string, pythonPath string, timeout time.Duration, maxRunning int, configuration types.Configuration) *ProcessPool {
 	return newProcessPool(config, pythonPath, timeout, maxRunning, configuration,
 		buildFileScript(strings.TrimSpace(path), functionName))
@@ -146,7 +144,7 @@ func newProcessPool(config types.Config, pythonPath string, timeout time.Duratio
 		demand:        make(chan struct{}, maxRunning),
 		done:          make(chan struct{}),
 		stop:          make(chan struct{}),
-		idleTimeout:   defaultIdleTimeout,
+		keepAlive:     max(1, maxRunning/3), // idle floor: ~1/3 of capacity, balances idle memory vs burst cold-start
 	}
 	// Pre-fill demand signals so warmLoops start workers eagerly at init.
 	for i := 0; i < maxRunning; i++ {
@@ -156,43 +154,40 @@ func newProcessPool(config types.Config, pythonPath string, timeout time.Duratio
 		p.warmWg.Add(1)
 		go p.warmLoop()
 	}
-	p.warmWg.Add(1)
-	go p.idleReaper()
+	// Only run the reaper when the pool can actually shrink (keepAlive < maxRunning).
+	if p.keepAlive < p.maxRunning {
+		p.warmWg.Add(1)
+		go p.idleReaper()
+	}
 	return p
 }
 
-// SetIdleTimeout sets the idle timeout for the pool. Workers that sit idle in the
-// ready channel longer than this duration are killed and their slot is released.
-// Set to 0 to disable idle eviction. Must be called before any Execute() calls.
-func (p *ProcessPool) SetIdleTimeout(d time.Duration) {
-	p.idleTimeout = d
-}
-
-// idleReaper periodically kills idle workers that have been sitting in the ready
-// channel too long. It does NOT signal demand, so the pool naturally shrinks when
-// idle. When Execute later needs workers, it signals demand and warmLoop produces
-// them on the fly.
+// idleReaper shrinks the pool down to keepAlive when idle, releasing idle memory
+// promptly while preserving a floor of warm workers for burst traffic. It reaps
+// in a single pass per tick and never below keepAlive. When load returns,
+// Execute signals demand and warmLoop refills back to maxRunning.
 func (p *ProcessPool) idleReaper() {
 	defer p.warmWg.Done()
-	if p.idleTimeout <= 0 {
-		return
-	}
-	ticker := time.NewTicker(p.idleTimeout)
+	ticker := time.NewTicker(reapInterval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			// Try to drain one idle worker per tick. Since we don't signal demand,
-			// the pool shrinks by one. If load increases later, Execute will signal
-			// demand and warmLoop will produce replacements.
-			select {
-			case w := <-p.ready:
-				w.kill()
-			default:
-				// No idle workers — pool is already empty or busy.
-			}
+			p.reapIdle()
 		case <-p.stop:
 			return
+		}
+	}
+}
+
+// reapIdle kills idle workers until only keepAlive remain in the ready pool.
+func (p *ProcessPool) reapIdle() {
+	for len(p.ready) > p.keepAlive {
+		select {
+		case w := <-p.ready:
+			w.kill()
+		default:
+			return // no idle worker available right now
 		}
 	}
 }
