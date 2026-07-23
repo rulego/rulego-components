@@ -31,14 +31,14 @@ import (
 )
 
 //func init() {
-//	// 手动注册fasthttp endpoint
+//	Manually register the fastHTTP endpoint
 //	_ = endpoint.Registry.Unregister(Type)
 //	_ = endpoint.Registry.Register(&Endpoint{})
 //}
 
-// TestFastHttpDSLEndpoint 测试使用DSL方式启动FastHttp endpoint并进行动态路由和热更新
+// TestFastHttpDSLEndpoint test: Starts the FastHttp endpoint using DSL, performs dynamic routing, and hot updates
 func TestFastHttpDSLEndpoint(t *testing.T) {
-	// 创建初始的DSL配置
+	// Create an initial DSL configuration
 	initialDSL := `{
 		"ruleChain": {
 			"id": "fasthttp_dsl_test",
@@ -111,29 +111,29 @@ func TestFastHttpDSLEndpoint(t *testing.T) {
 		}
 	}`
 
-	// 创建规则引擎配置
+	// Create rule engine configurations
 	config := rulego.NewConfig(
 		types.WithDefaultPool(),
 		types.WithEndpointEnabled(true),
 		types.WithOnDebug(func(chainId, flowType string, nodeId string, msg types.RuleMsg, relationType string, err error) {
-			//t.Logf("[FastHttp调试] 链: %s, 节点: %s, 关系: %s, 消息: %s", chainId, nodeId, relationType, msg.GetData())
+			//t.Logf("[FastHttp Debugging] Chain: %s, Node: %s, Relation: %s, Message: %s", chainId, nodeId, relationType, msg.GetData())
 		}),
 	)
 
-	// 使用DSL创建包含嵌入式endpoint的规则链
+	// Use DSL to create a rule chain containing embedded endpoints
 	ruleEngine, err := rulego.New("fasthttp_dsl_test", []byte(initialDSL), types.WithConfig(config))
 	if err != nil {
-		t.Logf("创建规则引擎失败: %v", err)
+		t.Logf("Rule engine creation failed: %v", err)
 		t.FailNow()
 	}
 
-	// 等待服务启动
+	// Waiting for the service to start
 	time.Sleep(time.Second * 2)
 
-	// 测试GET路由
+	// Test GET routing
 	resp, err := http.Get("http://localhost:9096/api/v1/data?param1=value1&param2=value2")
 	if err != nil {
-		t.Logf("GET请求失败: %v", err)
+		t.Logf("GET request failed: %v", err)
 	} else {
 		defer resp.Body.Close()
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -141,14 +141,14 @@ func TestFastHttpDSLEndpoint(t *testing.T) {
 		assert.True(t, strings.Contains(string(body), "FastHttp DSL endpoint response"))
 	}
 
-	// 等待endpoint初始化完成
+	// Wait for the endpoint initialization to complete
 	time.Sleep(time.Millisecond * 100)
 
-	// 清理资源
+	// Release resources
 	ruleEngine.Stop(context.Background())
 }
 
-// mustMarshal 辅助函数，用于JSON序列化
+// mustMarshal auxiliary function, used for JSON serialization
 func mustMarshal(v interface{}) string {
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -157,9 +157,9 @@ func mustMarshal(v interface{}) string {
 	return string(data)
 }
 
-// TestFastHttpDSLWithWebSocket 测试FastHttp DSL配置中的WebSocket功能
+// TestFastHttpDSLWithWebSocket Tests the WebSocket functionality in the FastHttp DSL configuration
 func TestFastHttpDSLWithWebSocket(t *testing.T) {
-	// WebSocket DSL配置
+	// WebSocket DSL configuration
 	websocketDSL := `{
 		"ruleChain": {
 			"id": "fasthttp_websocket_test",
@@ -206,16 +206,16 @@ func TestFastHttpDSLWithWebSocket(t *testing.T) {
 		}
 	}`
 
-	// 创建规则引擎配置
+	// Create rule engine configurations
 	config := rulego.NewConfig(
 		types.WithDefaultPool(),
 		types.WithEndpointEnabled(true),
 		types.WithOnDebug(func(chainId, flowType string, nodeId string, msg types.RuleMsg, relationType string, err error) {
-			t.Logf("[WebSocket调试] 链: %s, 节点: %s, 消息: %s", chainId, nodeId, msg.GetData())
+			t.Logf("[WebSocket Debugging] Chain: %s, Node: %s, Message: %s", chainId, nodeId, msg.GetData())
 		}),
 	)
 
-	// 创建规则引擎
+	// Create a rule engine
 	ruleEngine, err := rulego.New("fasthttp_websocket_test", []byte(websocketDSL), types.WithConfig(config))
 	assert.Nil(t, err)
 	if ruleEngine == nil {
@@ -223,11 +223,11 @@ func TestFastHttpDSLWithWebSocket(t *testing.T) {
 		return
 	}
 
-	// 等待WebSocket服务启动
+	// Wait for the WebSocket service to start
 	time.Sleep(time.Second * 1)
 
 	t.Logf("FastHttp WebSocket DSL endpoint test completed")
 
-	// 清理资源
+	// Release resources
 	ruleEngine.Stop(context.Background())
 }

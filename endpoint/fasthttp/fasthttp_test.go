@@ -40,7 +40,7 @@ var testdataFolder = "../../testdata/rule"
 var testServer = ":9092"
 var testConfigServer = ":9093"
 
-// 测试请求/响应消息
+// Test request/response messages
 func TestFastHttpMessage(t *testing.T) {
 	t.Run("Request", func(t *testing.T) {
 		var request = &RequestMessage{}
@@ -80,7 +80,7 @@ func TestRouterId(t *testing.T) {
 
 func TestFastHttpEndpointConfig(t *testing.T) {
 	config := engine.NewConfig(types.WithDefaultPool())
-	//创建fasthttp endpoint服务
+	//Create the fastHTTP endpoint service
 	var nodeConfig = make(types.Configuration)
 	_ = maps.Map2Struct(&Config{
 		Server: testConfigServer,
@@ -121,7 +121,7 @@ func TestFastHttpEndpointConfig(t *testing.T) {
 
 func TestFastHttpEndpoint(t *testing.T) {
 	config := engine.NewConfig(types.WithDefaultPool())
-	//创建fasthttp endpoint服务
+	//Create the fastHTTP endpoint service
 	var nodeConfig = make(types.Configuration)
 	_ = maps.Map2Struct(&Config{
 		Server: ":9094",
@@ -130,12 +130,12 @@ func TestFastHttpEndpoint(t *testing.T) {
 	err := fasthttpEndpoint.Init(config, nodeConfig)
 	assert.Nil(t, err)
 
-	//启动服务
+	//Start the server
 	err = fasthttpEndpoint.Start()
 	assert.Nil(t, err)
 	time.Sleep(time.Millisecond * 200)
 
-	//GET 测试
+	//GET the test
 	testGetUrl := "/api/v1/test/:id"
 	getRouter := impl.NewRouter().From(testGetUrl).Transform(transformMsg(func(ctx types.RuleContext, msg types.RuleMsg) types.RuleMsg {
 		msg.SetData(fmt.Sprintf(`{"method":"%s","data":%s}`, "GET", msg.GetData()))
@@ -148,7 +148,7 @@ func TestFastHttpEndpoint(t *testing.T) {
 	_, err = fasthttpEndpoint.AddRouter(getRouter, "GET")
 	assert.Nil(t, err)
 
-	//POST 测试
+	//POST testing
 	testPostUrl := "/api/v1/test"
 	postRouter := impl.NewRouter().From(testPostUrl).Transform(transformMsg(func(ctx types.RuleContext, msg types.RuleMsg) types.RuleMsg {
 		msg.SetData(fmt.Sprintf(`{"method":"%s","data":%s}`, "POST", msg.GetData()))
@@ -163,7 +163,7 @@ func TestFastHttpEndpoint(t *testing.T) {
 
 	time.Sleep(time.Millisecond * 200)
 
-	// 测试GET请求
+	// Test the GET request
 	resp, err := http.Get("http://localhost:9094/api/v1/test/123?name=test")
 	assert.Nil(t, err)
 	defer resp.Body.Close()
@@ -171,7 +171,7 @@ func TestFastHttpEndpoint(t *testing.T) {
 	assert.Nil(t, err)
 	t.Logf("GET response: %s", string(body))
 
-	// 测试POST请求
+	// Test POST requests
 	postData := `{"name":"test","value":123}`
 	resp, err = http.Post("http://localhost:9094/api/v1/test", "application/json", bytes.NewBufferString(postData))
 	assert.Nil(t, err)
@@ -183,7 +183,7 @@ func TestFastHttpEndpoint(t *testing.T) {
 	fasthttpEndpoint.Destroy()
 }
 
-// 测试静态文件服务功能
+// Testing the static file service functionality
 func TestFastHttpStaticFiles(t *testing.T) {
 	config := engine.NewConfig(types.WithDefaultPool())
 	var nodeConfig = make(types.Configuration)
@@ -194,18 +194,18 @@ func TestFastHttpStaticFiles(t *testing.T) {
 	err := fasthttpEndpoint.Init(config, nodeConfig)
 	assert.Nil(t, err)
 
-	// 启动服务
+	// Start the server
 	err = fasthttpEndpoint.Start()
 	assert.Nil(t, err)
 	time.Sleep(time.Millisecond * 200)
 
-	// 配置静态文件映射 - 使用相对路径
+	// Configure static file mappings - using relative paths
 	resourceMapping := "/static=testdata/static,/assets=testdata/static/css"
 	fasthttpEndpoint.RegisterStaticFiles(resourceMapping)
 
 	time.Sleep(time.Millisecond * 100)
 
-	// 测试JSON文件
+	// Test the JSON file
 	t.Run("JSON File", func(t *testing.T) {
 		resp, err := http.Get("http://localhost:9100/static/data.json")
 		assert.Nil(t, err)
@@ -225,7 +225,7 @@ func TestFastHttpStaticFiles(t *testing.T) {
 		//t.Logf("JSON response: %s", string(body))
 	})
 
-	// 测试不存在的文件
+	// Test documents that don't exist
 	t.Run("Not Found File", func(t *testing.T) {
 		resp, err := http.Get("http://localhost:9100/static/nonexistent.txt")
 		assert.Nil(t, err)
@@ -235,13 +235,13 @@ func TestFastHttpStaticFiles(t *testing.T) {
 		//t.Logf("404 response status: %d", resp.StatusCode)
 	})
 
-	// 测试目录访问（应该返回index.html或目录列表）
+	// Test directory access (should return index.html or directory list)
 	t.Run("Directory Access", func(t *testing.T) {
 		resp, err := http.Get("http://localhost:9100/static/")
 		assert.Nil(t, err)
 		defer resp.Body.Close()
 
-		// 应该返回index.html或者目录列表
+		// It should return index.html or a list of directories
 		assert.True(t, resp.StatusCode == 200 || resp.StatusCode == 404)
 		t.Logf("Directory access status: %d", resp.StatusCode)
 	})
@@ -249,7 +249,7 @@ func TestFastHttpStaticFiles(t *testing.T) {
 	fasthttpEndpoint.Destroy()
 }
 
-// 测试CORS功能
+// Testing CORS functionality
 func TestFastHttpCORS(t *testing.T) {
 	config := engine.NewConfig(types.WithDefaultPool())
 	var nodeConfig = make(types.Configuration)
@@ -261,7 +261,7 @@ func TestFastHttpCORS(t *testing.T) {
 	err := fasthttpEndpoint.Init(config, nodeConfig)
 	assert.Nil(t, err)
 
-	// 添加测试路由
+	// Add test routes
 	router := impl.NewRouter().From("/cors").Transform(transformMsg(func(ctx types.RuleContext, msg types.RuleMsg) types.RuleMsg {
 		msg.SetData(`{"cors":"enabled"}`)
 		return msg
@@ -277,7 +277,7 @@ func TestFastHttpCORS(t *testing.T) {
 	assert.Nil(t, err)
 	time.Sleep(time.Millisecond * 200)
 
-	// 测试OPTIONS请求
+	// Test the OPTIONS request
 	client := &http.Client{}
 	req, _ := http.NewRequest("OPTIONS", "http://localhost:9098/cors", nil)
 	req.Header.Set("Access-Control-Request-Method", "POST")
@@ -285,31 +285,31 @@ func TestFastHttpCORS(t *testing.T) {
 	assert.Nil(t, err)
 	defer resp.Body.Close()
 
-	// 验证CORS头
+	// Verify the CORS head
 	assert.Equal(t, "*", resp.Header.Get("Access-Control-Allow-Origin"))
 	assert.Equal(t, "*", resp.Header.Get("Access-Control-Allow-Methods"))
 	assert.Equal(t, "*", resp.Header.Get("Access-Control-Allow-Headers"))
 
-	// 测试实际POST请求
+	// Test the actual POST request
 	resp, err = http.Post("http://localhost:9098/cors", "application/json", bytes.NewBufferString(`{"test":"cors"}`))
 	assert.Nil(t, err)
 	defer resp.Body.Close()
 
-	// 验证响应中的CORS头
+	// Verify the CORS head in the response
 	assert.Equal(t, "*", resp.Header.Get("Access-Control-Allow-Origin"))
 
 	fasthttpEndpoint.Destroy()
 }
 
-// 测试配置参数
+// Test configuration parameters
 func TestFastHttpConfig(t *testing.T) {
 	config := engine.NewConfig(types.WithDefaultPool())
 	var nodeConfig = make(types.Configuration)
 	_ = maps.Map2Struct(&Config{
 		Server:           ":9097",
-		ReadTimeout:      5,    // 5秒
-		WriteTimeout:     5,    // 5秒
-		IdleTimeout:      30,   // 30秒
+		ReadTimeout:      5,    // 5 seconds
+		WriteTimeout:     5,    // 5 seconds
+		IdleTimeout:      30,   // 30 seconds
 		MaxRequestSize:   "2M", // 2MB
 		Concurrency:      512,
 		DisableKeepalive: false,
@@ -318,7 +318,7 @@ func TestFastHttpConfig(t *testing.T) {
 	err := fasthttpEndpoint.Init(config, nodeConfig)
 	assert.Nil(t, err)
 
-	// 验证配置
+	// Verify configuration
 	assert.Equal(t, ":9097", fasthttpEndpoint.Config.Server)
 	assert.Equal(t, 5, fasthttpEndpoint.Config.ReadTimeout)
 	assert.Equal(t, 5, fasthttpEndpoint.Config.WriteTimeout)
@@ -330,7 +330,7 @@ func TestFastHttpConfig(t *testing.T) {
 	err = fasthttpEndpoint.Start()
 	assert.Nil(t, err)
 
-	// 验证服务器配置
+	// Verify server configuration
 	server := fasthttpEndpoint.GetServer()
 	assert.NotNil(t, server)
 	assert.Equal(t, 5*time.Second, server.ReadTimeout)
@@ -343,7 +343,7 @@ func TestFastHttpConfig(t *testing.T) {
 	fasthttpEndpoint.Destroy()
 }
 
-// 测试热更新（Restart）功能
+// Test the hot update (Restart) feature
 func TestFastHttpRestart(t *testing.T) {
 	config := engine.NewConfig(types.WithDefaultPool())
 	var nodeConfig = make(types.Configuration)
@@ -354,12 +354,12 @@ func TestFastHttpRestart(t *testing.T) {
 	err := fasthttpEndpoint.Init(config, nodeConfig)
 	assert.Nil(t, err)
 
-	// 启动服务
+	// Start the server
 	err = fasthttpEndpoint.Start()
 	assert.Nil(t, err)
 	time.Sleep(time.Millisecond * 200)
 
-	// 添加第一个路由
+	// Add the first route
 	testUrl1 := "/api/v1/test1"
 	router1 := impl.NewRouter().From(testUrl1).Transform(transformMsg(func(ctx types.RuleContext, msg types.RuleMsg) types.RuleMsg {
 		msg.SetData(`{"route":"test1","data":"` + msg.GetData() + `"}`)
@@ -372,7 +372,7 @@ func TestFastHttpRestart(t *testing.T) {
 	_, err = fasthttpEndpoint.AddRouter(router1, "GET")
 	assert.Nil(t, err)
 
-	// 添加第二个路由
+	// Add a second route
 	testUrl2 := "/api/v1/test2"
 	router2 := impl.NewRouter().From(testUrl2).Transform(transformMsg(func(ctx types.RuleContext, msg types.RuleMsg) types.RuleMsg {
 		msg.SetData(`{"route":"test2","data":"` + msg.GetData() + `"}`)
@@ -387,9 +387,9 @@ func TestFastHttpRestart(t *testing.T) {
 
 	time.Sleep(time.Millisecond * 200)
 
-	// 测试重启前的路由是否正常工作
+	// Test whether the route before the restart is working properly
 	t.Run("BeforeRestart", func(t *testing.T) {
-		// 测试GET路由
+		// Test GET routing
 		resp, err := http.Get("http://localhost:9099/api/v1/test1?param=value1")
 		assert.Nil(t, err)
 		defer resp.Body.Close()
@@ -399,7 +399,7 @@ func TestFastHttpRestart(t *testing.T) {
 		t.Logf("GET response before restart: %s", string(body))
 		assert.True(t, strings.Contains(string(body), "test1"))
 
-		// 测试POST路由
+		// Test POST routing
 		postData := `{"test":"data"}`
 		resp, err = http.Post("http://localhost:9099/api/v1/test2", "application/json", bytes.NewBufferString(postData))
 		assert.Nil(t, err)
@@ -411,16 +411,16 @@ func TestFastHttpRestart(t *testing.T) {
 		assert.True(t, strings.Contains(string(body), "test2"))
 	})
 
-	// 执行热更新重启
+	// Perform a hot update restart
 	t.Run("Restart", func(t *testing.T) {
 		err = fasthttpEndpoint.Restart()
 		assert.Nil(t, err)
-		time.Sleep(time.Millisecond * 500) // 等待重启完成
+		time.Sleep(time.Millisecond * 500) // Wait for the restart to complete
 	})
 
-	// 测试重启后的路由是否仍然正常工作
+	// Test whether the route is still working properly after restarting
 	t.Run("AfterRestart", func(t *testing.T) {
-		// 测试GET路由
+		// Test GET routing
 		resp, err := http.Get("http://localhost:9099/api/v1/test1?param=value2")
 		assert.Nil(t, err)
 		defer resp.Body.Close()
@@ -430,7 +430,7 @@ func TestFastHttpRestart(t *testing.T) {
 		t.Logf("GET response after restart: %s", string(body))
 		assert.True(t, strings.Contains(string(body), "test1"))
 
-		// 测试POST路由
+		// Test POST routing
 		postData := `{"test":"data_after_restart"}`
 		resp, err = http.Post("http://localhost:9099/api/v1/test2", "application/json", bytes.NewBufferString(postData))
 		assert.Nil(t, err)
@@ -442,7 +442,7 @@ func TestFastHttpRestart(t *testing.T) {
 		assert.True(t, strings.Contains(string(body), "test2"))
 	})
 
-	// 测试重启后添加新路由
+	// Test adding new routes after reboot
 	t.Run("AddNewRouterAfterRestart", func(t *testing.T) {
 		testUrl3 := "/api/v1/test3"
 		router3 := impl.NewRouter().From(testUrl3).Transform(transformMsg(func(ctx types.RuleContext, msg types.RuleMsg) types.RuleMsg {
@@ -458,7 +458,7 @@ func TestFastHttpRestart(t *testing.T) {
 
 		time.Sleep(time.Millisecond * 200)
 
-		// 测试新添加的路由
+		// Test newly added routes
 		client := &http.Client{}
 		req, _ := http.NewRequest("PUT", "http://localhost:9099/api/v1/test3", bytes.NewBufferString(`{"new":"route"}`))
 		req.Header.Set("Content-Type", "application/json")
@@ -472,9 +472,9 @@ func TestFastHttpRestart(t *testing.T) {
 		assert.True(t, strings.Contains(string(body), "test3_new"))
 	})
 
-	// 验证路由数量
+	// Verify the number of routes
 	t.Run("VerifyRouterCount", func(t *testing.T) {
-		// 应该有3个路由：GET /api/v1/test1, POST /api/v1/test2, PUT /api/v1/test3
+		// There should be three routes: GET /api/v1/test1, POST /api/v1/test2, PUT /api/v1/test3
 		assert.True(t, fasthttpEndpoint.HasRouter("GET:/api/v1/test1"))
 		assert.True(t, fasthttpEndpoint.HasRouter("POST:/api/v1/test2"))
 		assert.True(t, fasthttpEndpoint.HasRouter("PUT:/api/v1/test3"))
@@ -483,7 +483,7 @@ func TestFastHttpRestart(t *testing.T) {
 	fasthttpEndpoint.Destroy()
 }
 
-// 测试parseSize函数
+// Test the parseSize function
 func TestParseSize(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -491,7 +491,7 @@ func TestParseSize(t *testing.T) {
 		expected int
 		hasError bool
 	}{
-		// 正常情况
+		// Normal situation
 		{"空字符串", "", 4 * 1024 * 1024, false},
 		{"纯空格", "   ", 4 * 1024 * 1024, false},
 		{"字节单位", "1024", 1024, false},
@@ -510,7 +510,7 @@ func TestParseSize(t *testing.T) {
 		{"零值", "0", 0, false},
 		{"零值KB", "0K", 0, false},
 
-		// 错误情况
+		// Error case
 		{"无效格式", "abc", 0, true},
 		{"无效数字", "abc123K", 0, true},
 		{"无效单位", "123X", 0, true},
@@ -534,22 +534,22 @@ func TestParseSize(t *testing.T) {
 	}
 }
 
-// 测试parseSize边界情况
+// Test the parseSize boundary situation
 func TestParseSizeBoundary(t *testing.T) {
-	// 测试最大值
+	// Test the maximum value
 	maxGB := "4G"
 	result, err := parseSize(maxGB)
 	assert.Nil(t, err)
 	assert.Equal(t, 4*1024*1024*1024, result)
 
-	// 测试小数精度
+	// Testing decimal accuracy
 	precision := "1.999M"
 	result, err = parseSize(precision)
 	assert.Nil(t, err)
 	expected := 2096103 // int(1.999 * 1024 * 1024)
 	assert.Equal(t, expected, result)
 
-	// 测试各种格式的兼容性
+	// Test compatibility with various formats
 	formats := map[string]int{
 		"1024": 1024,
 		"1K":   1024,

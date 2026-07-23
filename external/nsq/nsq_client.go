@@ -35,40 +35,40 @@ import (
 	"github.com/rulego/rulego/utils/maps"
 )
 
-// 注册组件
+// Register the component
 func init() {
 	_ = rulego.Registry.Register(&ClientNode{})
 }
 
-// ClientNodeConfiguration NSQ客户端节点配置
+// ClientNodeConfiguration NSQ client node configuration
 type ClientNodeConfiguration struct {
-	// NSQ服务器地址
+	// NSQ server address
 	Server string `json:"server" label:"Server" desc:"NSQ server address, comma-separated for multiple" required:"true" ref:"primary"`
-	// 发布主题，支持${}变量
+	// Publish topics, support ${} variables
 	Topic string `json:"topic" label:"Topic" desc:"Publish topic. Supports ${metadata.key} and ${msg.key} substitution" required:"true"`
-	// 鉴权令牌
+	// Authority and token of authority
 	AuthToken string `json:"authToken" label:"Auth Token" desc:"NSQ authentication token" ref:"shared"`
-	// TLS证书文件
+	// TLS certificate file
 	CertFile string `json:"certFile" label:"Cert File" desc:"TLS certificate file path" ref:"shared"`
-	// TLS私钥文件
+	// TLS private key file
 	CertKeyFile string `json:"certKeyFile" label:"Cert Key File" desc:"TLS private key file path" ref:"shared"`
 }
 
-// ClientNode NSQ客户端节点
+// ClientNode NSQ client node
 type ClientNode struct {
 	base.SharedNode[*nsq.Producer]
-	// 节点配置
+	// Node configuration
 	Config ClientNodeConfiguration
-	//topic 模板
+	//topic template
 	topicTemplate el.Template
 }
 
-// Type 组件类型
+// Type returns the component type
 func (x *ClientNode) Type() string {
 	return "x/nsqClient"
 }
 
-// New 创建新实例
+// New creates an instance
 func (x *ClientNode) New() types.Node {
 	return &ClientNode{Config: ClientNodeConfiguration{
 		Server: "127.0.0.1:4150",
@@ -76,16 +76,16 @@ func (x *ClientNode) New() types.Node {
 	}}
 }
 
-// Init 初始化
+// Init initializes the component
 func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
-	// 去除配置中所有字符串值的前后空格
+	// Remove all preceding and following spaces for all string values in the configuration
 	base.NodeUtils.TrimStrings(configuration)
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
 		_ = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*nsq.Producer, error) {
 			return x.initClient()
 		}, func(client *nsq.Producer) error {
-			// 清理回调函数
+			// Cleanup callback function
 			client.Stop()
 			return nil
 		})
@@ -97,7 +97,7 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 	return err
 }
 
-// OnMsg 处理消息
+// OnMsg processes a message
 func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 
 	var evn map[string]interface{}
@@ -122,7 +122,7 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	}
 }
 
-// Destroy 销毁
+// Destroy releases resources
 func (x *ClientNode) Destroy() {
 	_ = x.SharedNode.Close()
 }
@@ -132,11 +132,11 @@ func (x *ClientNode) Desc() string {
 	return "NSQ client for publishing messages. Topic supports ${metadata.key} and ${msg.key} substitution. Routes to Success/Failure"
 }
 
-// parseAddresses 解析Server字段中的地址
-// 支持格式：
-// 1. 单个nsqd: "127.0.0.1:4150"
-// 2. 多个nsqd: "127.0.0.1:4150,127.0.0.1:4151"
-// 3. lookupd地址: "http://127.0.0.1:4161,http://127.0.0.1:4162"
+// parseAddresses parses addresses in the Server field
+// Supported formats:
+// 1. Single nsqd: "127.0.0.1:4150"
+// 2. Multiple nsqd: "127.0.0.1:4150,127.0.0.1:4151"
+// 3. lookupd address: "http://127.0.0.1:4161,http://127.0.0.1:4162"
 func (x *ClientNode) parseAddresses() (nsqdAddrs []string, lookupdAddrs []string) {
 	if x.Config.Server == "" {
 		return
@@ -149,33 +149,33 @@ func (x *ClientNode) parseAddresses() (nsqdAddrs []string, lookupdAddrs []string
 			continue
 		}
 
-		// 判断是否为lookupd地址（包含http://或https://）
+		// Determine whether it is a lookupd address (including http:// or https://)
 		if strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://") {
 			lookupdAddrs = append(lookupdAddrs, addr)
 		} else {
-			// 普通的nsqd地址
+			// A regular nsqd address
 			nsqdAddrs = append(nsqdAddrs, addr)
 		}
 	}
 	return
 }
 
-// initClient 初始化NSQ生产者客户端
+// initClient initializes the NSQ producer client
 func (x *ClientNode) initClient() (*nsq.Producer, error) {
 	config := nsq.NewConfig()
 
-	// 设置鉴权令牌
+	// Set up authentication tokens
 	if x.Config.AuthToken != "" {
 		config.AuthSecret = x.Config.AuthToken
 	}
 
-	// 设置TLS配置
+	// Set up TLS configuration
 	if x.Config.CertFile != "" && x.Config.CertKeyFile != "" {
 		config.TlsV1 = true
 		config.TlsConfig = &tls.Config{
 			InsecureSkipVerify: false,
 		}
-		// 加载证书
+		// Load certificates
 		cert, err := tls.LoadX509KeyPair(x.Config.CertFile, x.Config.CertKeyFile)
 		if err != nil {
 			return nil, err
@@ -183,24 +183,24 @@ func (x *ClientNode) initClient() (*nsq.Producer, error) {
 		config.TlsConfig.Certificates = []tls.Certificate{cert}
 	}
 
-	// 解析地址配置
+	// Parse address configuration
 	nsqdAddrs, lookupdAddrs := x.parseAddresses()
 
-	// NSQ生产者只能连接到单个nsqd，不支持lookupd
-	// 如果配置了lookupd地址，需要先通过lookupd发现nsqd地址
+	// NSQ producers can only connect to a single NSQD and do not support lookupd
+	// If you have configured a lookupd address, you need to first use lookupd to find the nsqd address
 	var targetAddr string
 	if len(nsqdAddrs) > 0 {
-		// 使用第一个nsqd地址
+		// Use the first nsqd address
 		targetAddr = nsqdAddrs[0]
 	} else if len(lookupdAddrs) > 0 {
-		// 通过lookupd API发现nsqd地址
+		// Discover nsqd addresses through the lookupd API
 		nsqdAddr, err := x.discoverNsqdFromLookupd(lookupdAddrs[0])
 		if err != nil {
 			return nil, fmt.Errorf("failed to discover nsqd from lookupd %s: %w", lookupdAddrs[0], err)
 		}
 		targetAddr = nsqdAddr
 	} else {
-		// 使用原始Server配置
+		// Use the original Server configuration
 		targetAddr = x.Config.Server
 	}
 
@@ -208,34 +208,34 @@ func (x *ClientNode) initClient() (*nsq.Producer, error) {
 	return client, err
 }
 
-// discoverNsqdFromLookupd 通过lookupd API发现可用的nsqd地址
+// discoverNsqdFromLookupd discovers available nsqd addresses through the lookupd API
 func (x *ClientNode) discoverNsqdFromLookupd(lookupdAddr string) (string, error) {
-	// 构建lookupd API URL
+	// Build lookupd API URL
 	apiURL := fmt.Sprintf("%s/nodes", strings.TrimSuffix(lookupdAddr, "/"))
-	
-	// 创建HTTP客户端，设置超时
+
+	// Create an HTTP client and set timeouts
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
-	
-	// 发送GET请求到lookupd
+
+	// Send a GET request to lookupd
 	resp, err := client.Get(apiURL)
 	if err != nil {
 		return "", fmt.Errorf("failed to query lookupd API: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("lookupd API returned status %d", resp.StatusCode)
 	}
-	
-	// 读取响应体
+
+	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("failed to read lookupd response: %w", err)
 	}
-	
-	// 解析JSON响应
+
+	// Parsing JSON responses
 	var response struct {
 		Producers []struct {
 			RemoteAddress    string `json:"remote_address"`
@@ -246,18 +246,18 @@ func (x *ClientNode) discoverNsqdFromLookupd(lookupdAddr string) (string, error)
 			Version          string `json:"version"`
 		} `json:"producers"`
 	}
-	
+
 	err = json.Unmarshal(body, &response)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse lookupd response: %w", err)
 	}
-	
-	// 检查是否有可用的nsqd节点
+
+	// Check if there are available nsqd nodes
 	if len(response.Producers) == 0 {
 		return "", errors.New("no nsqd nodes found from lookupd")
 	}
-	
-	// 返回第一个可用的nsqd地址
+
+	// Returns the first available nsqd address
 	producer := response.Producers[0]
 	var nsqdAddr string
 	if producer.BroadcastAddress != "" {
@@ -265,6 +265,6 @@ func (x *ClientNode) discoverNsqdFromLookupd(lookupdAddr string) (string, error)
 	} else {
 		nsqdAddr = fmt.Sprintf("%s:%d", producer.RemoteAddress, producer.TCPPort)
 	}
-	
+
 	return nsqdAddr, nil
 }

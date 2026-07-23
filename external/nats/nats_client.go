@@ -30,30 +30,30 @@ func init() {
 }
 
 type ClientNodeConfiguration struct {
-	// NATS服务器地址
+	// NATS server address
 	Server string `json:"server" label:"Server" desc:"NATS server address, e.g. nats://127.0.0.1:4222" required:"true" ref:"primary"`
-	// NATS用户名
+	// NATS username
 	Username string `json:"username" label:"Username" desc:"NATS username" ref:"shared"`
-	// NATS密码
+	// NATS password
 	Password string `json:"password" label:"Password" desc:"NATS password" ref:"shared"`
-	// 发布主题
+	// Release the theme
 	Topic string `json:"topic" label:"Topic" desc:"Publish topic. Supports ${metadata.key} and ${msg.key} substitution" required:"true"`
 }
 
 type ClientNode struct {
 	base.SharedNode[*nats.Conn]
-	// 节点配置
+	// Node configuration
 	Config ClientNodeConfiguration
-	// 是否正在连接NATS服务器
+	// Whether the NATS server is being connected
 	connecting int32
-	// topicTemplate 主题模板，用于解析动态主题
+	// topicTemplate, used to parse dynamic themes
 	// topicTemplate template for resolving dynamic topic
 	topicTemplate el.Template
-	// hasVar 标识模板是否包含变量
+	// hasVar identifies whether the template contains variables
 	hasVar bool
 }
 
-// Type 组件类型
+// Type returns the component type
 func (x *ClientNode) Type() string {
 	return "x/natsClient"
 }
@@ -65,14 +65,14 @@ func (x *ClientNode) New() types.Node {
 	}}
 }
 
-// Init 初始化
+// Init initializes the component
 func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
 		_ = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*nats.Conn, error) {
 			return x.initClient()
 		}, func(client *nats.Conn) error {
-			// 清理回调函数
+			// Cleanup callback function
 			client.Close()
 			return nil
 		})
@@ -80,13 +80,13 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 		if err != nil {
 			return err
 		}
-		// 检查模板是否包含变量
+		// Check if the template contains variables
 		x.hasVar = x.topicTemplate.HasVar()
 	}
 	return err
 }
 
-// OnMsg 处理消息
+// OnMsg processes a message
 func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	var topic string
 	if x.hasVar {

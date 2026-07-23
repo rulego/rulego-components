@@ -36,36 +36,36 @@ import (
 	"github.com/rulego/rulego/utils/runtime"
 )
 
-// Type 组件类型
+// Type returns the component type
 const Type = types.EndpointTypePrefix + "kafka"
 const (
-	//Topic 消息主题
+	//Topic: message topic
 	Topic = "topic"
-	//Key 消息key
+	//Key message: key
 	Key = "key"
-	//Partition 消费分区
+	//Partition (consumption partition).
 	Partition = "partition"
 )
 const (
-	// KeyResponseTopic 响应主题metadataKey
+	// KeyResponseTopic: Response topic metadataKey
 	KeyResponseTopic = "responseTopic"
-	// KeyResponseKey 响应key metadataKey
+	// KeyResponseKey Response key metadataKey
 	KeyResponseKey = "key"
-	// KeyResponsePartition 响应 消费分区metadataKey
+	// KeyResponsePartition Response: Consumed partition metadataKey
 	KeyResponsePartition = "partition"
 )
 
-// Endpoint 别名
+// Endpoint alias
 type Endpoint = Kafka
 
 var _ endpointApi.Endpoint = (*Endpoint)(nil)
 
-// 注册组件
+// Register the component
 func init() {
 	_ = endpoint.Registry.Register(&Endpoint{})
 }
 
-// RequestMessage http请求消息
+// RequestMessage http requests messages
 type RequestMessage struct {
 	request *sarama.ConsumerMessage
 	msg     *types.RuleMsg
@@ -96,7 +96,7 @@ func (r *RequestMessage) SetMsg(msg *types.RuleMsg) {
 
 func (r *RequestMessage) GetMsg() *types.RuleMsg {
 	if r.msg == nil {
-		//默认指定是JSON格式，如果不是该类型，请在process函数中修改
+		//The default specification is JSON format. If it is not this type, please modify it in the process function
 		ruleMsg := types.NewMsg(0, r.From(), types.JSON, types.NewMetadata(), string(r.Body()))
 
 		ruleMsg.Metadata.PutValue(Topic, r.From())
@@ -120,7 +120,7 @@ func (r *RequestMessage) GetError() error {
 	return r.err
 }
 
-// ResponseMessage http响应消息
+// ResponseMessage http Response message
 type ResponseMessage struct {
 	request  *sarama.ConsumerMessage
 	response sarama.SyncProducer
@@ -160,7 +160,7 @@ func (r *ResponseMessage) GetMsg() *types.RuleMsg {
 func (r *ResponseMessage) SetStatusCode(statusCode int) {
 }
 
-// 从msg.Metadata或者响应头获取
+// From msg.Metadata or response header access
 func (r *ResponseMessage) getMetadataValue(metadataName, headerName string) string {
 	var v string
 	if r.GetMsg() != nil {
@@ -221,34 +221,34 @@ type SASLConfig struct {
 }
 
 type TLSConfig struct {
-	Enable            bool `json:"enable" label:"Enable" desc:"Enable TLS encryption"`
+	Enable             bool `json:"enable" label:"Enable" desc:"Enable TLS encryption"`
 	InsecureSkipVerify bool `json:"insecureSkipVerify" label:"Skip Verify" desc:"Skip server certificate verification, disable in production"`
 }
 
-// Kafka Kafka 接收端端点
+// Kafka Kafka receiver endpoint
 type Kafka struct {
 	impl.BaseEndpoint
 	RuleConfig types.Config
-	//Config 配置
+	//Config configuration
 	Config Config
-	// brokers kafka服务器地址列表
+	// Brokers Kafka server address list
 	brokers []string
-	//消息生产者，用于响应
+	//Message producer, used for response
 	producer sarama.SyncProducer
-	// 主题和主题消费者映射关系，用于取消订阅
+	// Themes and themed consumer mapping relationships are used to unsubscribe
 	handlers map[string]sarama.ConsumerGroup
 	closed   bool
-	// 优雅关闭状态
-	isShuttingDown int32 // 使用原子操作
-	// 活跃消息处理计数器
-	activeMessages int64 // 使用原子操作
-	// 等待所有消息处理完成的channel
+	// Gracefully closed state
+	isShuttingDown int32 // Atomic operations are used
+	// Active message processing counter
+	activeMessages int64 // Atomic operations are used
+	// Waiting for all messages to be processed in the channel
 	shutdownComplete chan struct{}
-	// 关闭超时
+	// Turn off timeout
 	shutdownTimeout time.Duration
 }
 
-// Type 组件类型
+// Type returns the component type
 func (x *Kafka) Type() string {
 	return Type
 }
@@ -292,7 +292,7 @@ func (x *Kafka) getBrokerFromOldVersion(configuration types.Configuration) []str
 	}
 }
 
-// Init 初始化
+// Init initializes the component
 func (x *Kafka) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	x.Config.GroupId = strings.TrimSpace(x.Config.GroupId)
@@ -310,7 +310,7 @@ func (x *Kafka) Init(ruleConfig types.Config, configuration types.Configuration)
 	return err
 }
 
-// Destroy 销毁
+// Destroy releases resources
 func (x *Kafka) Destroy() {
 	_ = x.Close()
 }
@@ -318,24 +318,24 @@ func (x *Kafka) Destroy() {
 func (x *Kafka) Close() error {
 	x.Lock()
 
-	// 防止重复关闭
+	// Prevent repeated closing
 	if x.closed {
 		x.Unlock()
 		return nil
 	}
 
-	// 设置关闭状态，阻止新的consumer启动和新的消息处理
+	// Set the state to off, preventing new consumers from starting and processing new messages
 	x.closed = true
 	atomic.StoreInt32(&x.isShuttingDown, 1)
 
-	// 获取当前handlers的副本，避免在关闭过程中修改map
+	// Retrieve a copy of the current handler to avoid modifying the map during closing
 	handlersToClose := make(map[string]sarama.ConsumerGroup)
 	for k, v := range x.handlers {
 		handlersToClose[k] = v
 	}
 	x.Unlock()
 
-	// 阶段1：停止接收新消息 - 关闭所有consumer
+	// Stage 1: Stop receiving new messages – turn off all consumers
 	for routerId, consumer := range handlersToClose {
 		if consumer != nil {
 			if err := consumer.Close(); err != nil {
@@ -344,7 +344,7 @@ func (x *Kafka) Close() error {
 		}
 	}
 
-	// 阶段2：等待活跃消息处理完成
+	// Stage 2: Wait for active message processing to complete
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -361,12 +361,12 @@ func (x *Kafka) Close() error {
 		case <-timeout.C:
 			goto forceClose
 		case <-ticker.C:
-			// 继续等待
+			// Keep waiting
 		}
 	}
 
 forceClose:
-	// 阶段3：关闭producer
+	// Stage 3: Close the producer
 	x.Lock()
 	x.handlers = nil
 
@@ -380,13 +380,13 @@ forceClose:
 	}
 	x.Unlock()
 
-	// 在释放锁后调用BaseEndpoint.Destroy()以避免死锁
+	// After releasing the lock, BaseEndpoint.Destroy() is called to avoid deadlocks
 	x.BaseEndpoint.Destroy()
 
-	// 通知关闭完成
+	// Notification of closure completed
 	select {
 	case <-x.shutdownComplete:
-		// 已经关闭
+		// It has been closed
 	default:
 		close(x.shutdownComplete)
 	}
@@ -406,7 +406,7 @@ func (x *Kafka) AddRouter(router endpointApi.Router, params ...interface{}) (str
 	if router == nil {
 		return "", errors.New("router can not nil")
 	}
-	//初始化kafka客户端
+	//Initialize the Kafka client
 	if err := x.initKafkaProducer(); err != nil {
 		x.Printf("[ERROR] Failed to initialize Kafka producer: %v", err)
 		return "", err
@@ -425,7 +425,7 @@ func (x *Kafka) AddRouter(router endpointApi.Router, params ...interface{}) (str
 func (x *Kafka) RemoveRouter(routerId string, params ...interface{}) error {
 	x.Lock()
 	defer x.Unlock()
-	//删除订阅
+	//Delete the subscription
 	if v, ok := x.handlers[routerId]; ok {
 		delete(x.handlers, routerId)
 		err := v.Close()
@@ -441,7 +441,7 @@ func (x *Kafka) Start() error {
 	return x.initKafkaProducer()
 }
 
-// initKafkaProducer 初始化kafka生产者，用于响应
+// initKafkaProducer initializes the kafka producer for response
 func (x *Kafka) initKafkaProducer() error {
 	x.Lock()
 	defer x.Unlock()
@@ -449,9 +449,9 @@ func (x *Kafka) initKafkaProducer() error {
 		return nil
 	}
 	config := sarama.NewConfig()
-	config.Producer.Return.Successes = true // 同步模式需要设置这个参数为true
+	config.Producer.Return.Successes = true // Sync mode needs to be set to true
 
-	// 配置SASL认证
+	// Configure SASL certification
 	if x.Config.SASL.Enable {
 		config.Net.SASL.Enable = true
 		config.Net.SASL.User = x.Config.SASL.Username
@@ -469,7 +469,7 @@ func (x *Kafka) initKafkaProducer() error {
 		}
 	}
 
-	// 配置TLS
+	// Configure TLS
 	if x.Config.TLS.Enable {
 		config.Net.TLS.Enable = true
 		if x.Config.TLS.InsecureSkipVerify {
@@ -487,7 +487,7 @@ func (x *Kafka) initKafkaProducer() error {
 	return nil
 }
 
-// 创建kafka消费者
+// Create Kafka consumers
 func (x *Kafka) createTopicConsumer(router endpointApi.Router) error {
 	if form := router.GetFrom(); form != nil {
 		routerId := router.GetId()
@@ -505,13 +505,13 @@ func (x *Kafka) createTopicConsumer(router endpointApi.Router) error {
 			return fmt.Errorf("routerId %s already exists", routerId)
 		}
 		config := sarama.NewConfig()
-		// 设置重连相关配置
+		// Set the reconnection configuration settings
 		config.Consumer.Return.Errors = true
 		config.Metadata.Retry.Max = 3
 		config.Metadata.Retry.Backoff = 250 * 1000000 // 250ms
 		config.Consumer.Offsets.Initial = sarama.OffsetNewest
 
-		// 配置SASL认证
+		// Configure SASL certification
 		if x.Config.SASL.Enable {
 			config.Net.SASL.Enable = true
 			config.Net.SASL.User = x.Config.SASL.Username
@@ -529,7 +529,7 @@ func (x *Kafka) createTopicConsumer(router endpointApi.Router) error {
 			}
 		}
 
-		// 配置TLS
+		// Configure TLS
 		if x.Config.TLS.Enable {
 			config.Net.TLS.Enable = true
 			if x.Config.TLS.InsecureSkipVerify {
@@ -544,17 +544,17 @@ func (x *Kafka) createTopicConsumer(router endpointApi.Router) error {
 		}
 		x.handlers[routerId] = consumer
 
-		topics := []string{form.ToString()}                                          // 订阅的主题列表
-		handler := &consumerHandler{router: router, ep: x, ruleConfig: x.RuleConfig} // 自定义的消费者处理程序
+		topics := []string{form.ToString()}                                          // Subscribe to the topic list
+		handler := &consumerHandler{router: router, ep: x, ruleConfig: x.RuleConfig} // Custom consumer handlers
 
-		// 启动消费者goroutine，带重连机制
+		// Launch consumer goroutine with multi-link mechanism
 		go x.startConsumerWithRetry(consumer, topics, handler, routerId)
 
 	}
 	return nil
 }
 
-// 自定义消费者处理程序
+// Custom consumer handlers
 type consumerHandler struct {
 	ep         *Kafka
 	router     endpointApi.Router
@@ -565,7 +565,7 @@ func (h *consumerHandler) Setup(sarama.ConsumerGroupSession) error   { return ni
 func (h *consumerHandler) Cleanup(sarama.ConsumerGroupSession) error { return nil }
 func (h *consumerHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	for msg := range claim.Messages() {
-		// 处理消息逻辑
+		// Handling message logic
 		if h.ruleConfig.Pool != nil {
 			err := h.ruleConfig.Pool.Submit(func() {
 				h.handlerMsg(session, msg)
@@ -573,7 +573,7 @@ func (h *consumerHandler) ConsumeClaim(session sarama.ConsumerGroupSession, clai
 			if err != nil {
 				h.ep.Printf("kafka consumer handler err :%v", err)
 			}
-			// 不要立即返回错误，继续处理下一条消息
+			// Do not immediately return the error; continue processing the next message
 		} else {
 			go h.handlerMsg(session, msg)
 		}
@@ -583,7 +583,7 @@ func (h *consumerHandler) ConsumeClaim(session sarama.ConsumerGroupSession, clai
 
 func (h *consumerHandler) handlerMsg(session sarama.ConsumerGroupSession, msg *sarama.ConsumerMessage) {
 	defer func() {
-		// 减少活跃消息计数
+		// Reduce active message counts
 		atomic.AddInt64(&h.ep.activeMessages, -1)
 
 		if e := recover(); e != nil {
@@ -591,12 +591,12 @@ func (h *consumerHandler) handlerMsg(session sarama.ConsumerGroupSession, msg *s
 		}
 	}()
 
-	// 增加活跃消息计数
+	// Increase active message count
 	atomic.AddInt64(&h.ep.activeMessages, 1)
 
-	// 检查是否正在关闭，如果是则拒绝处理新消息
+	// Check if it is being closed; if so, refuse to process new messages
 	if h.ep.IsShuttingDown() {
-		session.MarkMessage(msg, "") // 仍然标记消息已处理，避免重复
+		session.MarkMessage(msg, "") // Still mark messages as processed to avoid duplication
 		return
 	}
 
@@ -617,19 +617,19 @@ func (h *consumerHandler) handlerMsg(session sarama.ConsumerGroupSession, msg *s
 	metadata.PutValue(Partition, strconv.Itoa(int(msg.Partition)))
 
 	h.ep.DoProcess(context.Background(), h.router, exchange)
-	session.MarkMessage(msg, "") // 标记消息已处理
+	session.MarkMessage(msg, "") // The message was marked as processed
 }
 
-// startConsumerWithRetry 带重连机制的消费者启动函数
+// startConsumerWithRetry is a consumer startup function with reconnection mechanism
 func (x *Kafka) startConsumerWithRetry(consumer sarama.ConsumerGroup, topics []string, handler *consumerHandler, routerId string) {
 	defer func() {
 		if consumer != nil {
 			_ = consumer.Close()
 		}
-		// 从handlers中移除已关闭的消费者 - 使用安全的清理方式
+		// Remove closed consumers from handlers using a secure cleanup method
 		x.Lock()
 		if x.handlers != nil {
-			// 只有当当前consumer确实是我们要删除的consumer时才删除
+			// Only delete if the current consumer is indeed the one we want to delete
 			if currentConsumer, exists := x.handlers[routerId]; exists && currentConsumer == consumer {
 				delete(x.handlers, routerId)
 			}
@@ -639,14 +639,14 @@ func (x *Kafka) startConsumerWithRetry(consumer sarama.ConsumerGroup, topics []s
 
 	ctx := context.Background()
 	for {
-		// 检查消费者是否已关闭
+		// Check if the consumer has been turned off
 		select {
 		case <-ctx.Done():
 			return
 		default:
 		}
 
-		// 检查消费者组是否仍在handlers中（用于判断是否被手动移除）
+		// Check if the consumer group is still in handlers (used to determine if it was manually removed)
 		x.Lock()
 		_, exists := x.handlers[routerId]
 		closed := x.closed
@@ -658,16 +658,16 @@ func (x *Kafka) startConsumerWithRetry(consumer sarama.ConsumerGroup, topics []s
 		err := consumer.Consume(ctx, topics, handler)
 		if err != nil {
 			x.Printf("[ERROR] Failed to consume for topic %s: %v", topics[0], err)
-			// 如果是致命错误，重新创建消费者
+			// If it's a fatal mistake, recreate the consumer
 			if err == sarama.ErrClosedConsumerGroup {
-				// 重新创建消费者，使用完整的配置
+				// Recreate consumers using complete configurations
 				config := sarama.NewConfig()
 				config.Consumer.Return.Errors = true
 				config.Metadata.Retry.Max = 3
 				config.Metadata.Retry.Backoff = 250 * 1000000 // 250ms
 				config.Consumer.Offsets.Initial = sarama.OffsetNewest
 
-				// 配置SASL认证
+				// Configure SASL certification
 				if x.Config.SASL.Enable {
 					config.Net.SASL.Enable = true
 					config.Net.SASL.User = x.Config.SASL.Username
@@ -685,7 +685,7 @@ func (x *Kafka) startConsumerWithRetry(consumer sarama.ConsumerGroup, topics []s
 					}
 				}
 
-				// 配置TLS
+				// Configure TLS
 				if x.Config.TLS.Enable {
 					config.Net.TLS.Enable = true
 					if x.Config.TLS.InsecureSkipVerify {
@@ -698,7 +698,7 @@ func (x *Kafka) startConsumerWithRetry(consumer sarama.ConsumerGroup, topics []s
 					x.Printf("[ERROR] Failed to recreate consumer for topic %s: %v", topics[0], createErr)
 					return
 				}
-				// 更新handlers中的消费者引用
+				// Update consumer references in handlers
 				x.Lock()
 				oldConsumer := consumer
 				if x.handlers != nil {
@@ -706,37 +706,37 @@ func (x *Kafka) startConsumerWithRetry(consumer sarama.ConsumerGroup, topics []s
 					consumer = newConsumer
 				}
 				x.Unlock()
-				// 在释放锁后关闭旧的消费者
+				// Closing the lock after the old consumer is released
 				_ = oldConsumer.Close()
 			} else {
-				// 其他错误，等待一段时间后重试
+				// Other errors, wait a while and try again
 				time.Sleep(5 * time.Second)
 			}
 		} else {
-			// 正常结束，等待一段时间后重试连接
+			// Finish as usual, wait for a while, then try the connection again
 			time.Sleep(1 * time.Second)
 		}
 	}
 }
 
-// BeginShutdown 实现 GracefulShutdown 接口，开始优雅关闭过程
+// BeginShutdown implements the GracefulShutdown interface and begins the graceful shutdown process
 func (x *Kafka) BeginShutdown(ctx context.Context) error {
-	// 设置关闭状态，防止接受新的连接和消息
+	// Set it to a closed state to prevent new connections and messages from being received
 	atomic.StoreInt32(&x.isShuttingDown, 1)
 
-	// 不立即关闭资源，而是标记状态，让正在处理的消息完成
-	// 实际的资源关闭会在Destroy()中进行
+	// Instead of immediately shutting down resources, mark the status so that the message being processed is completed
+	// The actual resource shutdown is done in Destroy().
 	return nil
 }
 
-// IsShuttingDown 实现 GracefulShutdown 接口，检查是否正在关闭
+// IsShuttingDown implements the GracefulShutdown interface to check if it is closing
 func (x *Kafka) IsShuttingDown() bool {
 	return atomic.LoadInt32(&x.isShuttingDown) == 1
 }
 
-// GetShutdownTimeout 实现 ShutdownTimeout 接口，返回关闭超时时间
+// GetShutdownTimeout implements the ShutdownTimeout interface and returns the shutdown timeout
 func (x *Kafka) GetShutdownTimeout() time.Duration {
-	// Kafka组件需要较长的时间来优雅关闭所有consumer和producer
+	// Kafka components take longer to gracefully shut down all consumers and producers
 	return 30 * time.Second
 }
 

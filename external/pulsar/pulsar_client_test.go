@@ -27,7 +27,7 @@ import (
 )
 
 func TestClientNode(t *testing.T) {
-	// 如果设置了跳过 Pulsar 测试，则跳过
+	// If you set Skip Pulsar testing, skip it
 	if os.Getenv("SKIP_PULSAR_TESTS") == "true" {
 		t.Skip("Skipping Pulsar tests")
 	}
@@ -104,7 +104,7 @@ func TestClientNode(t *testing.T) {
 }
 
 func TestClientNodeWithTemplate(t *testing.T) {
-	// 如果设置了跳过 Pulsar 测试，则跳过
+	// If you set Skip Pulsar testing, skip it
 	if os.Getenv("SKIP_PULSAR_TESTS") == "true" {
 		t.Skip("Skipping Pulsar tests")
 	}
@@ -165,7 +165,7 @@ func TestClientNodeWithTemplate(t *testing.T) {
 }
 
 func TestClientNodeWithProducerOptions(t *testing.T) {
-	// 如果设置了跳过 Pulsar 测试，则跳过
+	// If you set Skip Pulsar testing, skip it
 	if os.Getenv("SKIP_PULSAR_TESTS") == "true" {
 		t.Skip("Skipping Pulsar tests")
 	}

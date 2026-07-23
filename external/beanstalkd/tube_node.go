@@ -24,7 +24,7 @@ const (
 	Stat        = "Stat"
 	Pause       = "Pause"
 
-	//优先级
+	//Priority
 	PriHigh   uint32 = 1
 	PriNormal uint32 = 2
 	PriLow    uint32 = 3
@@ -36,7 +36,7 @@ const (
 	DefaultTube  = "default"
 )
 
-// 注册节点
+// Register the node
 func init() {
 	_ = rulego.Registry.Register(&TubeNode{})
 }
@@ -51,7 +51,7 @@ type TubeMsgParams struct {
 	Bound int
 }
 
-// TubeConfiguration 节点配置
+// TubeConfiguration node configuration
 type TubeConfiguration struct {
 	Server    string `json:"server" label:"Server" desc:"Beanstalkd server address, format: host:port" required:"true" ref:"primary"`
 	Tube      string `json:"tube" label:"Tube" desc:"Tube name, supports ${metadata.key} and ${msg.key} substitution" required:"true"`
@@ -64,45 +64,45 @@ type TubeConfiguration struct {
 	PauseTime string `json:"pauseTime" label:"Pause Time (s)" desc:"Seconds to pause the tube for pause command"`
 }
 
-// TubeNode 客户端节点，
-// 成功：转向Success链，发送消息执行结果存放在msg.Data
-// 失败：转向Failure链
+// TubeNode client node,
+// Success: Switch to the Success chain, send the message execution result, and store it in msg.Data
+// Failure: Switch to the Failure chain
 type TubeNode struct {
 	base.SharedNode[*beanstalk.Conn]
-	//节点配置
+	//Node configuration
 	Config TubeConfiguration
-	// tubeTemplate Tube名称模板，用于解析动态Tube名称
+	// tubeTemplate Tube name template, used to parse dynamic tube names
 	// tubeTemplate template for resolving dynamic tube names
 	tubeTemplate el.Template
-	// putBodyTemplate 消息内容模板，用于解析动态消息内容
+	// putBodyTemplate message content template, used to parse dynamic message content
 	// putBodyTemplate template for resolving dynamic message body
 	putBodyTemplate el.Template
-	// putPriTemplate 优先级模板，用于解析动态优先级
+	// putPriTemplate priority template, used to resolve dynamic priorities
 	// putPriTemplate template for resolving dynamic priority
 	putPriTemplate el.Template
-	// putDelayTemplate 延迟时间模板，用于解析动态延迟时间
+	// putDelayTemplate is used to resolve dynamic delay times
 	// putDelayTemplate template for resolving dynamic delay time
 	putDelayTemplate el.Template
-	// putTTRTemplate TTR模板，用于解析动态TTR时间
+	// putTTRTemplate TTR template, used to parse dynamic TTR time
 	// putTTRTemplate template for resolving dynamic TTR time
 	putTTRTemplate el.Template
-	// kickBoundTemplate Kick边界模板，用于解析动态Kick边界
+	// kickBoundTemplate is used to parse dynamic Kick boundaries
 	// kickBoundTemplate template for resolving dynamic kick bound
 	kickBoundTemplate el.Template
-	// pauseTimeTemplate 暂停时间模板，用于解析动态暂停时间
+	// pauseTimeTemplate pause time template, used to resolve dynamic pause times
 	// pauseTimeTemplate template for resolving dynamic pause time
 	pauseTimeTemplate el.Template
-	// hasVar 标识模板是否包含变量，用于优化性能
+	// hasVar identifies whether the template contains variables used to optimize performance
 	// hasVar indicates whether the template contains variables for performance optimization
 	hasVar bool
 }
 
-// Type 返回组件类型
+// Type returns the component type
 func (x *TubeNode) Type() string {
 	return "x/beanstalkdTube"
 }
 
-// New 默认参数
+// New default parameters
 func (x *TubeNode) New() types.Node {
 	return &TubeNode{Config: TubeConfiguration{
 		Server: "127.0.0.1:11300",
@@ -111,18 +111,18 @@ func (x *TubeNode) New() types.Node {
 	}}
 }
 
-// Init 初始化组件
+// Init initializes the component
 func (x *TubeNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
-		//初始化客户端
+		//Initialize the client
 		err = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, false, func() (*beanstalk.Conn, error) {
 			return x.initClient()
 		}, func(conn *beanstalk.Conn) error {
 			return conn.Close()
 		})
 	}
-	//初始化模板
+	//Initialize the template
 	x.tubeTemplate, err = el.NewTemplate(x.Config.Tube)
 	if err != nil {
 		return err
@@ -151,12 +151,12 @@ func (x *TubeNode) Init(ruleConfig types.Config, configuration types.Configurati
 	if err != nil {
 		return err
 	}
-	// 检查是否有任何模板包含变量
+	// Check if any templates contain variables
 	x.hasVar = x.tubeTemplate.HasVar() || x.putBodyTemplate.HasVar() || x.putPriTemplate.HasVar() || x.putDelayTemplate.HasVar() || x.putTTRTemplate.HasVar() || x.kickBoundTemplate.HasVar() || x.pauseTimeTemplate.HasVar()
 	return err
 }
 
-// OnMsg 处理消息
+// OnMsg processes a message
 func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	x.Locker.Lock()
 	defer x.Locker.Unlock()
@@ -282,13 +282,13 @@ func (x *TubeNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*TubeMsg
 	if x.hasVar {
 		evn = base.NodeUtils.GetEvnAndMetadata(ctx, msg)
 	}
-	// 获取tube参数
+	// Get the tube parameters
 	if !x.tubeTemplate.IsNotVar() {
 		tube = x.tubeTemplate.ExecuteAsString(evn)
 	} else if len(x.Config.Tube) > 0 {
 		tube = x.Config.Tube
 	}
-	// 获取body参数
+	// Get the body parameter
 	if !x.putBodyTemplate.IsNotVar() {
 		body = x.putBodyTemplate.ExecuteAsString(evn)
 	} else if len(x.Config.Body) > 0 {
@@ -296,7 +296,7 @@ func (x *TubeNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*TubeMsg
 	} else {
 		body = msg.GetData()
 	}
-	// 获取优先级参数
+	// Obtain priority parameters
 	var ti int
 	if !x.putPriTemplate.IsNotVar() {
 		tmp := x.putPriTemplate.ExecuteAsString(evn)
@@ -309,7 +309,7 @@ func (x *TubeNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*TubeMsg
 	if err != nil {
 		return nil, err
 	}
-	// 获取延迟参数
+	// Obtain delay parameters
 	if !x.putDelayTemplate.IsNotVar() {
 		tmp := x.putDelayTemplate.ExecuteAsString(evn)
 		delay, err = time.ParseDuration(tmp)
@@ -319,7 +319,7 @@ func (x *TubeNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*TubeMsg
 	if err != nil {
 		return nil, err
 	}
-	// 获取TTR参数
+	// Get TTR parameters
 	if !x.putTTRTemplate.IsNotVar() {
 		tmp := x.putTTRTemplate.ExecuteAsString(evn)
 		ttr, err = time.ParseDuration(tmp)
@@ -329,7 +329,7 @@ func (x *TubeNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*TubeMsg
 	if err != nil {
 		return nil, err
 	}
-	// 获取Bound数量参数
+	// Retrieve the Bound quantity parameter
 	if !x.kickBoundTemplate.IsNotVar() {
 		tmp := x.kickBoundTemplate.ExecuteAsString(evn)
 		bound, err = strconv.Atoi(tmp)
@@ -339,7 +339,7 @@ func (x *TubeNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*TubeMsg
 	if err != nil {
 		return nil, err
 	}
-	// 获取暂停时间参数
+	// Obtain pause time parameters
 	if !x.pauseTimeTemplate.IsNotVar() {
 		tmp := x.pauseTimeTemplate.ExecuteAsString(evn)
 		pause, err = time.ParseDuration(tmp)
@@ -359,14 +359,14 @@ func (x *TubeNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*TubeMsg
 	return &params, nil
 }
 
-// Printf 打印日志
+// Printf prints logs
 func (x *TubeNode) Printf(format string, v ...interface{}) {
 	if x.RuleConfig.Logger != nil {
 		x.RuleConfig.Logger.Printf(format, v...)
 	}
 }
 
-// 初始化连接
+// Initialize the connection
 func (x *TubeNode) initClient() (*beanstalk.Conn, error) {
 	conn, err := beanstalk.Dial("tcp", x.Config.Server)
 	if err != nil {

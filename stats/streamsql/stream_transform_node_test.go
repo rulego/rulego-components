@@ -30,7 +30,7 @@ import (
 	"github.com/rulego/rulego/utils/str"
 )
 
-// TestStreamTransformNode_BasicTransform 测试基本数据转换功能
+// TestStreamTransformNode_BasicTransform Test basic data conversion functions
 func TestStreamTransformNode_BasicTransform(t *testing.T) {
 	t.Run("温度单位转换", func(t *testing.T) {
 		sql := "SELECT deviceId, temperature * 1.8 + 32 as temp_fahrenheit, humidity FROM stream"
@@ -43,7 +43,7 @@ func TestStreamTransformNode_BasicTransform(t *testing.T) {
 
 		assert.Equal(t, 2, len(results), "应该有2个转换结果")
 
-		// 验证第一个结果
+		// Verify the first result
 		firstResult := results[0]
 		assert.Equal(t, "sensor001", firstResult["deviceId"], "设备ID应该正确")
 		assert.Equal(t, float64(77), firstResult["temp_fahrenheit"].(float64), "华氏温度应该正确")
@@ -54,7 +54,7 @@ func TestStreamTransformNode_BasicTransform(t *testing.T) {
 		sql := "SELECT temperature, humidity FROM stream WHERE temperature > 20"
 		testData := []map[string]interface{}{
 			{"temperature": 25.0, "humidity": 60, "other": "ignore"},
-			{"temperature": 15.0, "humidity": 70, "other": "ignore"}, // 会被过滤
+			{"temperature": 15.0, "humidity": 70, "other": "ignore"}, // It will be filtered
 			{"temperature": 30.0, "humidity": 80, "other": "ignore"},
 		}
 
@@ -62,7 +62,7 @@ func TestStreamTransformNode_BasicTransform(t *testing.T) {
 
 		assert.Equal(t, 2, len(results), "应该有2个过滤结果")
 
-		// 验证结果不包含其他字段
+		// The validation result does not include other fields
 		for _, result := range results {
 			_, hasOther := result["other"]
 			assert.False(t, hasOther, "结果不应包含未选择的字段")
@@ -88,7 +88,7 @@ func TestStreamTransformNode_BasicTransform(t *testing.T) {
 	})
 }
 
-// TestStreamTransformNode_Validation 测试节点配置验证
+// TestStreamTransformNode_Validation Test node configuration verification
 func TestStreamTransformNode_Validation(t *testing.T) {
 	t.Run("空SQL验证", func(t *testing.T) {
 		node := &StreamTransformNode{}
@@ -133,7 +133,7 @@ func TestStreamTransformNode_Validation(t *testing.T) {
 	})
 }
 
-// TestStreamTransformNode_ConcurrentProcessing 测试并发处理
+// TestStreamTransformNode_ConcurrentProcessing Test concurrency processing
 func TestStreamTransformNode_ConcurrentProcessing(t *testing.T) {
 	sql := "SELECT deviceId, temperature, humidity FROM stream WHERE temperature > 20"
 
@@ -143,7 +143,7 @@ func TestStreamTransformNode_ConcurrentProcessing(t *testing.T) {
 	var mu sync.Mutex
 	var results []map[string]interface{}
 
-	// 创建测试规则链
+	// Create a chain of test rules
 	ruleChainConfig := fmt.Sprintf(`{
 		"ruleChain": {
 			"id": "concurrent_transform_test",
@@ -170,7 +170,7 @@ func TestStreamTransformNode_ConcurrentProcessing(t *testing.T) {
 	assert.Nil(t, err, "规则引擎创建应该成功")
 	defer engine.Del(chainId)
 
-	// 并发测试参数
+	// Concurrent test parameters
 	const numGoroutines = 10
 	const messagesPerGoroutine = 20
 
@@ -182,7 +182,7 @@ func TestStreamTransformNode_ConcurrentProcessing(t *testing.T) {
 			defer wg.Done()
 
 			for j := 0; j < messagesPerGoroutine; j++ {
-				temperature := 15.0 + float64(j%30) // 温度范围 15-45
+				temperature := 15.0 + float64(j%30) // Temperature range: 15-45°C
 				testData := map[string]interface{}{
 					"deviceId":    fmt.Sprintf("sensor_%d", goroutineId),
 					"temperature": temperature,
@@ -198,7 +198,7 @@ func TestStreamTransformNode_ConcurrentProcessing(t *testing.T) {
 					} else {
 						atomic.AddInt32(&successCount, 1)
 
-						// 收集结果
+						// Collect the results
 						var result map[string]interface{}
 						if jsonErr := json.Unmarshal([]byte(msg.Data.String()), &result); jsonErr == nil {
 							mu.Lock()
@@ -208,29 +208,29 @@ func TestStreamTransformNode_ConcurrentProcessing(t *testing.T) {
 					}
 				}))
 
-				time.Sleep(time.Millisecond) // 模拟真实间隔
+				time.Sleep(time.Millisecond) // Simulates real intervals
 			}
 		}(i)
 	}
 
 	wg.Wait()
 
-	// 等待所有消息处理完成
+	// Wait for all messages to be processed
 	time.Sleep(500 * time.Millisecond)
 
 	finalSuccess := atomic.LoadInt32(&successCount)
 
 	assert.True(t, finalSuccess > 0, "应该有成功处理的消息")
-	
-	// 验证所有结果都有正确的字段
+
+	// Verify that all results have the correct fields
 	mu.Lock()
 	resultsCount := len(results)
 	resultsCopy := make([]map[string]interface{}, len(results))
 	copy(resultsCopy, results)
 	mu.Unlock()
-	
+
 	assert.True(t, resultsCount > 0, "应该收集到转换结果")
-	
+
 	for _, result := range resultsCopy {
 		assert.NotNil(t, result["deviceId"], "结果应该包含设备ID")
 		assert.NotNil(t, result["temperature"], "结果应该包含温度")
@@ -238,12 +238,12 @@ func TestStreamTransformNode_ConcurrentProcessing(t *testing.T) {
 	}
 }
 
-// TestStreamTransformNode_EdgeCases 测试边界情况
+// TestStreamTransformNode_EdgeCases Test boundary conditions
 func TestStreamTransformNode_EdgeCases(t *testing.T) {
 	t.Run("空数据处理", func(t *testing.T) {
 		sql := "SELECT * FROM stream"
 		testData := []map[string]interface{}{
-			{}, // 空对象
+			{}, // Empty objects
 		}
 
 		results := testStreamTransform(t, sql, testData, "empty data test")
@@ -274,19 +274,19 @@ func TestStreamTransformNode_EdgeCases(t *testing.T) {
 		results := testStreamTransform(t, sql, testData, "data types test")
 		assert.Equal(t, 2, len(results), "不同数据类型应该被正确处理")
 
-		// 验证数据类型保持
+		// Verify data type retention
 		assert.Equal(t, float64(42), results[0]["intVal"].(float64), "整数应该被正确处理")
 		assert.Equal(t, 3.14, results[0]["floatVal"].(float64), "浮点数应该被正确处理")
 		assert.Equal(t, true, results[0]["boolVal"].(bool), "布尔值应该被正确处理")
 	})
 }
 
-// TestStreamTransformNode_ArrayInput 测试数组输入处理
+// TestStreamTransformNode_ArrayInput Test array input processing
 func TestStreamTransformNode_ArrayInput(t *testing.T) {
 	t.Run("处理JSON数组输入-全部成功", func(t *testing.T) {
 		sql := "SELECT temperature * 1.8 + 32 as temp_fahrenheit, deviceId FROM stream"
 
-		// 准备数组测试数据
+		// Prepare array test data
 		arrayData := []map[string]interface{}{
 			{"temperature": 0.0, "deviceId": "sensor001"},   // 32°F
 			{"temperature": 100.0, "deviceId": "sensor002"}, // 212°F
@@ -297,7 +297,7 @@ func TestStreamTransformNode_ArrayInput(t *testing.T) {
 
 		assert.Equal(t, 3, len(results), "应该有3个转换结果")
 
-		// 验证转换结果
+		// Verify the conversion results
 		expectedTemps := []float64{32.0, 212.0, 77.0}
 		for i, result := range results {
 			assert.Equal(t, expectedTemps[i], result["temp_fahrenheit"].(float64),
@@ -310,19 +310,19 @@ func TestStreamTransformNode_ArrayInput(t *testing.T) {
 	t.Run("处理JSON数组输入-部分过滤", func(t *testing.T) {
 		sql := "SELECT temperature, deviceId FROM stream WHERE temperature > 20"
 
-		// 准备包含过滤条件的数组测试数据
+		// Prepare array test data containing filtering conditions
 		arrayData := []map[string]interface{}{
-			{"temperature": 15.0, "deviceId": "sensor001"}, // 被过滤
-			{"temperature": 25.0, "deviceId": "sensor002"}, // 通过
-			{"temperature": 10.0, "deviceId": "sensor003"}, // 被过滤
-			{"temperature": 30.0, "deviceId": "sensor004"}, // 通过
+			{"temperature": 15.0, "deviceId": "sensor001"}, // Filtered
+			{"temperature": 25.0, "deviceId": "sensor002"}, // Pass
+			{"temperature": 10.0, "deviceId": "sensor003"}, // Filtered
+			{"temperature": 30.0, "deviceId": "sensor004"}, // Pass
 		}
 
 		results := testStreamTransformArray(t, sql, arrayData, "array input - partial filtering")
 
 		assert.Equal(t, 2, len(results), "应该有2个过滤后的结果")
 
-		// 验证过滤结果
+		// Verify the filtering results
 		for _, result := range results {
 			temp := result["temperature"].(float64)
 			assert.True(t, temp > 20, "过滤后的温度应该大于20")
@@ -332,7 +332,7 @@ func TestStreamTransformNode_ArrayInput(t *testing.T) {
 	t.Run("处理JSON数组输入-全部过滤", func(t *testing.T) {
 		sql := "SELECT temperature, deviceId FROM stream WHERE temperature > 100"
 
-		// 准备全部被过滤的数组测试数据
+		// Prepare all filtered array test data
 		arrayData := []map[string]interface{}{
 			{"temperature": 15.0, "deviceId": "sensor001"},
 			{"temperature": 25.0, "deviceId": "sensor002"},
@@ -345,7 +345,7 @@ func TestStreamTransformNode_ArrayInput(t *testing.T) {
 	t.Run("处理空数组输入", func(t *testing.T) {
 		sql := "SELECT temperature, deviceId FROM stream"
 
-		// 空数组
+		// Empty array
 		arrayData := []map[string]interface{}{}
 
 		testStreamTransformArrayFailure(t, sql, arrayData, "empty array input")
@@ -364,14 +364,14 @@ func TestStreamTransformNode_ArrayInput(t *testing.T) {
 
 		assert.Equal(t, 3, len(results), "应该有3个复杂转换结果")
 
-		// 验证复杂转换结果
+		// Validate complex conversion results
 		for i, result := range results {
 			assert.NotNil(t, result["deviceId"], "应该包含设备ID")
 			assert.NotNil(t, result["temperature"], "应该包含温度")
 			assert.NotNil(t, result["humidity"], "应该包含湿度")
 			assert.NotNil(t, result["temp_fahrenheit"], "应该包含华氏温度")
 
-			// 验证华氏温度计算正确性
+			// Verify the accuracy of Fahrenheit temperature calculations
 			temp := result["temperature"].(float64)
 			expectedFahrenheit := temp*1.8 + 32
 			actualFahrenheit := result["temp_fahrenheit"].(float64)
@@ -381,7 +381,7 @@ func TestStreamTransformNode_ArrayInput(t *testing.T) {
 	})
 }
 
-// TestStreamTransformNode_DataTypeValidation 测试数据类型校验
+// TestStreamTransformNode_DataTypeValidation Test data type validation
 func TestStreamTransformNode_DataTypeValidation(t *testing.T) {
 	sql := "SELECT temperature, deviceId FROM stream WHERE temperature > 20"
 
@@ -487,14 +487,14 @@ func TestStreamTransformNode_DataTypeValidation(t *testing.T) {
 	}
 }
 
-// testStreamTransform 通用的转换测试辅助函数
+// testStreamTransform is a general conversion test auxiliary function
 func testStreamTransform(t *testing.T, sql string, testData []map[string]interface{}, description string) []map[string]interface{} {
 	config := engine.NewConfig(types.WithDefaultPool())
 	var results []map[string]interface{}
 	var successCount int32
 	var mu sync.Mutex
 
-	// 创建测试规则链
+	// Create a chain of test rules
 	ruleChainConfig := fmt.Sprintf(`{
 		"ruleChain": {
 			"id": "transform_test_chain",
@@ -521,7 +521,7 @@ func testStreamTransform(t *testing.T, sql string, testData []map[string]interfa
 	assert.Nil(t, err, "规则引擎创建应该成功")
 	defer engine.Del(chainId)
 
-	// 发送测试数据
+	// Send test data
 	for _, data := range testData {
 		msgData, _ := json.Marshal(data)
 		msg := types.NewMsg(0, "TEST", types.JSON, types.NewMetadata(), string(msgData))
@@ -530,7 +530,7 @@ func testStreamTransform(t *testing.T, sql string, testData []map[string]interfa
 			if err == nil && msg.Metadata.GetValue(Match) == MatchTrue {
 				atomic.AddInt32(&successCount, 1)
 
-				// 解析转换结果
+				// Parse the conversion results
 				var result map[string]interface{}
 				if jsonErr := json.Unmarshal([]byte(msg.Data.String()), &result); jsonErr == nil {
 					mu.Lock()
@@ -540,13 +540,13 @@ func testStreamTransform(t *testing.T, sql string, testData []map[string]interfa
 			}
 		}))
 
-		time.Sleep(10 * time.Millisecond) // 给处理时间
+		time.Sleep(10 * time.Millisecond) // Give them time to process
 	}
 
-	// 等待处理完成
+	// Wait for processing to complete
 	time.Sleep(100 * time.Millisecond)
 
-	// 使用互斥锁保护对 results 的读取
+	// Use mutex locks to protect results reading
 	mu.Lock()
 	resultsCopy := make([]map[string]interface{}, len(results))
 	copy(resultsCopy, results)
@@ -555,14 +555,14 @@ func testStreamTransform(t *testing.T, sql string, testData []map[string]interfa
 	return resultsCopy
 }
 
-// testStreamTransformArray 数组转换测试辅助函数（成功情况）
+// testStreamTransformArray array conversion test auxiliary function (success status)
 func testStreamTransformArray(t *testing.T, sql string, testData []map[string]interface{}, description string) []map[string]interface{} {
 	config := engine.NewConfig(types.WithDefaultPool())
 	var results []map[string]interface{}
 	var successCount int32
 	var mu sync.Mutex
 
-	// 创建测试规则链
+	// Create a chain of test rules
 	ruleChainConfig := fmt.Sprintf(`{
 		"ruleChain": {
 			"id": "array_transform_test_chain",
@@ -589,7 +589,7 @@ func testStreamTransformArray(t *testing.T, sql string, testData []map[string]in
 	assert.Nil(t, err, "规则引擎创建应该成功")
 	defer engine.Del(chainId)
 
-	// 发送数组测试数据
+	// Send array test data
 	msgData, _ := json.Marshal(testData)
 	msg := types.NewMsg(0, "TEST", types.JSON, types.NewMetadata(), string(msgData))
 
@@ -597,7 +597,7 @@ func testStreamTransformArray(t *testing.T, sql string, testData []map[string]in
 		if err == nil && msg.Metadata.GetValue(Match) == MatchTrue {
 			atomic.AddInt32(&successCount, 1)
 
-			// 解析转换结果数组
+			// Parse the array of conversion results
 			var resultArray []map[string]interface{}
 			if jsonErr := json.Unmarshal([]byte(msg.Data.String()), &resultArray); jsonErr == nil {
 				mu.Lock()
@@ -612,22 +612,22 @@ func testStreamTransformArray(t *testing.T, sql string, testData []map[string]in
 	finalSuccess := atomic.LoadInt32(&successCount)
 
 	assert.Equal(t, int32(1), finalSuccess, "数组应该成功转换")
-	
-	// 使用互斥锁保护对 results 的读取
+
+	// Use mutex locks to protect results reading
 	mu.Lock()
 	resultsCopy := make([]map[string]interface{}, len(results))
 	copy(resultsCopy, results)
 	mu.Unlock()
-	
+
 	return resultsCopy
 }
 
-// testStreamTransformArrayFailure 数组转换测试辅助函数（失败情况）
+// testStreamTransformArrayFailure array conversion test auxiliary function (failure situation)
 func testStreamTransformArrayFailure(t *testing.T, sql string, testData []map[string]interface{}, description string) {
 	config := engine.NewConfig(types.WithDefaultPool())
 	var failureCount int32
 
-	// 创建测试规则链
+	// Create a chain of test rules
 	ruleChainConfig := fmt.Sprintf(`{
 		"ruleChain": {
 			"id": "array_transform_failure_test",
@@ -654,7 +654,7 @@ func testStreamTransformArrayFailure(t *testing.T, sql string, testData []map[st
 	assert.Nil(t, err, "规则引擎创建应该成功")
 	defer engine.Del(chainId)
 
-	// 发送数组测试数据
+	// Send array test data
 	msgData, _ := json.Marshal(testData)
 	msg := types.NewMsg(0, "TEST", types.JSON, types.NewMetadata(), string(msgData))
 

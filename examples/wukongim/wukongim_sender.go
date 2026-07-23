@@ -26,12 +26,12 @@ import (
 	_ "github.com/rulego/rulego-components/external/wukongim"
 )
 
-// 测试x/wukongimClient
+// Test x/wukongimClient
 func main() {
 
 	config := rulego.NewConfig()
 
-	//初始化规则引擎实例
+	//Initialize the rule engine instance
 	ruleEngine, err := rulego.New("rule01", []byte(chainJsonFile), rulego.WithConfig(config))
 	if err != nil {
 		panic(err)
@@ -43,7 +43,7 @@ func main() {
 
 	ruleEngine.OnMsg(msg, types.WithEndFunc(func(ctx types.RuleContext, msg types.RuleMsg, err error) {
 		fmt.Println("msg处理结果=====")
-		//得到规则链处理结果
+		//Obtain the result of the rule chain processing
 		fmt.Println(msg, err)
 	}))
 	time.Sleep(time.Second * 1)

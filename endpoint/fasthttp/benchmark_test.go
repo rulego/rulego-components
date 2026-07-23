@@ -34,11 +34,11 @@ package fasthttp
 //	"time"
 //)
 //
-//// 性能对比测试：FastHTTP vs 标准HTTP
+//Performance comparison test: FastHTTP vs Standard HTTP
 //func BenchmarkPerformanceComparison(b *testing.B) {
 //	testData := `{"name":"performance_test","value":12345,"data":"` + string(make([]byte, 512)) + `"}`
 //
-//	// FastHTTP 性能测试
+//	FastHTTP performance test
 //	b.Run("FastHTTP_Endpoint", func(b *testing.B) {
 //		config := engine.NewConfig(types.WithDefaultPool())
 //		var nodeConfig = make(types.Configuration)
@@ -52,7 +52,7 @@ package fasthttp
 //			b.Fatal(err)
 //		}
 //
-//		// 添加测试路由
+//		Add test routes
 //		router := impl.NewRouter().From("/benchmark").Transform(transformMsg(func(ctx types.RuleContext, msg types.RuleMsg) types.RuleMsg {
 //			msg.SetData(fmt.Sprintf(`{"processed":true,"timestamp":%d,"original":%s}`, time.Now().UnixNano(), msg.GetData()))
 //			return msg
@@ -88,7 +88,7 @@ package fasthttp
 //		fasthttpEndpoint.Destroy()
 //	})
 //
-//	// 标准HTTP 性能测试
+//	Standard HTTP performance testing
 //	b.Run("Standard_HTTP_Endpoint", func(b *testing.B) {
 //		config := engine.NewConfig(types.WithDefaultPool())
 //		var nodeConfig = make(types.Configuration)
@@ -101,7 +101,7 @@ package fasthttp
 //			b.Fatal(err)
 //		}
 //
-//		// 添加测试路由
+//		Add test routes
 //		router := impl.NewRouter().From("/benchmark").Transform(transformMsg(func(ctx types.RuleContext, msg types.RuleMsg) types.RuleMsg {
 //			msg.SetData(fmt.Sprintf(`{"processed":true,"timestamp":%d,"original":%s}`, time.Now().UnixNano(), msg.GetData()))
 //			return msg
@@ -138,7 +138,7 @@ package fasthttp
 //	})
 //}
 //
-//// 内存分配对比测试
+//Memory allocation comparison test
 //func BenchmarkMemoryAllocation(b *testing.B) {
 //	testData := `{"test":"memory","size":1024}`
 //
@@ -231,7 +231,7 @@ package fasthttp
 //	})
 //}
 //
-//// 并发性能对比测试
+//Concurrent performance comparison test
 //func TestConcurrencyComparison(t *testing.T) {
 //	concurrencyLevels := []int{10, 50, 100, 200, 500}
 //	requestsPerGoroutine := 100
@@ -239,9 +239,9 @@ package fasthttp
 //
 //	for _, concurrency := range concurrencyLevels {
 //		t.Run(fmt.Sprintf("Concurrency_%d", concurrency), func(t *testing.T) {
-//			// 测试 FastHTTP
+//			Test FastHTTP
 //			fasthttpResult := testConcurrency(t, "fasthttp", ":8084", concurrency, requestsPerGoroutine, testData)
-//			// 测试标准 HTTP
+//			Test standard HTTP
 //			stdHttpResult := testConcurrency(t, "stdhttp", ":8085", concurrency, requestsPerGoroutine, testData)
 //
 //			t.Logf("Concurrency %d - FastHTTP: %.2f req/s, StdHTTP: %.2f req/s, Improvement: %.2fx",
@@ -353,7 +353,7 @@ package fasthttp
 //	wg.Wait()
 //	duration := time.Since(start)
 //
-//	// 清理
+//	Cleanup
 //	if endpointType == "fasthttp" {
 //		if ep, ok := endpoint.(*Endpoint); ok {
 //			ep.Destroy()
@@ -375,17 +375,17 @@ package fasthttp
 //	}
 //}
 //
-//// 延迟测试
+//Delay testing
 //func TestLatencyComparison(t *testing.T) {
 //	numRequests := 1000
 //	testData := `{"latency":"test"}`
 //
-//	// 测试 FastHTTP 延迟
+//	Testing FastHTTP latency
 //	fasthttpLatencies := measureLatency(t, "fasthttp", ":8086", numRequests, testData)
-//	// 测试标准 HTTP 延迟
+//	Test standard HTTP latency
 //	stdHttpLatencies := measureLatency(t, "stdhttp", ":8087", numRequests, testData)
 //
-//	// 计算统计信息
+//	Calculate statistical information
 //	fasthttpStats := calculateLatencyStats(fasthttpLatencies)
 //	stdHttpStats := calculateLatencyStats(stdHttpLatencies)
 //
@@ -484,7 +484,7 @@ package fasthttp
 //		latencies[i] = time.Since(start).Microseconds()
 //	}
 //
-//	// 清理
+//	Cleanup
 //	if endpointType == "fasthttp" {
 //		if ep, ok := endpoint.(*Endpoint); ok {
 //			ep.Destroy()
@@ -503,7 +503,7 @@ package fasthttp
 //		return LatencyStats{}
 //	}
 //
-//	// 排序
+//	Sorting
 //	for i := 0; i < len(latencies); i++ {
 //		for j := i + 1; j < len(latencies); j++ {
 //			if latencies[i] > latencies[j] {
@@ -529,7 +529,7 @@ package fasthttp
 //	}
 //}
 //
-//// 资源使用对比测试
+//Resource usage comparison test
 //func TestResourceUsage(t *testing.T) {
 //	numRequests := 10000
 //	testData := `{"resource":"test","payload":"` + string(make([]byte, 1024)) + `"}`

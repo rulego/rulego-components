@@ -27,7 +27,7 @@ import (
 )
 
 func TestLuaFilter(t *testing.T) {
-	// 如果设置了跳过 Lua 测试，则跳过
+	// If skipping Lua tests is set, skip them
 	if os.Getenv("SKIP_LUA_TESTS") == "true" {
 		t.Skip("Skipping Lua filter tests")
 	}
@@ -128,7 +128,7 @@ func TestLuaFilter(t *testing.T) {
 }
 
 func TestLuaFilterWithArray(t *testing.T) {
-	// 如果设置了跳过 Lua 测试，则跳过
+	// If skipping Lua tests is set, skip them
 	if os.Getenv("SKIP_LUA_TESTS") == "true" {
 		t.Skip("Skipping Lua filter tests")
 	}
@@ -367,7 +367,7 @@ func TestLuaFilterWithArray(t *testing.T) {
 }
 
 func TestLuaFilterWithNonJSONData(t *testing.T) {
-	// 如果设置了跳过 Lua 测试，则跳过
+	// If skipping Lua tests is set, skip them
 	if os.Getenv("SKIP_LUA_TESTS") == "true" {
 		t.Skip("Skipping Lua filter tests")
 	}
@@ -431,7 +431,7 @@ func TestLuaFilterWithNonJSONData(t *testing.T) {
 }
 
 func TestLuaFilterArrayWithMetadata(t *testing.T) {
-	// 如果设置了跳过 Lua 测试，则跳过
+	// If skipping Lua tests is set, skip them
 	if os.Getenv("SKIP_LUA_TESTS") == "true" {
 		t.Skip("Skipping Lua filter tests")
 	}
@@ -498,7 +498,7 @@ func TestLuaFilterArrayWithMetadata(t *testing.T) {
 
 // Simple test for dataType parameter support
 func TestLuaFilterWithDataType(t *testing.T) {
-	// 如果设置了跳过 Lua 测试，则跳过
+	// If skipping Lua tests is set, skip them
 	if os.Getenv("SKIP_LUA_TESTS") == "true" {
 		t.Skip("Skipping Lua filter tests")
 	}

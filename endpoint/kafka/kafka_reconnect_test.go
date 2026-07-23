@@ -29,19 +29,19 @@ import (
 	"github.com/rulego/rulego/test/assert"
 )
 
-// TestKafkaEndpointReconnect 测试Kafka endpoint重连功能
+// TestKafkaEndpointReconnect: Test the Kafka endpoint reconnection function
 func TestKafkaEndpointReconnect(t *testing.T) {
 	config := rulego.NewConfig(types.WithDefaultPool())
 
 	t.Run("ConsumerReconnectConfig", func(t *testing.T) {
-		// 测试消费者重连配置
+		// Testing consumer reconnection configurations
 		kafkaEndpoint, err := endpoint.Registry.New(Type, config, Config{
 			Server:  "localhost:9092",
 			GroupId: "test-reconnect",
 		})
 		assert.Nil(t, err)
 
-		// 验证配置
+		// Verify configuration
 		kafkaEp := kafkaEndpoint.(*Kafka)
 		assert.Equal(t, "localhost:9092", kafkaEp.brokers[0])
 		assert.Equal(t, "test-reconnect", kafkaEp.Config.GroupId)
@@ -50,7 +50,7 @@ func TestKafkaEndpointReconnect(t *testing.T) {
 	})
 
 	t.Run("ConsumerWithRetryMechanism", func(t *testing.T) {
-		// 创建Kafka endpoint
+		// Create a Kafka endpoint
 		kafkaEndpoint, err := endpoint.Registry.New(Type, config, Config{
 			Server:  "localhost:9092",
 			GroupId: "test-retry",
@@ -64,7 +64,7 @@ func TestKafkaEndpointReconnect(t *testing.T) {
 		messageReceived := false
 		var mu sync.Mutex
 
-		// 创建路由
+		// Create a route
 		router := endpoint.NewRouter().From("test.retry.topic").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 			mu.Lock()
 			messageReceived = true
@@ -73,24 +73,24 @@ func TestKafkaEndpointReconnect(t *testing.T) {
 			return true
 		}).End()
 
-		// 添加路由
+		// Add routes
 		_, err = kafkaEndpoint.AddRouter(router)
 		if err != nil {
 			t.Skipf("Failed to add router (Kafka server may not be available): %v", err)
 			return
 		}
 
-		// 启动服务
+		// Start the server
 		err = kafkaEndpoint.Start()
 		if err != nil {
 			t.Skipf("Failed to start Kafka endpoint: %v", err)
 			return
 		}
 
-		// 等待消费者启动
+		// Waiting for consumers to get started
 		time.Sleep(2 * time.Second)
 
-		// 发送测试消息
+		// Send test messages
 		producer, err := sarama.NewSyncProducer([]string{"localhost:9092"}, nil)
 		if err != nil {
 			t.Skipf("Failed to create producer: %v", err)
@@ -107,7 +107,7 @@ func TestKafkaEndpointReconnect(t *testing.T) {
 			return
 		}
 
-		// 等待消息处理，使用更长的超时和更频繁的检查
+		// Wait for message processing, use longer timeouts, and more frequent checks
 		waitForMessage := func() bool {
 			timeout := time.After(15 * time.Second)
 			ticker := time.NewTicker(50 * time.Millisecond)
@@ -128,11 +128,11 @@ func TestKafkaEndpointReconnect(t *testing.T) {
 			}
 		}
 
-		// 验证消息是否被接收
+		// Verify whether messages have been received
 		received := waitForMessage()
 		if !received {
 			t.Log("First attempt failed, trying with additional delay")
-			// 再次尝试发送消息
+			// Try sending a message again
 			_, _, err = producer.SendMessage(&sarama.ProducerMessage{
 				Topic: "test.retry.topic",
 				Value: sarama.StringEncoder("test retry message"),
@@ -147,11 +147,11 @@ func TestKafkaEndpointReconnect(t *testing.T) {
 			return
 		}
 
-		// 测试路由移除
+		// Test routing removal
 		err = kafkaEndpoint.RemoveRouter(router.GetId())
 		assert.Nil(t, err)
 
-		// 验证handlers中的消费者已被移除，增加重试机制
+		// Verify that consumers in handlers have been removed, and add a retry mechanism
 		waitForRemoval := func() bool {
 			timeout := time.After(10 * time.Second)
 			ticker := time.NewTicker(100 * time.Millisecond)
@@ -187,7 +187,7 @@ func TestKafkaEndpointReconnect(t *testing.T) {
 	})
 
 	t.Run("MultipleRoutersManagement", func(t *testing.T) {
-		// 测试多个路由的管理
+		// Test management of multiple routes
 		kafkaEndpoint, err := endpoint.Registry.New(Type, config, Config{
 			Server:  "localhost:9092",
 			GroupId: "test-multiple",
@@ -199,7 +199,7 @@ func TestKafkaEndpointReconnect(t *testing.T) {
 
 		kafkaEp := kafkaEndpoint.(*Kafka)
 
-		// 创建多个路由
+		// Create multiple routes
 		router1 := endpoint.NewRouter().From("topic1").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 			return true
 		}).End()
@@ -208,7 +208,7 @@ func TestKafkaEndpointReconnect(t *testing.T) {
 			return true
 		}).End()
 
-		// 添加路由
+		// Add routes
 		id1, err := kafkaEndpoint.AddRouter(router1)
 		if err != nil {
 			t.Skipf("Failed to add router1: %v", err)
@@ -221,7 +221,7 @@ func TestKafkaEndpointReconnect(t *testing.T) {
 			return
 		}
 
-		// 验证路由已添加
+		// Verification routes have been added
 		kafkaEp.Lock()
 		handlersCount := len(kafkaEp.handlers)
 		handler1 := kafkaEp.handlers[id1]
@@ -232,11 +232,11 @@ func TestKafkaEndpointReconnect(t *testing.T) {
 		assert.NotNil(t, handler1)
 		assert.NotNil(t, handler2)
 
-		// 移除一个路由
+		// Remove a route
 		err = kafkaEndpoint.RemoveRouter(id1)
 		assert.Nil(t, err)
 
-		// 等待清理完成，增加重试机制
+		// Wait for the cleanup to complete, then add a retry mechanism
 		cleanupTimeout := time.After(5 * time.Second)
 		cleanupTicker := time.NewTicker(100 * time.Millisecond)
 		defer cleanupTicker.Stop()
@@ -271,24 +271,24 @@ func TestKafkaEndpointReconnect(t *testing.T) {
 	})
 }
 
-// TestKafkaEndpointErrorHandling 测试错误处理
+// TestKafkaEndpointErrorHandling Test error handling
 func TestKafkaEndpointErrorHandling(t *testing.T) {
 	config := rulego.NewConfig(types.WithDefaultPool())
 
 	t.Run("InvalidBrokerHandling", func(t *testing.T) {
-		// 测试无效broker的处理
+		// Handling of invalid brokers for testing
 		kafkaEndpoint, err := endpoint.Registry.New(Type, config, Config{
 			Server:  "invalid-broker:9092",
 			GroupId: "test-invalid",
 		})
 		assert.Nil(t, err)
 
-		// 创建路由
+		// Create a route
 		router := endpoint.NewRouter().From("test.invalid.topic").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 			return true
 		}).End()
 
-		// 尝试添加路由（应该失败）
+		// Trying to add a route (should fail)
 		_, err = kafkaEndpoint.AddRouter(router)
 		assert.NotNil(t, err)
 
@@ -296,7 +296,7 @@ func TestKafkaEndpointErrorHandling(t *testing.T) {
 	})
 
 	t.Run("DuplicateRouterHandling", func(t *testing.T) {
-		// 测试重复路由的处理
+		// Test the handling of duplicate routing
 		kafkaEndpoint, err := endpoint.Registry.New(Type, config, Config{
 			Server:  "localhost:9092",
 			GroupId: "test-duplicate",
@@ -306,7 +306,7 @@ func TestKafkaEndpointErrorHandling(t *testing.T) {
 			return
 		}
 
-		// 创建相同的路由
+		// Create the same route
 		router1 := endpoint.NewRouter().From("duplicate.topic").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 			return true
 		}).End()
@@ -315,14 +315,14 @@ func TestKafkaEndpointErrorHandling(t *testing.T) {
 			return true
 		}).End()
 
-		// 添加第一个路由
+		// Add the first route
 		_, err = kafkaEndpoint.AddRouter(router1)
 		if err != nil {
 			t.Skipf("Failed to add first router: %v", err)
 			return
 		}
 
-		// 尝试添加重复路由（应该失败）
+		// Trying to add duplicate routing (should fail)
 		_, err = kafkaEndpoint.AddRouter(router2)
 		assert.NotNil(t, err)
 
@@ -330,12 +330,12 @@ func TestKafkaEndpointErrorHandling(t *testing.T) {
 	})
 }
 
-// TestKafkaConsumerHandler 测试消费者处理器
+// TestKafkaConsumerHandler tests consumer processors
 func TestKafkaConsumerHandler(t *testing.T) {
 	config := rulego.NewConfig(types.WithDefaultPool())
 
 	t.Run("MessageProcessing", func(t *testing.T) {
-		// 创建Kafka endpoint
+		// Create a Kafka endpoint
 		kafkaEndpoint, err := endpoint.Registry.New(Type, config, Config{
 			Server:  "localhost:9092",
 			GroupId: "test-handler",
@@ -348,7 +348,7 @@ func TestKafkaConsumerHandler(t *testing.T) {
 		processedMessages := make([]string, 0)
 		var mu sync.Mutex
 
-		// 创建路由
+		// Create a route
 		router := endpoint.NewRouter().From("test.handler.topic").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 			mu.Lock()
 			processedMessages = append(processedMessages, exchange.In.GetMsg().GetData())
@@ -356,24 +356,24 @@ func TestKafkaConsumerHandler(t *testing.T) {
 			return true
 		}).End()
 
-		// 添加路由
+		// Add routes
 		_, err = kafkaEndpoint.AddRouter(router)
 		if err != nil {
 			t.Skipf("Failed to add router: %v", err)
 			return
 		}
 
-		// 启动服务
+		// Start the server
 		err = kafkaEndpoint.Start()
 		if err != nil {
 			t.Skipf("Failed to start endpoint: %v", err)
 			return
 		}
 
-		// 等待消费者启动
+		// Waiting for consumers to get started
 		time.Sleep(2 * time.Second)
 
-		// 发送多条消息
+		// Send multiple messages
 		producer, err := sarama.NewSyncProducer([]string{"localhost:9092"}, nil)
 		if err != nil {
 			t.Skipf("Failed to create producer: %v", err)
@@ -393,7 +393,7 @@ func TestKafkaConsumerHandler(t *testing.T) {
 			}
 		}
 
-		// 等待消息处理，使用更好的等待机制
+		// Wait for message processing and use better waiting mechanisms
 		waitForMessages := func() bool {
 			timeout := time.After(20 * time.Second)
 			ticker := time.NewTicker(100 * time.Millisecond)
@@ -414,7 +414,7 @@ func TestKafkaConsumerHandler(t *testing.T) {
 			}
 		}
 
-		// 验证消息处理
+		// Verification message processing
 		success := waitForMessages()
 		mu.Lock()
 		processed := make([]string, len(processedMessages))

@@ -37,11 +37,11 @@ const (
 	KeyRequestKey      = "key"
 	KeyRequestExchange = "exchange"
 
-	// KeyResponseExchange 响应交换机metadataKey
+	// KeyResponseExchange Response switch metadataKey
 	KeyResponseExchange = "responseExchange"
-	// KeyResponseTopic 响应主题metadataKey
+	// KeyResponseTopic: Response topic metadataKey
 	KeyResponseTopic = "responseTopic"
-	// KeyResponseKey 响应主题metadataKey
+	// KeyResponseKey Response Theme: metadataKey
 	KeyResponseKey = "responseKey"
 
 	JsonContextType = "application/json"
@@ -197,7 +197,7 @@ func (r *ResponseMessage) GetError() error {
 	return r.err
 }
 
-// 从msg.Metadata或者响应头获取
+// From msg.Metadata or response header access
 func (r *ResponseMessage) getMetadataValue(metadataName, headerName string) string {
 	var v string
 	if r.GetMsg() != nil {
@@ -223,7 +223,7 @@ type RabbitMQ struct {
 	impl.BaseEndpoint
 	base.SharedNode[*amqp.Connection]
 	// GracefulShutdown provides graceful shutdown capabilities
-	// GracefulShutdown 提供优雅停机功能
+	// GracefulShutdown offers an elegant shutdown function
 	base.GracefulShutdown
 	RuleConfig types.Config
 	Config     Config
@@ -272,7 +272,7 @@ func (x *RabbitMQ) Init(ruleConfig types.Config, configuration types.Configurati
 	err := maps.Map2Struct(configuration, &x.Config)
 	x.RuleConfig = ruleConfig
 
-	// 初始化优雅停机功能
+	// Initialize the elegant shutdown function
 	x.GracefulShutdown.InitGracefulShutdown(x.RuleConfig.Logger, 0)
 
 	if x.Config.ExchangeType == "" {
@@ -296,7 +296,7 @@ func (x *RabbitMQ) Destroy() {
 }
 
 // GracefulStop provides graceful shutdown for the RabbitMQ endpoint
-// GracefulStop 为 RabbitMQ 端点提供优雅停机
+// GracefulStop provides elegant downtime for RabbitMQ endpoints
 func (x *RabbitMQ) GracefulStop() {
 	x.GracefulShutdown.GracefulStop(func() {
 		_ = x.Close()
@@ -304,7 +304,7 @@ func (x *RabbitMQ) GracefulStop() {
 }
 
 func (x *RabbitMQ) Close() error {
-	// SharedNode 会通过 InitWithClose 中的清理函数来管理客户端的关闭
+	// SharedNode manages client shutdowns through the cleanup function in InitWithClose
 	// SharedNode manages client closure through the cleanup function in InitWithClose
 	_ = x.SharedNode.Close()
 	x.BaseEndpoint.Destroy()
@@ -350,7 +350,7 @@ func (x *RabbitMQ) AddRouter(router endpointApi.Router, params ...interface{}) (
 		}
 		go func(router endpointApi.Router, ch *amqp.Channel) {
 			for msg := range msgs {
-				// 处理消息逻辑
+				// Handling message logic
 				if x.RuleConfig.Pool != nil {
 					submitErr := x.RuleConfig.Pool.Submit(func() {
 						x.handlerMsg(router, ch, msg)

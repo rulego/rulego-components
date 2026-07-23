@@ -54,12 +54,12 @@ func TestWriteNode(t *testing.T) {
 		assert.Equal(t, "bbb", node.(*WriteNode).opengeminiConfig.AuthConfig.Password)
 	})
 	t.Run("OnMsg", func(t *testing.T) {
-		// 如果设置了跳过 OpenGemini 测试，则跳过
+		// If you set to skip OpenGemini tests, you will skip them
 		if os.Getenv("SKIP_OPENGEMINI_TESTS") == "true" {
 			t.Skip("Skipping OpenGemini tests")
 		}
 
-		// 检查是否有可用的 OpenGemini 服务器
+		// Check if there are available OpenGemini servers
 		server := os.Getenv("OPENGEMINI_SERVER")
 		if server == "" {
 			server = "127.0.0.1:8086"
@@ -143,13 +143,13 @@ func TestWriteNode(t *testing.T) {
 				Node:    node,
 				MsgList: msgList,
 				Callback: func(msg types.RuleMsg, relationType string, err error) {
-					// 检查是否是预期的错误情况
+					// Check if the expected error is correct
 					if err != nil {
-						// 其他错误可能是服务器不可用
+						// Other errors could be server unavailability
 						t.Skipf("OpenGemini server not available: %v", err)
 						return
 					}
-					// 没有错误的情况下，根据消息类型判断
+					// If there are no errors, judge based on message type
 					if msg.Type == "cpu_load_err" {
 						assert.Equal(t, types.Failure, relationType)
 					} else {
@@ -161,13 +161,13 @@ func TestWriteNode(t *testing.T) {
 				Node:    node2,
 				MsgList: msgList,
 				Callback: func(msg types.RuleMsg, relationType string, err error) {
-					// 检查是否是预期的错误情况
+					// Check if the expected error is correct
 					if err != nil {
-						// 其他错误可能是服务器不可用
+						// Other errors could be server unavailability
 						t.Skipf("OpenGemini server not available: %v", err)
 						return
 					}
-					// 没有错误的情况下，根据消息类型判断
+					// If there are no errors, judge based on message type
 					if msg.Type == "cpu_load_err" {
 						assert.Equal(t, types.Failure, relationType)
 					} else {
@@ -179,17 +179,17 @@ func TestWriteNode(t *testing.T) {
 				Node:    node3,
 				MsgList: msgList,
 				Callback: func(msg types.RuleMsg, relationType string, err error) {
-					// node3使用不存在的数据库"aa"，所有操作都应该失败
+					// node3 uses a non-existent database called "aa", and all operations should fail
 					if err != nil {
-						// 其他错误可能是服务器不可用
+						// Other errors could be server unavailability
 						t.Skipf("OpenGemini server not available: %v", err)
 						return
 					}
-					// 如果没有错误，那么只有cpu_load_err类型的消息应该失败
+					// If there are no errors, then only cpu_load_err types of messages should fail
 					if msg.Type == "cpu_load_err" {
 						assert.Equal(t, types.Failure, relationType)
 					} else {
-						// 其他消息类型在数据库不存在时也应该失败，但如果到这里说明数据库存在
+						// Other message types should also fail when the database does not exist, but if you reach this point, it means the database exists
 						assert.Equal(t, types.Success, relationType)
 					}
 				},

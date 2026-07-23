@@ -31,31 +31,31 @@ const (
 	HISTOGRAM = "HISTOGRAM"
 )
 
-// 配置示例
+// Configuration example
 //
 //	{
 //		"id": "otel1",
 //		"type": "x/otelMetrics",
 //		"configuration": {
 //		  "endpoint": "localhost:4317",
-//		  "metricsExpr": "${msg.metrics}", // 支持单个指标对象或指标对象数组
-//		  "metrics": [{ // 支持配置方式的指标列表
+//		  "metricsExpr": "${msg.metrics}", // Supports single metric objects or arrays of metric objects
+//		  "metrics": [{ // List of metrics supported by configuration methods
 //		    "metricName": "http_requests",
 //		    "description": "HTTP requests made",
 //		    "unit": "1",
 //		    "opType": "COUNTER",
-//		    "value": "${msg.value}", // 支持表达式
-//		    "labels": "${msg.labels}" // 支持表达式
+//		    "value": "${msg.value}", // Supports expressions
+//		    "labels": "${msg.labels}" // Supports expressions
 //		  }]
 //		}
 //	  }
 //
-// 注册节点
+// Register the node
 func init() {
 	_ = rulego.Registry.Register(&OtelNode{})
 }
 
-// MetricConfig 单个指标配置
+// MetricConfig Configuration of individual metrics
 type MetricConfig struct {
 	MetricName  string `json:"metricName" label:"Metric Name" desc:"Metric name" required:"true"`
 	Description string `json:"description" label:"Description" desc:"Metric description"`
@@ -65,24 +65,24 @@ type MetricConfig struct {
 	Labels      string `json:"labels" label:"Labels" desc:"Metric labels in JSON format, e.g. {\"host\":\"server1\"}"`
 }
 
-// MetricValue 单个指标配置，已经获取 Value和 Labels 值
+// MetricValue is a single metric configuration, with Value and Labels values already obtained
 type MetricValue struct {
-	// 指标名称
+	// Indicator name
 	MetricName string `json:"metricName"`
-	// 指标描述
+	// Indicator description
 	Description string `json:"description"`
-	// Unit 指标的单位，用于描述指标值的度量单位。例如，对于计数器（COUNTER），单位可能是 "1"（表示计数）；
-	// 对于时间度量，单位可能是 "s"（秒）、"ms"（毫秒）、"us"（微秒）或 "ns"（纳秒）；
-	// 对于数据量度量，单位可能是 "B"（字节）；
-	// 对于比例度量，单位可能是 "%"（百分比）。
-	// OpenTelemetry 使用基于 SI（国际单位制）的单位系统，但也支持一些常见的非 SI 单位。
-	// 例如，对于 HTTP 请求的计数，单位可以是 "1"；对于 HTTP 响应时间，单位可以是 "s"。
+	// Unit is the unit used to describe the value of an indicator. For example, for counters (COUNTER), the unit might be "1" (representing count);
+	// For time measurements, units may be "s" (seconds), "ms" (milliseconds), "us" (microseconds), or "ns" (nanoseconds);
+	// For data measurements, the unit may be "B" (bytes);
+	// For proportional measurements, the unit might be "%" (percentage).
+	// OpenTelemetry uses a SI (International System of Units) based unit system, but also supports some common non-SI units.
+	// For example, for HTTP request counts, the unit can be "1"; For HTTP response time, the unit can be "s".
 	Unit string `json:"unit"`
-	// 操作类型：COUNTER, GAUGE, HISTOGRAM
+	// Operation types: COUNTER, GAUGE, HISTOGRAM
 	OpType string `json:"opType"`
-	// 指标值
+	// Indicator values
 	Value float64 `json:"value"`
-	// 标签
+	// Tags
 	Labels map[string]string `json:"labels"`
 }
 
@@ -97,15 +97,15 @@ func (m MetricValue) GetConfig() MetricConfig {
 	}
 }
 
-// OtelNodeConfiguration 节点配置
+// OtelNodeConfiguration node configuration
 type OtelNodeConfiguration struct {
-	Server     string        `json:"server" label:"Server" desc:"OTel Collector address, format: host:port" required:"true" ref:"primary"`
-	Protocol   string        `json:"protocol" label:"Protocol" desc:"Export protocol: grpc, http, default grpc"`
-	MetricExpr string        `json:"metricExpr" label:"Metric Expression" desc:"JSON expression to extract metrics from message"`
+	Server     string         `json:"server" label:"Server" desc:"OTel Collector address, format: host:port" required:"true" ref:"primary"`
+	Protocol   string         `json:"protocol" label:"Protocol" desc:"Export protocol: grpc, http, default grpc"`
+	MetricExpr string         `json:"metricExpr" label:"Metric Expression" desc:"JSON expression to extract metrics from message"`
 	Metrics    []MetricConfig `json:"metrics" label:"Metrics" desc:"Custom metric configuration list"`
 }
 
-// Metric 指标实例
+// Metric indicator example
 type Metric struct {
 	Config         MetricConfig
 	ValueTemplate  el.Template
@@ -115,21 +115,21 @@ type Metric struct {
 	Histogram      metric.Float64Histogram
 }
 
-// OtelNode OpenTelemetry客户端组件，用于记录各种指标
-// 运行通过消息负荷获取指标数据，通过OTLP协议发送到后端系统，如：Prometheus、Datadog、InfluxDB等
+// OtelNode OpenTelemetry client component for recording various metrics
+// Run to obtain metric data through message loads and send it to backend systems via OTLP protocol, such as Prometheus, Datadog, InfluxDB, etc
 type OtelNode struct {
 	base.SharedNode[*Client]
-	// 节点配置
+	// Node configuration
 	Config OtelNodeConfiguration
-	// 指标缓存,key为指标名称
+	// Indicator cache, where key is the indicator name
 	metricsCache map[string]*Metric
-	// 指标缓存锁
+	// Indicator cache locks
 	metricsCacheMu sync.RWMutex
-	// 指标表达式
+	// Indicator expression
 	metricsExpr el.Template
 }
 
-// Type 返回组件类型
+// Type returns the component type
 func (x *OtelNode) Type() string {
 	return "x/otel"
 }
@@ -145,7 +145,7 @@ func (x *OtelNode) New() types.Node {
 	}
 }
 
-// Init 初始化组件
+// Init initializes the component
 func (x *OtelNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err != nil {
@@ -154,7 +154,7 @@ func (x *OtelNode) Init(ruleConfig types.Config, configuration types.Configurati
 	if x.Config.Server == "" {
 		return errors.New("server is required")
 	}
-	// 编译指标表达式
+	// Compile the indicator expression
 	if x.Config.MetricExpr != "" {
 		if metricsExpr, err := el.NewTemplate(strings.TrimSpace(x.Config.MetricExpr)); err != nil {
 			return err
@@ -166,15 +166,15 @@ func (x *OtelNode) Init(ruleConfig types.Config, configuration types.Configurati
 	if x.Config.Protocol == "" {
 		x.Config.Protocol = "HTTP"
 	}
-	// 初始化共享MeterProvider
+	// Initialize the shared MeterProvider
 	err = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*Client, error) {
 		return x.initMeterProvider()
 	}, func(client *Client) error {
-		// 清理回调函数
+		// Cleanup callback function
 		return client.MeterProvider.Shutdown(context.Background())
 	})
 
-	// 预编译配置的指标模板
+	// Precompiled configuration of indicator templates
 	for _, metricConfig := range x.Config.Metrics {
 		metricConfig.MetricName = strings.TrimSpace(metricConfig.MetricName)
 		if metricConfig.MetricName == "" {
@@ -215,51 +215,51 @@ type Client struct {
 	Meter         metric.Meter
 }
 
-// buildEndpointURL 构建端点URL
-// 对于HTTP协议，WithEndpoint只需要主机:端口格式
-// 对于gRPC协议，WithEndpoint需要主机:端口格式
+// buildEndpointURL
+// For the HTTP protocol, WithEndpoint only requires the host: port format
+// For the gRPC protocol, WithEndpoint requires host: port format
 func (x *OtelNode) buildEndpointURL() string {
 	server := strings.TrimSpace(x.Config.Server)
-	
-	// 如果server为空，使用默认值
+
+	// If the server is empty, use the default value
 	if server == "" {
 		server = "localhost:4318"
 	}
-	
-	// 移除协议前缀（如果存在）
+
+	// Remove protocol prefixes (if present)
 	if strings.HasPrefix(server, "http://") {
 		server = strings.TrimPrefix(server, "http://")
 	} else if strings.HasPrefix(server, "https://") {
 		server = strings.TrimPrefix(server, "https://")
 	}
-	
-	// 移除路径部分（如果存在）
+
+	// Remove the path section (if present)
 	if idx := strings.Index(server, "/"); idx != -1 {
 		server = server[:idx]
 	}
-	
-	// 返回纯主机:端口格式
+
+	// Return to a pure host: port format
 	return server
 }
 
-// initMeterProvider 初始化MeterProvider
+// initMeterProvider initializes MeterProvider
 func (x *OtelNode) initMeterProvider() (*Client, error) {
 	var exporter sdkmetric.Exporter
 	var err error
 
-	// 构建完整的端点URL
+	// Build a complete endpoint URL
 	endpoint := x.buildEndpointURL()
 
-	// 创建OTLP导出器
+	// Create an OTLP exporter
 	if strings.ToUpper(x.Config.Protocol) == "GRPC" {
-		// 创建OTLP gRPC导出器
+		// Create an OTLP gRPC exporter
 		exporter, err = otlpmetricgrpc.New(
 			context.Background(),
 			otlpmetricgrpc.WithEndpoint(endpoint),
 			otlpmetricgrpc.WithInsecure(),
 		)
 	} else {
-		// 创建OTLP HTTP导出器
+		// Create an OTLP HTTP exporter
 		exporter, err = otlpmetrichttp.New(
 			context.Background(),
 			otlpmetrichttp.WithEndpoint(endpoint),
@@ -272,7 +272,7 @@ func (x *OtelNode) initMeterProvider() (*Client, error) {
 		return nil, fmt.Errorf("failed to create OTLP exporter: %v", err)
 	}
 
-	// 创建MeterProvider
+	// Create a MeterProvider
 	mp := sdkmetric.NewMeterProvider(
 		sdkmetric.WithReader(
 			sdkmetric.NewPeriodicReader(
@@ -289,11 +289,11 @@ func (x *OtelNode) initMeterProvider() (*Client, error) {
 	return client, nil
 }
 
-// OnMsg 处理消息
+// OnMsg processes a message
 func (x *OtelNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	evn := base.NodeUtils.GetEvnAndMetadata(ctx, msg)
 	var metrics []MetricValue
-	// 处理配置的指标
+	// Manage the allocation indicators
 	for _, metricConfig := range x.Config.Metrics {
 		m, err := x.getOrCreateMetric(metricConfig)
 		if err != nil {
@@ -301,14 +301,14 @@ func (x *OtelNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 			return
 		}
 
-		// 执行值表达式
+		// Execute the value expression
 		value, err := x.getValue(m.Config, m.ValueTemplate, evn)
 		if err != nil {
 			ctx.TellFailure(msg, err)
 			return
 		}
 
-		// 执行标签表达式
+		// Execute the tag expression
 		attrs, err := x.getLabels(m.Config, m.LabelsTemplate, evn)
 		if err != nil {
 			ctx.TellFailure(msg, err)
@@ -324,7 +324,7 @@ func (x *OtelNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		})
 	}
 
-	// 处理动态指标
+	// Handling dynamic indicators
 	if x.metricsExpr != nil {
 		var out interface{}
 		out, err := x.metricsExpr.Execute(evn)
@@ -356,12 +356,12 @@ func (x *OtelNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		}
 
 	}
-	// 处理每个指标
+	// Address each indicator
 	for _, cfg := range metrics {
 		if cfg.MetricName == "" {
 			continue
 		}
-		// 获取或创建指标
+		// Obtain or create metrics
 		m, err := x.getOrCreateMetric(cfg.GetConfig())
 		if err != nil {
 			ctx.TellFailure(msg, err)
@@ -370,13 +370,13 @@ func (x *OtelNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		value := cfg.Value
 		labels := cfg.Labels
 
-		// 转换标签
+		// Tag conversion
 		var attrs []attribute.KeyValue
 		for k, v := range labels {
 			attrs = append(attrs, attribute.String(k, v))
 		}
 
-		// 记录指标
+		// Record the indicators
 		switch cfg.OpType {
 		case COUNTER:
 			m.Counter.Add(ctx.GetContext(), value, metric.WithAttributes(attrs...))
@@ -398,9 +398,9 @@ func (x *OtelNode) Desc() string {
 	return "OpenTelemetry client for sending metrics/traces/logs via OTLP. Supports grpc and http protocols. Routes to Success/Failure"
 }
 
-// getOrCreateMetric 获取或创建指标
+// getOrCreateMetric to get or create metrics
 func (x *OtelNode) getOrCreateMetric(cfg MetricConfig) (*Metric, error) {
-	// 先尝试读锁获取
+	// First, try to read the lock to obtain it
 	x.metricsCacheMu.RLock()
 	if m, ok := x.metricsCache[cfg.MetricName]; ok {
 		x.metricsCacheMu.RUnlock()
@@ -408,11 +408,11 @@ func (x *OtelNode) getOrCreateMetric(cfg MetricConfig) (*Metric, error) {
 	}
 	x.metricsCacheMu.RUnlock()
 
-	// 获取写锁创建
+	// Create a write lock
 	x.metricsCacheMu.Lock()
 	defer x.metricsCacheMu.Unlock()
 
-	// 双重检查,避免重复创建
+	// Double-check to avoid duplicate creations
 	if m, ok := x.metricsCache[cfg.MetricName]; ok {
 		return m, nil
 	}
@@ -428,7 +428,7 @@ func (x *OtelNode) getOrCreateMetric(cfg MetricConfig) (*Metric, error) {
 		Config: cfg,
 	}
 
-	// 创建指标
+	// Create metrics
 	switch cfg.OpType {
 	case COUNTER:
 		m.Counter, err = client.Meter.Float64Counter(
@@ -460,11 +460,11 @@ func (x *OtelNode) getOrCreateMetric(cfg MetricConfig) (*Metric, error) {
 	return m, nil
 }
 
-// getValue 获取指标值
+// getValue to get the metric value
 func (x *OtelNode) getValue(config MetricConfig, valueTemplate el.Template, evn map[string]interface{}) (float64, error) {
 	if valueTemplate == nil {
 		if config.Value != "" {
-			//字符串换换为浮点数
+			//String replacement is a floating-point number
 			if value, err := strconv.ParseFloat(config.Value, 64); err != nil {
 				return 0, err
 			} else {
@@ -491,7 +491,7 @@ func (x *OtelNode) getValue(config MetricConfig, valueTemplate el.Template, evn 
 	}
 }
 
-// getLabels 获取标签
+// getLabels to get labels
 func (x *OtelNode) getLabels(config MetricConfig, labelsTemplate el.Template, evn map[string]interface{}) (map[string]string, error) {
 	if labelsTemplate == nil {
 		if config.Labels != "" {

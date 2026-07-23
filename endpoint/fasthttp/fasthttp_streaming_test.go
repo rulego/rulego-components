@@ -9,40 +9,40 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// TestSetBody_SSEStreaming_AppendBehavior 测试 SetBody 在 SSE 流式场景下是否正确追加数据
-// SSE 流式响应要求每次 SetBody 调用追加数据，而非替换
+// TestSetBody_SSEStreaming_AppendBehavior Testing whether SetBody correctly appends data in SSE streaming scenarios
+// SSE stream responses require each SetBody call to add data instead of replace
 func TestSetBody_SSEStreaming_AppendBehavior(t *testing.T) {
 	var ctx fasthttp.RequestCtx
 	resp := &ResponseMessage{ctx: &ctx}
 
-	// 模拟 SSE 流式写入：多次调用 SetBody，数据应追加而非替换
+	// Simulating SSE stream writes: Multiple calls to SetBody, data should be appended rather than replaced
 	resp.SetBody([]byte("data: chunk1\n\n"))
 	resp.SetBody([]byte("data: chunk2\n\n"))
 	resp.SetBody([]byte("data: chunk3\n\n"))
 
 	body := string(ctx.Response.Body())
 
-	// 验证所有 chunk 都在响应体中
+	// Verify that all chunks are in the response body
 	assert.Contains(t, body, "data: chunk1\n\n", "响应体应包含 chunk1")
 	assert.Contains(t, body, "data: chunk2\n\n", "响应体应包含 chunk2")
 	assert.Contains(t, body, "data: chunk3\n\n", "响应体应包含 chunk3")
 
-	// 验证顺序正确
+	// The verification sequence is correct
 	expected := "data: chunk1\n\ndata: chunk2\n\ndata: chunk3\n\n"
 	assert.Equal(t, expected, body, "SSE 数据应按追加顺序排列")
 }
 
-// TestComparisonWithRestEndpoint 对比 fasthttp 和标准 http 的行为一致性
-// 标准 http 的 ResponseWriter.Write 是追加行为，fasthttp 应保持一致
+// TestComparisonWithRestEndpoint compares the behavior consistency of fasthttp and standard http
+// Standard HTTP's ResponseWriter.Write is an addition behavior, and fasthttp should remain consistent
 func TestComparisonWithRestEndpoint(t *testing.T) {
-	// 模拟标准 http 的行为（httptest.ResponseRecorder.Write 追加数据）
+	// Simulates the behavior of standard HTTP (httptest.ResponseRecorder.Write Additional Data)
 	recorder := httptest.NewRecorder()
 	recorder.Write([]byte("data: chunk1\n\n"))
 	recorder.Write([]byte("data: chunk2\n\n"))
 	recorder.Write([]byte("data: chunk3\n\n"))
 	restBody := recorder.Body.String()
 
-	// 测试 fasthttp 的行为
+	// Testing fasthttp's behavior
 	var ctx fasthttp.RequestCtx
 	resp := &ResponseMessage{ctx: &ctx}
 	resp.SetBody([]byte("data: chunk1\n\n"))
@@ -54,7 +54,7 @@ func TestComparisonWithRestEndpoint(t *testing.T) {
 		"fasthttp 和 rest 的 SetBody 行为应一致（追加而非替换）")
 }
 
-// TestSSEHeaders 测试 SSE headers 设置是否正确
+// TestSSEHeaders tests whether SSE headers settings are correct
 func TestSSEHeaders(t *testing.T) {
 	var ctx fasthttp.RequestCtx
 	resp := &ResponseMessage{ctx: &ctx}
@@ -70,42 +70,42 @@ func TestSSEHeaders(t *testing.T) {
 	assert.Equal(t, "no-cache", cacheControl)
 }
 
-// TestSSEFullFlow 测试完整的 SSE 流式响应流程（模拟 openaiStreamingResponse 处理器的行为）
+// TestSSEFullFlow tests the complete SSE streaming response flow (simulates the behavior of the openaiStreamingResponse processor)
 func TestSSEFullFlow(t *testing.T) {
 	var ctx fasthttp.RequestCtx
 	resp := &ResponseMessage{ctx: &ctx}
 
-	// 1. 设置 SSE headers（对应 setSSEHeaders）
+	// 1. Set SSE headers (corresponding to setSSEHeaders)
 	resp.SetHeader("Content-Type", "text/event-stream")
 	resp.SetHeader("Cache-Control", "no-cache")
 	resp.SetHeader("Connection", "keep-alive")
 
-	// 2. 发送多个 SSE chunk（对应 handleChunk）
+	// 2. Send multiple SSE chunks (corresponding to handleChunk)
 	resp.SetBody([]byte("data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello\"},\"finish_reason\":null}]}\n\n"))
 	resp.Flush()
 
 	resp.SetBody([]byte("data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" World\"},\"finish_reason\":null}]}\n\n"))
 	resp.Flush()
 
-	// 3. 发送完成信号（对应 handleCompletion）
+	// 3. Send a completion signal (corresponding to handleCompletion)
 	resp.SetBody([]byte("data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"))
 	resp.Flush()
 
-	// 验证完整响应
+	// Verify complete responses
 	body := string(ctx.Response.Body())
 
-	// 验证所有 chunk 和完成信号都存在
+	// Verify that all chunk and completion signals exist
 	assert.True(t, strings.Contains(body, `"content":"Hello"`), "应包含第一个 chunk")
 	assert.True(t, strings.Contains(body, `"content":" World"`), "应包含第二个 chunk")
 	assert.True(t, strings.Contains(body, `"finish_reason":"stop"`), "应包含完成信号")
 	assert.True(t, strings.Contains(body, "[DONE]"), "应包含 [DONE] 标记")
 
-	// 验证 SSE headers 正确
+	// Verify the SSE headers correctly
 	contentType := string(ctx.Response.Header.Peek("Content-Type"))
 	assert.Equal(t, "text/event-stream", contentType)
 }
 
-// TestFlush_DoesNotCorruptData 测试 Flush 不损坏已有数据
+// TestFlush_DoesNotCorruptData Test Flush without corrupting existing data
 func TestFlush_DoesNotCorruptData(t *testing.T) {
 	var ctx fasthttp.RequestCtx
 	resp := &ResponseMessage{ctx: &ctx}
@@ -120,7 +120,7 @@ func TestFlush_DoesNotCorruptData(t *testing.T) {
 	assert.Equal(t, expected, body, "Flush 不应损坏已写入的数据")
 }
 
-// TestSetBody_NonStreaming 测试非流式场景（单次 SetBody）
+// TestSetBody_NonStreaming Testing non-streaming scenes (single SetBody)
 func TestSetBody_NonStreaming(t *testing.T) {
 	var ctx fasthttp.RequestCtx
 	resp := &ResponseMessage{ctx: &ctx}
@@ -132,15 +132,15 @@ func TestSetBody_NonStreaming(t *testing.T) {
 	assert.Equal(t, `{"result":"ok"}`, string(resp.Body()), "Body() 应返回最后一次设置的内容")
 }
 
-// TestSetBody_EmptyBody 测试空 body 不影响已有数据
+// TestSetBody_EmptyBody Testing empty bodies does not affect existing data
 func TestSetBody_EmptyBody(t *testing.T) {
 	var ctx fasthttp.RequestCtx
 	resp := &ResponseMessage{ctx: &ctx}
 
 	resp.SetBody([]byte("data: chunk1\n\n"))
-	resp.SetBody([]byte("")) // 空 body
+	resp.SetBody([]byte("")) // Empty body
 
 	body := string(ctx.Response.Body())
-	// 空 body 不应破坏之前的数据（追加空字节不改变内容）
+	// The empty body should not corrupt previous data (adding empty bytes does not change the content).
 	assert.Contains(t, body, "data: chunk1\n\n")
 }

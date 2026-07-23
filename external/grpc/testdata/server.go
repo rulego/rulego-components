@@ -26,17 +26,17 @@ import (
 	"net"
 )
 
-// server 是 Greeter 服务的服务器实现
+// server is the server implementation of the Greeter service
 type server struct {
 	pb.UnimplementedGreeterServer
 }
 
-// SayHello 实现 Greeter 服务的 SayHello 方法
+// SayHello Implementation of the Greeter Service's SayHello Method
 func (s *server) SayHello(ctx context.Context, in *pb.HelloRequest) (*pb.HelloReply, error) {
-	// 从上下文中获取元数据
+	// Extract metadata from context
 	md, ok := metadata.FromIncomingContext(ctx)
 	if ok {
-		// 打印所有头部信息
+		// Print all head information
 		for key, values := range md {
 			log.Printf("Header %s: %v", key, values)
 		}
@@ -52,7 +52,7 @@ func main() {
 	}
 	s := grpc.NewServer()
 	pb.RegisterGreeterServer(s, &server{})
-	// 注册 gRPC 反射服务
+	// Register for gRPC reflection services
 	reflection.Register(s)
 	if err := s.Serve(listen); err != nil {
 		log.Fatalf("failed to serve: %v", err)

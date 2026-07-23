@@ -39,13 +39,13 @@ func init() {
 	_ = rulego.Registry.Register(&ClientNode{})
 }
 
-// SeparatorService grpc service和method 分隔符
+// SeparatorService grpc service and method separator
 const SeparatorService = "/"
 
-// SeparatorHeader header key:value 分隔符
+// SeparatorHeader header key:value separator
 const SeparatorHeader = ":"
 
-// ClientConfig 定义 gRPC 客户端配置
+// ClientConfig defines the gRPC client configuration
 type ClientConfig struct {
 	Server  string            `json:"server" label:"Server" desc:"gRPC server address, format: host:port" required:"true" ref:"primary"`
 	Service string            `json:"service" label:"Service" desc:"gRPC service name, e.g. pkg.ServiceName" required:"true"`
@@ -54,7 +54,7 @@ type ClientConfig struct {
 	Headers map[string]string `json:"headers" label:"Headers" desc:"Custom gRPC request headers"`
 }
 
-// ClientNode gRPC 查询节点
+// ClientNode gRPC query node
 type ClientNode struct {
 	base.SharedNode[*Client]
 	Config          ClientConfig
@@ -65,7 +65,7 @@ type ClientNode struct {
 	hasVar          bool
 }
 
-// New 实现 Node 接口，创建新实例
+// New Implement the Node interface and create a new instance
 func (x *ClientNode) New() types.Node {
 	return &ClientNode{
 		Config: ClientConfig{
@@ -76,12 +76,12 @@ func (x *ClientNode) New() types.Node {
 	}
 }
 
-// Type 实现 Node 接口，返回组件类型
+// Type implements the Node interface and returns the component type
 func (x *ClientNode) Type() string {
 	return "x/grpcClient"
 }
 
-// Init 初始化 gRPC 客户端
+// Init initializes the gRPC client
 func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err != nil {
@@ -90,10 +90,10 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 	_ = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*Client, error) {
 		return x.initClient()
 	}, func(client *Client) error {
-		// 清理回调函数
+		// Cleanup callback function
 		return client.conn.Close()
 	})
-	// 初始化服务模板
+	// Initialize service templates
 	serviceTemplate, err := el.NewTemplate(x.Config.Service)
 	if err != nil {
 		return err
@@ -103,7 +103,7 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 		x.hasVar = true
 	}
 
-	// 初始化方法模板
+	// Initialize the method template
 	methodTemplate, err := el.NewTemplate(x.Config.Method)
 	if err != nil {
 		return err
@@ -113,7 +113,7 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 		x.hasVar = true
 	}
 
-	// 初始化请求模板
+	// Initialize the request template
 	requestTemplate, err := el.NewTemplate(x.Config.Request)
 	if err != nil {
 		return err
@@ -123,7 +123,7 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 		x.hasVar = true
 	}
 
-	// 初始化头部模板
+	// Initialize the head template
 	var headerTemplates = make(map[el.Template]el.Template)
 	for key, value := range x.Config.Headers {
 		keyTmpl, err := el.NewTemplate(key)
@@ -143,7 +143,7 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 	return nil
 }
 
-// OnMsg 实现 Node 接口，处理消息
+// OnMsg implements the Node interface to process messages
 func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	client, err := x.SharedNode.GetSafely()
 	if err != nil {
@@ -180,9 +180,9 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 			}
 		},
 	}
-	// 实现RequestSupplier函数
+	// Implement the RequestSupplier function
 	requestDataSupplier := func(message proto.Message) error {
-		// 将请求数据填充到protobuf消息中
+		// Fill the request data into the protobuf message
 		protoMessage, ok := message.(*dynamic.Message)
 		if !ok {
 			return errors.New("invalid message type")
@@ -191,11 +191,11 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		if err := protoMessage.UnmarshalJSON([]byte(request)); err != nil {
 			return err
 		}
-		// 如果是一次性请求，返回io.EOF表示没有更多请求数据
+		// If it is a one-time request, return io.EOF stated that there is no further data request
 		return io.EOF
 	}
 	var headers []string
-	//设置header
+	//Set the header
 	for key, value := range x.headersTemplate {
 		headers = append(headers, key.ExecuteAsString(evn)+SeparatorHeader+value.ExecuteAsString(evn))
 	}

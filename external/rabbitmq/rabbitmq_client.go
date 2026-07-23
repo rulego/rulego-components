@@ -34,12 +34,12 @@ const (
 	KeyContentType = "Content-Type"
 	KeyUTF8        = "utf-8"
 
-	// 通道池配置
+	// Channel pool configuration
 	DefaultChannelPoolSize = 10
 	MaxChannelPoolSize     = 100
 )
 
-// channelPool 通道池结构
+// channelPool channel pool structure
 type channelPool struct {
 	mu       sync.RWMutex
 	channels chan *amqp.Channel
@@ -48,7 +48,7 @@ type channelPool struct {
 	maxSize  int
 }
 
-// newChannelPool 创建通道池
+// newChannelPool creates a channel pool
 func newChannelPool(maxSize int, factory func() (*amqp.Channel, error)) *channelPool {
 	if maxSize <= 0 {
 		maxSize = DefaultChannelPoolSize
@@ -69,22 +69,22 @@ func newChannelPool(maxSize int, factory func() (*amqp.Channel, error)) *channel
 	}
 }
 
-// Get 从池中获取通道
+// Get channels from the pool
 func (p *channelPool) Get() (*amqp.Channel, error) {
 	select {
 	case ch := <-p.channels:
 		if ch != nil && !ch.IsClosed() {
 			return ch, nil
 		}
-		// 通道已关闭，创建新的
+		// The channel is closed, and new ones are being created
 		return p.factory()
 	default:
-		// 池为空，创建新通道
+		// The pool is empty, creating new channels
 		return p.factory()
 	}
 }
 
-// Put 将通道放回池中
+// Put puts the channel back into the pool
 func (p *channelPool) Put(ch *amqp.Channel) {
 	if ch == nil || ch.IsClosed() {
 		return
@@ -92,14 +92,14 @@ func (p *channelPool) Put(ch *amqp.Channel) {
 
 	select {
 	case p.channels <- ch:
-		// 成功放回池中
+		// Successfully returned to the pool
 	default:
-		// 池已满，关闭通道
+		// The pool is full, so the passage is closed
 		p.close(ch)
 	}
 }
 
-// Close 关闭通道池
+// Close: Close the channel pool
 func (p *channelPool) Close() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -115,33 +115,33 @@ func init() {
 }
 
 type ClientNodeConfiguration struct {
-	// RabbitMQ服务器地址，格式为"amqp://用户名:密码@服务器地址:端口号"
+	// RabbitMQ server address, format: "amqp:// Username:Password@ServerAddress:PortNumber"
 	Server string `json:"server" label:"Server" desc:"RabbitMQ server address, e.g. amqp://user:pass@host:5672" required:"true" ref:"primary"`
-	// 路由键
+	// Router key
 	Key string `json:"key" label:"Routing Key" desc:"Routing key. Supports ${metadata.key} and ${msg.key} substitution" required:"true"`
-	// 交换机名称
+	// Switch name
 	Exchange string `json:"exchange" label:"Exchange" desc:"Exchange name" required:"true"`
-	// 交换机类型 direct, fanout, topic
+	// Switch type: direct, fanout, topic
 	ExchangeType string `json:"exchangeType" label:"Exchange Type" desc:"Exchange type: direct, fanout, topic"`
-	//表示交换器是否持久化
+	//Indicates whether the switch is persistent
 	Durable bool `json:"durable" label:"Durable" desc:"true=persistent exchange survives server restart"`
-	//表示交换器是否自动删除
+	//Indicates whether the switch is automatically deleted
 	AutoDelete bool `json:"autoDelete" label:"Auto Delete" desc:"true=auto-delete when no queues bound"`
 }
 
 type ClientNode struct {
 	base.SharedNode[*amqp.Connection]
-	// 节点配置
+	// Node configuration
 	Config ClientNodeConfiguration
-	// 通道池
+	// Passage pool
 	channelPool *channelPool
-	// 路由键模板
+	// Routing key template
 	keyTemplate el.Template
-	// 标识模板是否包含变量，用于性能优化
+	// Whether the identification template contains variables for performance optimization
 	hasVar bool
 }
 
-// Type 组件类型
+// Type returns the component type
 func (x *ClientNode) Type() string {
 	return "x/rabbitmqClient"
 }
@@ -157,18 +157,18 @@ func (x *ClientNode) New() types.Node {
 	}}
 }
 
-// Init 初始化
+// Init initializes the component
 func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err != nil {
 		return err
 	}
 
-	// 初始化SharedNode
+	// Initialize SharedNode
 	_ = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*amqp.Connection, error) {
 		return x.initClient()
 	}, func(conn *amqp.Connection) error {
-		// 清理回调函数
+		// Cleanup callback function
 		if x.channelPool != nil {
 			x.channelPool.Close()
 			x.channelPool = nil
@@ -179,12 +179,12 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 		return nil
 	})
 
-	// 初始化通道池（使用默认大小）
+	// Initialize the channel pool (using default size)
 	x.channelPool = newChannelPool(DefaultChannelPoolSize, func() (*amqp.Channel, error) {
 		return x.createChannel()
 	})
 
-	// 初始化路由键模板
+	// Initialize the routing key template
 	template, err := el.NewTemplate(x.Config.Key)
 	if err != nil {
 		return err
@@ -194,7 +194,7 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 	return nil
 }
 
-// OnMsg 处理消息
+// OnMsg processes a message
 func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	var evn map[string]interface{}
 	if x.hasVar {
@@ -202,7 +202,7 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	}
 	key := x.keyTemplate.ExecuteAsString(evn)
 
-	// 使用通道池获取通道
+	// Use channel pools to obtain channels
 	ch, err := x.channelPool.Get()
 	if err == nil {
 		defer x.channelPool.Put(ch)
@@ -222,7 +222,7 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	}
 }
 
-// Destroy 销毁
+// Destroy releases resources
 func (x *ClientNode) Destroy() {
 	_ = x.SharedNode.Close()
 }
@@ -247,7 +247,7 @@ func (x *ClientNode) initClient() (*amqp.Connection, error) {
 	return amqp.Dial(x.Config.Server)
 }
 
-// createChannel 创建新通道并声明交换机
+// createChannel: Create a new channel and declare a switch
 func (x *ClientNode) createChannel() (*amqp.Channel, error) {
 	conn, err := x.SharedNode.GetSafely()
 	if err != nil {
@@ -260,18 +260,18 @@ func (x *ClientNode) createChannel() (*amqp.Channel, error) {
 	}
 
 	if x.Config.Exchange != "" {
-		//声明交换机
+		//Declaration switch
 		err = ch.ExchangeDeclare(
-			x.Config.Exchange,     // 交换机名称
-			x.Config.ExchangeType, // 交换机类型
-			x.Config.Durable,      //是否持久化
-			x.Config.AutoDelete,   //是否自动删除
+			x.Config.Exchange,     // Switch name
+			x.Config.ExchangeType, // Switch type
+			x.Config.Durable,      //Is it persistent?
+			x.Config.AutoDelete,   //Whether it is automatically deleted
 			false,
 			false,
 			nil,
 		)
 		if err != nil {
-			//如果交换机已经存在，则不再声明，重新创建通道
+			//If the switch already exists, it is no longer declared and the channel is recreated
 			ch.Close()
 			ch, err = conn.Channel()
 			if err != nil {

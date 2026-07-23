@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// parseLineProtocol 解析单行 Line Protocol 字符串并返回 Point 结构体
+// parseLineProtocol parses a single line of Line Protocol string and returns the Point structure
 func parseLineProtocol(line string) (*opengemini.Point, error) {
 	parts := strings.Split(line, " ")
 	if len(parts) < 2 {
@@ -20,7 +20,7 @@ func parseLineProtocol(line string) (*opengemini.Point, error) {
 	p.Fields = make(map[string]interface{})
 	p.Precision = opengemini.PrecisionNanosecond
 
-	// 解析 measurement 和 tags
+	// Parse measurement and tags
 	measurementAndTags := strings.Split(parts[0], ",")
 	//measurementEnd := strings.Index(measurementAndTags, " ")
 	if len(parts) < 2 {
@@ -40,7 +40,7 @@ func parseLineProtocol(line string) (*opengemini.Point, error) {
 		p.Tags[kv[0]] = kv[1]
 	}
 
-	// 解析 fields
+	// Parse fields
 	fieldsStr := parts[1]
 	for _, field := range strings.Split(fieldsStr, ",") {
 		if field == "" {
@@ -60,14 +60,14 @@ func parseLineProtocol(line string) (*opengemini.Point, error) {
 			if err == nil {
 				fval = parsedFloat
 			} else {
-				// 如果既不是整数也不是浮点数，则保留原始字符串
+				// If it is neither an intiger nor a floating-point number, the original string is retained
 				fval = value
 			}
 		}
 		p.Fields[kv[0]] = fval
 	}
 
-	// 解析时间戳
+	// Analyze timestamps
 	if len(parts) < 3 {
 		p.Timestamp = time.Now().UnixNano()
 	} else {
@@ -81,15 +81,15 @@ func parseLineProtocol(line string) (*opengemini.Point, error) {
 	return &p, nil
 }
 
-// parseMultiLineProtocol 接受一个包含多行 Line Protocol 数据的字符串，并返回解析后的 Point 列表
+// parseMultiLineProtocol accepts a string containing multiple lines of Line Protocol data and returns a parsed list of points
 func parseMultiLineProtocol(data string) ([]*opengemini.Point, error) {
-	// 使用换行符分割字符串
+	// Use line breaks to split strings
 	lines := strings.Split(data, "\n")
 	var points []*opengemini.Point
 	for _, line := range lines {
-		line = strings.TrimSpace(line) // 移除行首尾的空白字符
+		line = strings.TrimSpace(line) // Remove the blank characters at the beginning and end of the line
 		if line == "" {
-			continue // 跳过空行
+			continue // Skip the blank line
 		}
 		point, err := parseLineProtocol(line)
 		if err != nil {

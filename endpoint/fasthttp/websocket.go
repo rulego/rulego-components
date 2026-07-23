@@ -54,29 +54,29 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// WebsocketType 组件类型
+// WebsocketType component type
 const WebsocketType = websocketEndpoint.Type
 
-// WebsocketEndpoint 别名
+// Also known as WebsocketEndpoint
 type WebsocketEndpoint = FastHttpWebsocket
 
 var _ endpointApi.Endpoint = (*WebsocketEndpoint)(nil)
 
 func init() {
-	// 可以使用fasthttp代替标准 websocket endpoint 组件
-	// 1. 删除标准版本 websocket endpoint 组件
+	// FastHTTP can be used instead of the standard WebSocket endpoint component
+	// 1. Delete the standard WebSocket endpoint component
 	_ = endpoint.Registry.Unregister(WebsocketType)
-	// 2. 注册fasthttp版本 websocket endpoint组件
+	// 2. Register the fasthttp version of the WebSocket endpoint component
 	_ = endpoint.Registry.Register(&WebsocketEndpoint{})
 }
 
-// WebsocketRequestMessage fasthttp websocket请求消息
+// WebsocketRequestMessage fasthttp websocket request message
 type WebsocketRequestMessage struct {
-	//ws消息类型 TextMessage=1/BinaryMessage=2
+	//ws message type TextMessage=1 / BinaryMessage=2
 	messageType int
 	ctx         *fasthttp.RequestCtx
 	body        []byte
-	//路径参数
+	//Path parameters
 	Params   map[string]string
 	msg      *types.RuleMsg
 	err      error
@@ -121,7 +121,7 @@ func (r *WebsocketRequestMessage) SetMsg(msg *types.RuleMsg) {
 
 func (r *WebsocketRequestMessage) GetMsg() *types.RuleMsg {
 	if r.msg == nil {
-		//默认指定是JSON格式，如果不是该类型，请在process函数中修改
+		//The default specification is JSON format. If it is not this type, please modify it in the process function
 		dataType := types.JSON
 		if r.messageType == websocket.BinaryMessage {
 			dataType = types.BINARY
@@ -159,10 +159,10 @@ func (r *WebsocketRequestMessage) GetMetadata() *types.Metadata {
 	return r.Metadata
 }
 
-// WebsocketResponseMessage fasthttp websocket响应消息
+// WebsocketResponseMessage fasthttp Websocket response message
 type WebsocketResponseMessage struct {
 	headers textproto.MIMEHeader
-	//ws消息类型 TextMessage/BinaryMessage
+	//ws message type: TextMessage/BinaryMessage
 	messageType int
 	log         func(format string, v ...interface{})
 	ctx         *fasthttp.RequestCtx
@@ -214,7 +214,7 @@ func (r *WebsocketResponseMessage) GetMetadata() *types.Metadata {
 	return nil
 }
 
-// SetStatusCode 不提供设置状态码
+// SetStatusCode does not provide a status code
 func (r *WebsocketResponseMessage) SetStatusCode(statusCode int) {
 }
 
@@ -224,7 +224,7 @@ func (r *WebsocketResponseMessage) SetBody(body []byte) {
 		if r.messageType == 0 {
 			r.messageType = websocket.TextMessage
 		}
-		// 在写入之前加锁
+		// Lock before writing
 		r.locker.Lock()
 		defer r.locker.Unlock()
 
@@ -246,24 +246,24 @@ func (r *WebsocketResponseMessage) RequestCtx() *fasthttp.RequestCtx {
 	return r.ctx
 }
 
-// WebsocketConfig FastHttp Websocket 服务配置
+// WebsocketConfig FastHttp Websocket service configuration
 type WebsocketConfig = Config
 
-// FastHttpWebsocket 接收端端点
+// FastHttpWebsocket receives endpoints
 type FastHttpWebsocket struct {
 	impl.BaseEndpoint
 	nodeBase.SharedNode[*FastHttpWebsocket]
-	//配置
+	//Configuration
 	Config     WebsocketConfig
 	RuleConfig types.Config
-	//fasthttp服务器
+	//FastHTTP server
 	fastHttpEndpoint *FastHttp
-	//websocket升级器
+	//WebSocket Upgrader
 	Upgrader websocket.FastHTTPUpgrader
 	started  bool
 }
 
-// Type 组件类型
+// Type returns the component type
 func (ws *FastHttpWebsocket) Type() string {
 	return WebsocketType
 }
@@ -272,11 +272,11 @@ func (ws *FastHttpWebsocket) New() types.Node {
 	return &FastHttpWebsocket{
 		Config: WebsocketConfig{
 			Server:         ":6333",
-			ReadTimeout:    10,    // 0使用默认值10秒
-			WriteTimeout:   10,    // 0使用默认值10秒
-			IdleTimeout:    60,    // 0使用默认值60秒
-			MaxRequestSize: "4M",  // 默认4MB
-			Concurrency:    10000, // 并发数
+			ReadTimeout:    10,    // 0 uses the default value for 10 seconds
+			WriteTimeout:   10,    // 0 uses the default value for 10 seconds
+			IdleTimeout:    60,    // 0 uses the default value for 60 seconds
+			MaxRequestSize: "4M",  // Default is 4MB
+			Concurrency:    10000, // and issued several times simultaneously
 			AllowCors:      true,
 		},
 	}
@@ -299,7 +299,7 @@ func (ws *FastHttpWebsocket) Def() types.ComponentForm {
 	}
 }
 
-// Init 初始化
+// Init initializes the component
 func (ws *FastHttpWebsocket) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &ws.Config)
 	if err != nil {
@@ -307,15 +307,15 @@ func (ws *FastHttpWebsocket) Init(ruleConfig types.Config, configuration types.C
 	}
 	ws.RuleConfig = ruleConfig
 
-	// 初始化fasthttp端点
+	// Initialize the fastHTTP endpoint
 	ws.fastHttpEndpoint = &FastHttp{}
 	if err = ws.fastHttpEndpoint.Init(ruleConfig, configuration); err != nil {
 		return err
 	}
 
-	// 配置websocket升级器
+	// Configure the WebSocket Upgrader
 	ws.Upgrader.CheckOrigin = func(ctx *fasthttp.RequestCtx) bool {
-		return ws.Config.AllowCors // 允许所有跨域请求
+		return ws.Config.AllowCors // All cross-origin requests are allowed
 	}
 
 	return ws.SharedNode.InitWithClose(ws.RuleConfig, ws.Type(), ws.Config.Server, false, func() (*FastHttpWebsocket, error) {
@@ -332,7 +332,7 @@ func (ws *FastHttpWebsocket) initServer() (*FastHttpWebsocket, error) {
 	return ws, nil
 }
 
-// Destroy 销毁
+// Destroy releases resources
 func (ws *FastHttpWebsocket) Destroy() {
 	_ = ws.Close()
 }
@@ -395,7 +395,7 @@ func (ws *FastHttpWebsocket) Close() error {
 			for key := range ws.RouterStorage {
 				shared.deleteRouter(key)
 			}
-			//重启共享服务
+			//Restart the shared service
 			return shared.Restart()
 		}
 	}
@@ -453,7 +453,7 @@ func (ws *FastHttpWebsocket) Start() error {
 		return nil
 	}
 
-	// 启动fasthttp服务器
+	// Start the fasthttp server
 	if err := ws.fastHttpEndpoint.Start(); err != nil {
 		return err
 	}
@@ -462,7 +462,7 @@ func (ws *FastHttpWebsocket) Start() error {
 	return nil
 }
 
-// addRouter 注册1个或者多个路由
+// addRouter registers one or more routes
 func (ws *FastHttpWebsocket) addRouter(routers ...endpointApi.Router) *FastHttpWebsocket {
 	ws.Lock()
 	defer ws.Unlock()
@@ -473,11 +473,11 @@ func (ws *FastHttpWebsocket) addRouter(routers ...endpointApi.Router) *FastHttpW
 	for _, item := range routers {
 		item.SetParams("GET")
 		ws.CheckAndSetRouterId(item)
-		//存储路由
+		//Store the route
 		ws.RouterStorage[item.GetId()] = item
-		// 转换路径参数格式：将 :id 格式转换为 {id} 格式
+		// Convert path parameter format: Convert:id format to {id} format
 		path := convertPathParams(item.FromToString())
-		//添加到fasthttp路由器
+		//Add to the fasthttp router
 		ws.fastHttpEndpoint.Router().GET(path, ws.handler(item))
 	}
 
@@ -499,9 +499,9 @@ func (ws *FastHttpWebsocket) handler(router endpointApi.Router) func(ctx *fastht
 			return
 		}
 
-		// 升级到WebSocket连接
+		// Upgrade to WebSocket connection
 		err := ws.Upgrader.Upgrade(ctx, func(conn *websocket.Conn) {
-			// 解析路径参数
+			// Parse path parameters
 			params := ws.parseParams(router.FromToString(), string(ctx.Path()))
 
 			connectExchange := &endpointApi.Exchange{
@@ -519,7 +519,7 @@ func (ws *FastHttpWebsocket) handler(router endpointApi.Router) func(ctx *fastht
 				},
 			}
 
-			// 安全地调用OnEvent
+			// Call OnEvent safely
 			ws.RLock()
 			onEvent := ws.OnEvent
 			ws.RUnlock()
@@ -529,9 +529,9 @@ func (ws *FastHttpWebsocket) handler(router endpointApi.Router) func(ctx *fastht
 
 			defer func() {
 				_ = conn.Close()
-				//捕捉异常
+				//Capture anomalies
 				if e := recover(); e != nil {
-					// 安全地调用OnEvent
+					// Call OnEvent safely
 					ws.RLock()
 					onEvent := ws.OnEvent
 					ws.RUnlock()
@@ -545,7 +545,7 @@ func (ws *FastHttpWebsocket) handler(router endpointApi.Router) func(ctx *fastht
 			for {
 				mt, message, err := conn.ReadMessage()
 				if err != nil {
-					// 安全地调用OnEvent
+					// Call OnEvent safely
 					ws.RLock()
 					onEvent := ws.OnEvent
 					ws.RUnlock()
@@ -556,7 +556,7 @@ func (ws *FastHttpWebsocket) handler(router endpointApi.Router) func(ctx *fastht
 				}
 
 				if router.IsDisable() {
-					// 安全地调用OnEvent
+					// Call OnEvent safely
 					ws.RLock()
 					onEvent := ws.OnEvent
 					ws.RUnlock()
@@ -588,14 +588,14 @@ func (ws *FastHttpWebsocket) handler(router endpointApi.Router) func(ctx *fastht
 				}
 
 				msg := exchange.In.GetMsg()
-				//把路径参数放到msg元数据中
+				//Put the path parameter into the msg metadata
 				for key, value := range params {
 					msg.Metadata.PutValue(key, value)
 				}
 
 				msg.Metadata.PutValue("messageType", strconv.Itoa(mt))
 
-				//把url?参数放到msg元数据中
+				//Place the url? parameter into the msg metadata
 				ctx.QueryArgs().VisitAll(func(key, value []byte) {
 					msg.Metadata.PutValue(string(key), string(value))
 				})
@@ -611,11 +611,11 @@ func (ws *FastHttpWebsocket) handler(router endpointApi.Router) func(ctx *fastht
 	}
 }
 
-// parseParams 解析路径参数
+// parseParams parses path parameters
 func (ws *FastHttpWebsocket) parseParams(pattern, path string) map[string]string {
 	params := make(map[string]string)
 
-	// 简单的路径参数解析，支持 :param 格式
+	// Simple path parameter parsing, supports:p aram format
 	patternParts := strings.Split(pattern, "/")
 	pathParts := strings.Split(path, "/")
 
@@ -625,7 +625,7 @@ func (ws *FastHttpWebsocket) parseParams(pattern, path string) map[string]string
 
 	for i, part := range patternParts {
 		if strings.HasPrefix(part, ":") {
-			key := part[1:] // 去掉 : 前缀
+			key := part[1:] // Remove the prefix
 			if i < len(pathParts) {
 				params[key] = pathParts[i]
 			}

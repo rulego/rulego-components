@@ -69,30 +69,30 @@ const (
 	HeaderValueAll                      = "*"
 )
 
-// Type 组件类型
+// Type returns the component type
 const Type = rest.Type
 
-// Endpoint 别名
+// Endpoint alias
 type Endpoint = FastHttp
 
 var _ endpointApi.Endpoint = (*Endpoint)(nil)
 var _ endpointApi.HttpEndpoint = (*Endpoint)(nil)
 
-// 注册组件
-// 在300并发以上，相对于标准的 http endpoint 组件，性能提升3倍
+// Register the component
+// Above 300 concurrency, performance is three times higher than standard HTTP endpoint components
 func init() {
-	// 可以使用fasthttp代替标准http endpoint组件
-	// 1. 删除标准 http endpoint 组件
+	// You can use fastHTTP instead of the standard HTTP endpoint component
+	// 1. Delete the standard HTTP endpoint component
 	_ = endpoint.Registry.Unregister(Type)
-	// 2. 注册fasthttp版本 http endpoint组件
+	// 2. Register the fasthttp version of the HTTP endpoint component
 	_ = endpoint.Registry.Register(&Endpoint{})
 }
 
-// RequestMessage fasthttp请求消息
+// RequestMessage fasthttp request message
 type RequestMessage struct {
 	ctx  *fasthttp.RequestCtx
 	body []byte
-	//路径参数
+	//Path parameters
 	Params   map[string]string
 	msg      *types.RuleMsg
 	err      error
@@ -181,7 +181,7 @@ func (r *RequestMessage) GetMsg() *types.RuleMsg {
 				data = string(r.Body())
 			}
 		} else {
-			// 当ctx为nil时，使用默认值
+			// When ctx is nil, the default value is used
 			data = string(r.Body())
 		}
 		if r.Metadata == nil {
@@ -212,20 +212,20 @@ func (r *RequestMessage) RequestCtx() *fasthttp.RequestCtx {
 	return r.ctx
 }
 
-// ResponseMessage fasthttp响应消息
+// ResponseMessage fasthttp Response message
 type ResponseMessage struct {
 	ctx  *fasthttp.RequestCtx
 	body []byte
 	to   string
 	msg  *types.RuleMsg
 	err  error
-	// 流式响应 writer，由 handler 通过 SetBodyStreamWriter 设置
+	// Stream response writer, set by handler via SetBodyStreamWriter
 	writer *bufio.Writer
-	// 流式模式下缓存的 headers，避免竞态访问 ctx.Response
+	// cached headers in streaming mode to avoid race access to ctx.Response
 	cachedHeaders textproto.MIMEHeader
 }
 
-// fasthttpResponseWriter 适配器，将 fasthttp.RequestCtx 适配为 http.ResponseWriter
+// fasthttpResponseWriter adapter, set fasthttp.RequestCtx adapts to http.ResponseWriter
 type fasthttpResponseWriter struct {
 	ctx    *fasthttp.RequestCtx
 	header http.Header
@@ -245,12 +245,12 @@ func (w *fasthttpResponseWriter) Write(data []byte) (int, error) {
 
 func (w *fasthttpResponseWriter) WriteHeader(statusCode int) {
 	if w.status != 0 {
-		return // 已经写入过状态码
+		return // The status code has already been written
 	}
 	w.status = statusCode
 	w.ctx.SetStatusCode(statusCode)
 
-	// 复制头部信息到 fasthttp context
+	// Copy header information to the fasthttp context
 	for key, values := range w.header {
 		for _, value := range values {
 			w.ctx.Response.Header.Add(key, value)
@@ -344,7 +344,7 @@ func (r *ResponseMessage) GetError() error {
 	return r.err
 }
 
-// Flush 将缓冲数据实时推送到客户端，用于 SSE 流式响应。
+// Flush pushes buffered data in real time to the client for SSE stream response.
 func (r *ResponseMessage) Flush() {
 	if r.writer != nil {
 		r.writer.Flush()
@@ -355,46 +355,46 @@ func (r *ResponseMessage) RequestCtx() *fasthttp.RequestCtx {
 	return r.ctx
 }
 
-// Config FastHttp 服务配置
+// Config FastHttp service configuration
 type Config struct {
-	Server      string `json:"server" label:"Server" desc:"Listen address, format host:port or :port, e.g. :8080" required:"true" ref:"primary"` //服务器地址
-	CertFile    string `json:"certFile" label:"Cert File" desc:"TLS certificate file path; provide together with certKeyFile to enable HTTPS"`    //证书文件
-	CertKeyFile string `json:"certKeyFile" label:"Cert Key File" desc:"TLS private key file path; provide together with certFile to enable HTTPS"` //密钥文件
-	//是否允许跨域
+	Server      string `json:"server" label:"Server" desc:"Listen address, format host:port or :port, e.g. :8080" required:"true" ref:"primary"`   //Server address
+	CertFile    string `json:"certFile" label:"Cert File" desc:"TLS certificate file path; provide together with certKeyFile to enable HTTPS"`     //Certificate documents
+	CertKeyFile string `json:"certKeyFile" label:"Cert Key File" desc:"TLS private key file path; provide together with certFile to enable HTTPS"` //Key file
+	//Whether cross-domain is allowed
 	AllowCors bool `json:"allowCors" label:"Allow CORS" desc:"Whether to allow cross-origin requests"`
-	// FastHTTP服务器配置
-	ReadTimeout      int    `json:"readTimeout" label:"Read Timeout (s)" desc:"Read timeout in seconds; 0 uses default 10"`               // 读取超时时间（秒），0使用默认值10秒
-	WriteTimeout     int    `json:"writeTimeout" label:"Write Timeout (s)" desc:"Write timeout in seconds; 0 uses default 10"`         // 写入超时时间（秒），0使用默认值10秒
-	IdleTimeout      int    `json:"idleTimeout" label:"Idle Timeout (s)" desc:"Idle timeout in seconds; 0 uses default 60"`           // 空闲超时时间（秒），0使用默认值60秒
-	DisableKeepalive bool   `json:"disableKeepalive" label:"Disable Keepalive" desc:"Whether to disable keep-alive"`                     //  禁用keepalive
-	MaxRequestSize   string `json:"maxRequestSize" label:"Max Request Size" desc:"Max request body size, supports 4M/4m/10K formats; default 4M"` // 最大请求体大小，支持4M、4m、10K等格式，默认4M
-	Concurrency      int    `json:"concurrency" label:"Concurrency" desc:"Concurrency; 0 uses default 256 * 1024"`                              // 并发数，0使用默认值 256 * 1024
-	//// 新增配置项用于控制连接和资源管理
-	//MaxConnsPerIP        int           `json:"maxConnsPerIP"`        // 每个IP的最大连接数
-	//MaxRequestsPerConn   int           `json:"maxRequestsPerConn"`   // 每个连接的最大请求数
-	//MaxKeepaliveDuration time.Duration `json:"maxKeepaliveDuration"` // keepalive最大持续时间
-	//ReadBufferSize       int           `json:"readBufferSize"`       // 读缓冲区大小
-	//WriteBufferSize      int           `json:"writeBufferSize"`      // 写缓冲区大小
-	//ReduceMemoryUsage    bool          `json:"reduceMemoryUsage"`    // 减少内存使用
-	//StreamRequestBody    bool          `json:"streamRequestBody"`    // 流式处理请求体
+	// FastHTTP server configuration
+	ReadTimeout      int    `json:"readTimeout" label:"Read Timeout (s)" desc:"Read timeout in seconds; 0 uses default 10"`                       // Read timeout time (seconds), 0 uses the default value of 10 seconds
+	WriteTimeout     int    `json:"writeTimeout" label:"Write Timeout (s)" desc:"Write timeout in seconds; 0 uses default 10"`                    // Write timeout time (seconds), 0 uses the default value of 10 seconds
+	IdleTimeout      int    `json:"idleTimeout" label:"Idle Timeout (s)" desc:"Idle timeout in seconds; 0 uses default 60"`                       // Idle timeout time (seconds): 0 uses the default value of 60 seconds
+	DisableKeepalive bool   `json:"disableKeepalive" label:"Disable Keepalive" desc:"Whether to disable keep-alive"`                              //  Disable keepalive
+	MaxRequestSize   string `json:"maxRequestSize" label:"Max Request Size" desc:"Max request body size, supports 4M/4m/10K formats; default 4M"` // Maximum request body size, supports formats such as 4M, 4M, 10K, default is 4M
+	Concurrency      int    `json:"concurrency" label:"Concurrency" desc:"Concurrency; 0 uses default 256 * 1024"`                                // Concurrent count, 0 uses the default value 256 * 1024
+	//New configuration items are added to control connections and resource management
+	//MaxConnsPerIP int `json:"maxConnsPerIP"` // Maximum number of connections per IP
+	//MaxRequestsPerConn int `json:"maxRequestsPerConn"` // Maximum number of requests per connection
+	//MaxKeepaliveDuration time.Duration `json:"maxKeepaliveDuration"` // keepalive maximum duration
+	//ReadBufferSize int `json:"readBufferSize"` // Read buffer size
+	//WriteBufferSize int `json:"writeBufferSize"` // Write buffer size
+	//ReduceMemoryUsage bool `json:"reduceMemoryUsage"` // Reduces memory usage
+	//StreamRequestBody bool `json:"streamRequestBody"` // Stream the request body
 }
 
-// FastHttp 接收端端点
+// FastHttp receive endpoint
 type FastHttp struct {
 	impl.BaseEndpoint
 	nodeBase.SharedNode[*FastHttp]
-	//配置
+	//Configuration
 	Config     Config
 	RuleConfig types.Config
 	Server     *fasthttp.Server
-	//http路由器
+	//HTTP router
 	router  *router.Router
 	started bool
 	// resourceMapping is the resource mapping for static file serving
 	resourceMapping string
 }
 
-// Type 组件类型
+// Type returns the component type
 func (fh *FastHttp) Type() string {
 	return Type
 }
@@ -403,17 +403,17 @@ func (fh *FastHttp) New() types.Node {
 	return &FastHttp{
 		Config: Config{
 			Server:         ":6333",
-			ReadTimeout:    10,    // 0使用默认值10秒
-			WriteTimeout:   10,    // 0使用默认值10秒
-			IdleTimeout:    60,    // 0使用默认值60秒
-			MaxRequestSize: "4M",  // 默认4MB
-			Concurrency:    10000, // 并发数
-			//DisableKeepalive: true,             // 禁用keepalive
+			ReadTimeout:    10,    // 0 uses the default value for 10 seconds
+			WriteTimeout:   10,    // 0 uses the default value for 10 seconds
+			IdleTimeout:    60,    // 0 uses the default value for 60 seconds
+			MaxRequestSize: "4M",  // Default is 4MB
+			Concurrency:    10000, // and issued several times simultaneously
+			//DisableKeepalive: true, // Disable keepalive
 		},
 	}
 }
 
-// Init 初始化
+// Init initializes the component
 func (fh *FastHttp) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &fh.Config)
 	if err != nil {
@@ -430,13 +430,13 @@ func (fh *FastHttp) Init(ruleConfig types.Config, configuration types.Configurat
 	})
 }
 
-// Destroy 销毁
+// Destroy releases resources
 func (fh *FastHttp) Destroy() {
 	_ = fh.Close()
 }
 
 func (fh *FastHttp) Restart() error {
-	// 使用统一的关闭方法
+	// Use a unified closing method
 	fh.shutdownServer()
 
 	if fh.SharedNode.InstanceId != "" {
@@ -486,7 +486,7 @@ func (fh *FastHttp) Restart() error {
 	return nil
 }
 
-// shutdownServer 统一的服务器关闭逻辑
+// shutdownServer uses a unified shutdown logic
 func (fh *FastHttp) shutdownServer() {
 	fh.Lock()
 	if !fh.started || fh.Server == nil {
@@ -504,12 +504,12 @@ func (fh *FastHttp) shutdownServer() {
 		_ = server.ShutdownWithContext(ctx)
 	}
 
-	// 等待一小段时间确保端口完全释放
+	// Wait a short while to ensure the port is fully released
 	time.Sleep(100 * time.Millisecond)
 }
 
 func (fh *FastHttp) Close() error {
-	// 使用统一的关闭方法
+	// Use a unified closing method
 	fh.shutdownServer()
 
 	fh.Lock()
@@ -525,7 +525,7 @@ func (fh *FastHttp) Close() error {
 			for key := range fh.RouterStorage {
 				shared.deleteRouter(key)
 			}
-			//重启共享服务
+			//Restart the shared service
 			return shared.Restart()
 		}
 	}
@@ -601,7 +601,7 @@ func (fh *FastHttp) Listen() (net.Listener, error) {
 	return net.Listen("tcp", addr)
 }
 
-// addRouter 注册1个或者多个路由
+// addRouter registers one or more routes
 func (fh *FastHttp) addRouter(method string, routers ...endpointApi.Router) error {
 	method = strings.ToUpper(method)
 
@@ -616,7 +616,7 @@ func (fh *FastHttp) addRouter(method string, routers ...endpointApi.Router) erro
 		if id := item.GetId(); id == "" {
 			item.SetId(fh.RouterKey(method, path))
 		}
-		//存储路由
+		//Store the route
 		item.SetParams(method)
 		fh.RouterStorage[item.GetId()] = item
 		if fh.SharedNode.InstanceId != "" {
@@ -635,7 +635,7 @@ func (fh *FastHttp) addRouter(method string, routers ...endpointApi.Router) erro
 					isWait = to.IsWait()
 				}
 			}
-			// 转换路径参数格式：将 :id 格式转换为 {id} 格式
+			// Convert path parameter format: Convert:id format to {id} format
 			path = convertPathParams(path)
 			fh.router.Handle(method, path, fh.handler(item, isWait))
 		}
@@ -680,7 +680,7 @@ func (fh *FastHttp) DELETE(routers ...endpointApi.Router) endpointApi.HttpEndpoi
 
 func (fh *FastHttp) GlobalOPTIONS(handler http.Handler) endpointApi.HttpEndpoint {
 	fh.Router().GlobalOPTIONS = func(ctx *fasthttp.RequestCtx) {
-		// 创建标准的 http.ResponseWriter 和 *http.Request 适配器
+		// Create a standard http.ResponseWriter and *http.Request adapter
 		req := &http.Request{
 			Method: string(ctx.Method()),
 			//URL:        ctx.URI(),
@@ -693,26 +693,26 @@ func (fh *FastHttp) GlobalOPTIONS(handler http.Handler) endpointApi.HttpEndpoint
 			RequestURI: string(ctx.RequestURI()),
 		}
 
-		// 复制请求头
+		// Copy the request header
 		ctx.Request.Header.VisitAll(func(key, value []byte) {
 			req.Header.Add(string(key), string(value))
 		})
 
-		// 创建响应写入器适配器
+		// Create a response writer adapter
 		w := &fasthttpResponseWriter{
 			ctx:    ctx,
 			header: req.Response.Header,
 		}
 
-		// 调用原始的 http.Handler
+		// Calling the original http.Handler
 		handler.ServeHTTP(w, req)
 	}
 	return fh
 }
 
-// LoadServeFiles 加载静态文件映射
-// resourceMapping 格式: "urlPath1=localDir1,urlPath2=localDir2"
-// 例如: "/static/*filepath=./static,/assets/*filepath=./assets"
+// LoadServeFiles loads the static file mapping
+// resourceMapping format: "urlPath1=localDir1,urlPath2=localDir2"
+// For example: "/static/*filepath=./static,/assets/*filepath=./assets"
 func (fh *FastHttp) RegisterStaticFiles(resourceMapping string) endpointApi.HttpEndpoint {
 	if resourceMapping == "" {
 		return fh
@@ -725,13 +725,13 @@ func (fh *FastHttp) RegisterStaticFiles(resourceMapping string) endpointApi.Http
 			urlPath := strings.TrimSpace(files[0])
 			localDir := strings.TrimSpace(files[1])
 
-			// 移除 /*filepath 后缀以获取基础路径
+			// Remove the /*filepath suffix to get the base path
 			basePath := urlPath
 			if strings.HasSuffix(urlPath, "/*filepath") {
 				basePath = urlPath[:len(urlPath)-10]
 			}
 
-			// 确保路径以 /{filepath:*} 结尾，这是 fasthttp router 的要求
+			// Make sure the path ends with /{filepath:*}, which is a requirement for the fastHTTP router
 			if !strings.HasSuffix(urlPath, "/{filepath:*}") {
 				if strings.HasSuffix(basePath, "/") {
 					urlPath = basePath + "{filepath:*}"
@@ -740,7 +740,7 @@ func (fh *FastHttp) RegisterStaticFiles(resourceMapping string) endpointApi.Http
 				}
 			}
 
-			// 使用 router 的 ServeFiles 方法
+			// Use the router's ServeFiles method
 			fh.Router().ServeFiles(urlPath, localDir)
 		}
 	}
@@ -782,10 +782,10 @@ func (fh *FastHttp) RouterKey(method string, from string) string {
 func (fh *FastHttp) handler(router endpointApi.Router, isWait bool) fasthttp.RequestHandler {
 	return func(ctx *fasthttp.RequestCtx) {
 		defer func() {
-			//捕捉异常
+			//Capture anomalies
 			if e := recover(); e != nil {
 				fh.Printf("fasthttp endpointApi handler err :\n%v", runtime.Stack())
-				// 设置错误响应
+				// Set error responses
 				ctx.SetStatusCode(fasthttp.StatusInternalServerError)
 				ctx.SetBodyString("Internal Server Error")
 			}
@@ -797,7 +797,7 @@ func (fh *FastHttp) handler(router endpointApi.Router, isWait bool) fasthttp.Req
 		metadata := types.NewMetadata()
 		params := make(map[string]string)
 
-		// 提取路径参数
+		// Extract path parameters
 		ctx.VisitUserValues(func(key []byte, value interface{}) {
 			if v, ok := value.(string); ok {
 				params[string(key)] = v
@@ -816,20 +816,20 @@ func (fh *FastHttp) handler(router endpointApi.Router, isWait bool) fasthttp.Req
 			},
 		}
 
-		//把url?参数放到msg元数据中
+		//Place the url? parameter into the msg metadata
 		ctx.QueryArgs().VisitAll(func(key, value []byte) {
 			metadata.PutValue(string(key), string(value))
 		})
 
-		// CORS headers 必须在 SetBodyStreamWriter 之前设置，
-		// 因为 HTTP headers 在 bodyStream 回调执行之前就已发送
+		// CORS headers must be set before SetBodyStreamWriter,
+		// Because HTTP headers are sent before bodyStream callbacks are executed
 		if fh.Config.AllowCors {
 			ctx.Response.Header.Set(HeaderKeyAccessControlAllowOrigin, HeaderValueAll)
 			ctx.Response.Header.Set(HeaderKeyAccessControlAllowMethods, HeaderValueAll)
 			ctx.Response.Header.Set(HeaderKeyAccessControlAllowHeaders, HeaderValueAll)
 		}
 
-		// 缓存 headers，避免 bodyStream 回调内竞态访问 ctx.Response
+		// Cache headers to avoid bodyStream callback inbound race access ctx.Response
 		if resp, ok := exchange.Out.(*ResponseMessage); ok && resp.ctx != nil {
 			headers := make(textproto.MIMEHeader)
 			resp.ctx.Response.Header.VisitAll(func(key, value []byte) {
@@ -857,9 +857,9 @@ func (fh *FastHttp) handler(router endpointApi.Router, isWait bool) fasthttp.Req
 	}
 }
 
-// convertPathParams 转换路径参数格式：将 :id 格式转换为 {id} 格式
+// convertPathParams Convert path parameter format: Convert:id format to {id} format
 func convertPathParams(path string) string {
-	// 使用正则表达式匹配 :参数名 格式并转换为 {参数名} 格式
+	// Use regular expressions to match:parametername_format and convert to {parameter_name}
 	re := regexp.MustCompile(`:([a-zA-Z_][a-zA-Z0-9_]*)`)
 	return re.ReplaceAllString(path, "{$1}")
 }
@@ -870,18 +870,18 @@ func (fh *FastHttp) Printf(format string, v ...interface{}) {
 	}
 }
 
-// parseSize 解析大小字符串，支持K、M、G等单位
+// parseSize parses strings of size and size, supports units such as K, M, G
 func parseSize(sizeStr string) (int, error) {
 	if sizeStr == "" {
-		return 4 * 1024 * 1024, nil // 默认4MB
+		return 4 * 1024 * 1024, nil // Default is 4MB
 	}
 
 	sizeStr = strings.TrimSpace(strings.ToUpper(sizeStr))
 	if sizeStr == "" {
-		return 4 * 1024 * 1024, nil // 默认4MB
+		return 4 * 1024 * 1024, nil // Default is 4MB
 	}
 
-	// 提取数字部分和单位部分
+	// Extract the numeric and unit parts
 	var numStr string
 	var unit string
 
@@ -903,7 +903,7 @@ func parseSize(sizeStr string) (int, error) {
 		return 0, fmt.Errorf("invalid number in size: %s", numStr)
 	}
 
-	// 检查负数
+	// Check the negative numbers
 	if num < 0 {
 		return 0, fmt.Errorf("size cannot be negative: %s", sizeStr)
 	}
@@ -922,7 +922,7 @@ func parseSize(sizeStr string) (int, error) {
 	}
 }
 
-// getTimeoutDuration 获取超时时间，如果为0则使用默认值
+// getTimeoutDuration gets the timeout; if it is 0, the default value is used
 func getTimeoutDuration(seconds int, defaultSeconds int) time.Duration {
 	if seconds <= 0 {
 		return time.Duration(defaultSeconds) * time.Second
@@ -930,12 +930,12 @@ func getTimeoutDuration(seconds int, defaultSeconds int) time.Duration {
 	return time.Duration(seconds) * time.Second
 }
 
-// Started 返回服务是否已经启动
+// Started returns whether the service has started
 func (fh *FastHttp) Started() bool {
 	return fh.started
 }
 
-// GetServer 获取FastHTTP服务
+// GetServer obtains the FastHTTP service
 func (fh *FastHttp) GetServer() *fasthttp.Server {
 	if fh.Server != nil {
 		return fh.Server
@@ -947,12 +947,12 @@ func (fh *FastHttp) GetServer() *fasthttp.Server {
 	return nil
 }
 
-// transformMsg 包装函数，将RuleMsg转换函数转换为endpoint.Process
+// transformMsg wrapper function, converting the RuleMsg transformation function to endpoint.Process
 func transformMsg(transform func(ctx types.RuleContext, msg types.RuleMsg) types.RuleMsg) endpointApi.Process {
 	return func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		if exchange.In != nil && exchange.In.GetMsg() != nil {
 			msg := *exchange.In.GetMsg()
-			// 创建一个简单的RuleContext实现
+			// Create a simple RuleContext implementation
 			ruleCtx := &engine.DefaultRuleContext{}
 			ruleCtx.SetContext(exchange.Context)
 			newMsg := transform(ruleCtx, msg)
@@ -964,28 +964,28 @@ func transformMsg(transform func(ctx types.RuleContext, msg types.RuleMsg) types
 
 func (fh *FastHttp) newRouter() *router.Router {
 	fh.router = router.New()
-	//设置跨域
+	//Set up cross-domain
 	if fh.Config.AllowCors {
-		// 设置全局 OPTIONS 处理器
+		// Set the global OPTIONS processor
 		fh.router.GlobalOPTIONS = func(ctx *fasthttp.RequestCtx) {
-			// 设置 CORS 相关的响应头
+			// Set CORS-related response headers
 			ctx.Response.Header.Set(HeaderKeyAccessControlAllowMethods, HeaderValueAll)
 			ctx.Response.Header.Set(HeaderKeyAccessControlAllowHeaders, HeaderValueAll)
 			ctx.Response.Header.Set(HeaderKeyAccessControlAllowOrigin, HeaderValueAll)
-			// 返回 204 状态码
+			// Return the 204 status code
 			ctx.Response.SetStatusCode(http.StatusNoContent)
 		}
 
-		// 设置自定义的 NotFound 处理器来捕获 OPTIONS 请求
+		// Set up a custom NotFound processor to capture OPTIONS requests
 		fh.router.NotFound = func(ctx *fasthttp.RequestCtx) {
 			if string(ctx.Method()) == fasthttp.MethodOptions {
-				// 对于 OPTIONS 请求，设置 CORS 头并返回
+				// For OPTIONS requests, set the CORS header and return
 				ctx.Response.Header.Set(HeaderKeyAccessControlAllowMethods, HeaderValueAll)
 				ctx.Response.Header.Set(HeaderKeyAccessControlAllowHeaders, HeaderValueAll)
 				ctx.Response.Header.Set(HeaderKeyAccessControlAllowOrigin, HeaderValueAll)
 				ctx.Response.SetStatusCode(http.StatusNoContent)
 			} else {
-				// 其他请求返回 404
+				// Other requests return 404
 				ctx.Response.SetStatusCode(http.StatusNotFound)
 				ctx.Response.SetBodyString("Not Found")
 			}
@@ -1016,16 +1016,16 @@ func (fh *FastHttp) startServer() error {
 	}
 	var err error
 
-	// 解析MaxRequestSize
+	// Parse MaxRequestSize
 	maxRequestSize, err := parseSize(fh.Config.MaxRequestSize)
 	if err != nil {
 		return fmt.Errorf("invalid MaxRequestSize: %v", err)
 	}
 
-	// 获取超时配置，0则使用默认值
-	readTimeout := getTimeoutDuration(fh.Config.ReadTimeout, 10)   // 默认10秒
-	writeTimeout := getTimeoutDuration(fh.Config.WriteTimeout, 10) // 默认10秒
-	idleTimeout := getTimeoutDuration(fh.Config.IdleTimeout, 60)   // 默认60秒
+	// Get the timeout configuration; 0 uses the default value
+	readTimeout := getTimeoutDuration(fh.Config.ReadTimeout, 10)   // Default is 10 seconds
+	writeTimeout := getTimeoutDuration(fh.Config.WriteTimeout, 10) // Default is 10 seconds
+	idleTimeout := getTimeoutDuration(fh.Config.IdleTimeout, 60)   // Default is 60 seconds
 
 	fh.Server = &fasthttp.Server{
 		Handler:            fh.router.Handler,
@@ -1035,7 +1035,7 @@ func (fh *FastHttp) startServer() error {
 		MaxRequestBodySize: maxRequestSize,
 		Concurrency:        fh.Config.Concurrency,
 		DisableKeepalive:   fh.Config.DisableKeepalive,
-		// 设置错误处理器，避免panic导致的goroutine泄漏
+		// Set the wrong processor to avoid Goroutine leaks caused by panic
 		ErrorHandler: func(ctx *fasthttp.RequestCtx, err error) {
 			fh.Printf("fasthttp server error: %v", err)
 			ctx.SetStatusCode(fasthttp.StatusInternalServerError)
@@ -1046,16 +1046,16 @@ func (fh *FastHttp) startServer() error {
 	if err != nil {
 		return err
 	}
-	//标记已经启动
+	//The marker has already been activated
 	fh.started = true
 
-	// 安全地访问Config字段和Server字段，防止数据竞争
+	// Securely access the Config and Server fields to prevent data contention
 	fh.RLock()
 	isTls := fh.Config.CertKeyFile != "" && fh.Config.CertFile != ""
 	certFile := fh.Config.CertFile
 	certKeyFile := fh.Config.CertKeyFile
 	serverAddr := fh.Config.Server
-	server := fh.Server // 保存Server引用，防止在goroutine中访问时被其他goroutine修改
+	server := fh.Server // Save Server references to prevent modifications by other goroutines when accessing in goroutine
 	onEvent := fh.OnEvent
 	fh.RUnlock()
 
@@ -1067,7 +1067,7 @@ func (fh *FastHttp) startServer() error {
 		go func() {
 			defer ln.Close()
 			err = server.ServeTLS(ln, certFile, certKeyFile)
-			// 安全地访问OnEvent字段
+			// Securely access the OnEvent field
 			fh.RLock()
 			onEvent := fh.OnEvent
 			fh.RUnlock()
@@ -1080,7 +1080,7 @@ func (fh *FastHttp) startServer() error {
 		go func() {
 			defer ln.Close()
 			err = server.Serve(ln)
-			// 安全地访问OnEvent字段
+			// Securely access the OnEvent field
 			fh.RLock()
 			onEvent := fh.OnEvent
 			fh.RUnlock()

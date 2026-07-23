@@ -13,41 +13,41 @@ import (
 	"github.com/rulego/rulego/utils/str"
 )
 
-// 注册节点
+// Register the node
 func init() {
 	_ = rulego.Registry.Register(&PublisherNode{})
 }
 
-// KeyResult 接收到消息的订阅者数量
+// KeyResult: Number of subscribers receiving messages
 const KeyResult = "result"
 
-// PublisherNodeConfiguration 节点配置
+// PublisherNodeConfiguration node configuration
 type PublisherNodeConfiguration struct {
-	// Server redis服务器地址
+	// Server redis server address
 	Server string `json:"server" label:"Server" desc:"Redis server address, e.g. 127.0.0.1:6379" required:"true" ref:"primary"`
-	// Password 密码
+	// Password
 	Password string `json:"password" label:"Password" desc:"Redis password" ref:"shared"`
-	// PoolSize 连接池大小
+	// PoolSize: Connect the pool size
 	PoolSize int `json:"poolSize" label:"Pool Size" desc:"Connection pool size"`
-	// Db 数据库index
+	// db database index
 	Db int `json:"db" label:"DB" desc:"Redis database index"`
-	// Channel 发布频道
+	// Channel: Release channel
 	Channel string `json:"channel" label:"Channel" desc:"Pub/sub channel. Supports ${metadata.key} substitution" required:"true"`
 }
 
-// PublisherNode redis发布节点
-// 成功：转向Success链，通过msg.metadata.result获取接收到消息的订阅者数量
-// 失败：转向Failure链
+// PublisherNode redis is the publisher node
+// Success: Switch to the Success chain and use msg.metadata.result to get the number of subscribers who received messages
+// Failure: Switch to the Failure chain
 type PublisherNode struct {
 	base.SharedNode[*redis.Client]
-	//节点配置
+	//Node configuration
 	Config          PublisherNodeConfiguration
 	channelTemplate el.Template
-	// hasVar 标识模板是否包含变量
+	// hasVar identifies whether the template contains variables
 	hasVar bool
 }
 
-// Type 返回组件类型
+// Type returns the component type
 func (x *PublisherNode) Type() string {
 	return "x/redisPub"
 }
@@ -60,28 +60,28 @@ func (x *PublisherNode) New() types.Node {
 	}}
 }
 
-// Init 初始化组件
+// Init initializes the component
 func (x *PublisherNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
-		//初始化客户端
+		//Initialize the client
 		_ = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*redis.Client, error) {
 			return x.initClient()
 		}, func(client *redis.Client) error {
-			// 清理回调函数
+			// Cleanup callback function
 			return client.Close()
 		})
 		x.channelTemplate, err = el.NewTemplate(strings.TrimSpace(x.Config.Channel))
 		if err != nil {
 			return err
 		}
-		// 检查模板是否包含变量
+		// Check if the template contains variables
 		x.hasVar = x.channelTemplate.HasVar()
 	}
 	return err
 }
 
-// OnMsg 处理消息
+// OnMsg processes a message
 func (x *PublisherNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	var channel string
 	if x.hasVar {
@@ -96,7 +96,7 @@ func (x *PublisherNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		return
 	}
 
-	// 发布消息到Redis
+	// Posted the message to Redis
 	result, err := client.Publish(ctx.GetContext(), channel, msg.GetData()).Result()
 	if err != nil {
 		ctx.TellFailure(msg, err)

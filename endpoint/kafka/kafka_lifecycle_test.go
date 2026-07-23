@@ -29,18 +29,18 @@ import (
 	"github.com/rulego/rulego/test/assert"
 )
 
-// TestKafkaEndpointLifecycleManagement 测试Kafka endpoint的生命周期管理
+// TestKafkaEndpointLifecycleManagement TestKafka Endpoint Lifecycle Management
 func TestKafkaEndpointLifecycleManagement(t *testing.T) {
 
 	config := engine.NewConfig()
 
-	// 子测试1：基本初始化测试
+	// Subtest 1: Basic initialization test
 	t.Run("BasicInitialization", func(t *testing.T) {
-		// 使用New()方法正确初始化Kafka endpoint
+		// Use the New() method to properly initialize the Kafka endpoint
 		tempKafka := &Kafka{}
 		kafkaEndpoint := tempKafka.New().(*Kafka)
 
-		// 测试New方法
+		// Test the new method
 		newInstance := kafkaEndpoint.New()
 		assert.NotNil(t, newInstance)
 		newKafka, ok := newInstance.(*Kafka)
@@ -49,9 +49,9 @@ func TestKafkaEndpointLifecycleManagement(t *testing.T) {
 		assert.Equal(t, "rulego", newKafka.Config.GroupId)
 	})
 
-	// 子测试2：配置初始化测试
+	// Subtest 2: Configure the initialization test
 	t.Run("ConfigurationInitialization", func(t *testing.T) {
-		// 使用New()方法正确初始化Kafka endpoint
+		// Use the New() method to properly initialize the Kafka endpoint
 		tempKafka := &Kafka{}
 		kafkaEndpoint := tempKafka.New().(*Kafka)
 
@@ -79,7 +79,7 @@ func TestKafkaEndpointLifecycleManagement(t *testing.T) {
 		assert.True(t, kafkaEndpoint.Config.TLS.Enable)
 	})
 
-	// 子测试3：路由管理测试
+	// Subtest 3: Route management test
 	t.Run("RouterManagement", func(t *testing.T) {
 		kafkaEndpoint := &Kafka{}
 
@@ -91,29 +91,29 @@ func TestKafkaEndpointLifecycleManagement(t *testing.T) {
 		err := kafkaEndpoint.Init(config, configuration)
 		assert.Nil(t, err)
 
-		// 创建测试路由
+		// Create test routes
 		router := impl.NewRouter().From("test-topic").Transform(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 			exchange.Out.SetBody([]byte("processed"))
 			return true
 		}).End()
 
-		// 测试添加路由（不实际连接Kafka）
+		// Test adding routes (not actually connecting to Kafka)
 		routerId, err := kafkaEndpoint.AddRouter(router)
 		if err != nil {
-			// 预期会失败，因为没有实际的Kafka服务器
+			// It was expected to fail because there was no actual Kafka server
 			assert.NotNil(t, err)
 		} else {
 			assert.NotEqual(t, "", routerId)
 		}
 
-		// 测试移除路由
+		// Test removing the route
 		err = kafkaEndpoint.RemoveRouter("test-topic")
 		assert.Nil(t, err)
 	})
 
-	// 子测试4：关闭和清理测试
+	// Subtest 4: Closing and cleaning tests
 	t.Run("CloseAndCleanup", func(t *testing.T) {
-		// 使用New()方法正确初始化Kafka endpoint
+		// Use the New() method to properly initialize the Kafka endpoint
 		tempKafka := &Kafka{}
 		kafkaEndpoint := tempKafka.New().(*Kafka)
 
@@ -125,26 +125,26 @@ func TestKafkaEndpointLifecycleManagement(t *testing.T) {
 		err := kafkaEndpoint.Init(config, configuration)
 		assert.Nil(t, err)
 
-		// 测试关闭
+		// Test shutdown
 		err = kafkaEndpoint.Close()
 		assert.Nil(t, err)
 
-		// 测试重复关闭
+		// Test repeats shutdown
 		err = kafkaEndpoint.Close()
 		assert.Nil(t, err)
 
-		// 测试销毁
+		// Test destruction
 		kafkaEndpoint.Destroy()
 	})
 }
 
-// TestKafkaEndpointIdempotencyAndSafety 测试Kafka endpoint的幂等性和安全性
+// TestKafkaEndpointIdempotencyAndSafety Test the idempotency and security of Kafka endpoints
 func TestKafkaEndpointIdempotencyAndSafety(t *testing.T) {
 
 	config := engine.NewConfig()
 
 	t.Run("MultipleCloseCalls", func(t *testing.T) {
-		// 使用New()方法正确初始化Kafka endpoint
+		// Use the New() method to properly initialize the Kafka endpoint
 		tempKafka := &Kafka{}
 		kafkaEndpoint := tempKafka.New().(*Kafka)
 
@@ -156,21 +156,21 @@ func TestKafkaEndpointIdempotencyAndSafety(t *testing.T) {
 		err := kafkaEndpoint.Init(config, configuration)
 		assert.Nil(t, err)
 
-		// 第一次关闭
+		// The first time it was closed
 		err = kafkaEndpoint.Close()
 		assert.Nil(t, err)
 
-		// 重复关闭应该安全且无错误
+		// Repeated shutdowns should be safe and error-free
 		err = kafkaEndpoint.Close()
 		assert.Nil(t, err)
 
-		// 再次重复关闭
+		// Repeat the closing again
 		err = kafkaEndpoint.Close()
 		assert.Nil(t, err)
 	})
 
 	t.Run("ConcurrentCloseCalls", func(t *testing.T) {
-		// 使用New()方法正确初始化Kafka endpoint
+		// Use the New() method to properly initialize the Kafka endpoint
 		tempKafka := &Kafka{}
 		kafkaEndpoint := tempKafka.New().(*Kafka)
 
@@ -182,7 +182,7 @@ func TestKafkaEndpointIdempotencyAndSafety(t *testing.T) {
 		err := kafkaEndpoint.Init(config, configuration)
 		assert.Nil(t, err)
 
-		// 并发关闭测试
+		// Concurrent shutdown test
 		const numGoroutines = 5
 		var wg sync.WaitGroup
 		errChan := make(chan error, numGoroutines)
@@ -201,14 +201,14 @@ func TestKafkaEndpointIdempotencyAndSafety(t *testing.T) {
 		wg.Wait()
 		close(errChan)
 
-		// 验证没有错误
+		// Verification is not error-free
 		for err := range errChan {
 			t.Errorf("Concurrent close error: %v", err)
 		}
 	})
 
 	t.Run("ConcurrentRouterManagement", func(t *testing.T) {
-		// 使用New()方法正确初始化Kafka endpoint
+		// Use the New() method to properly initialize the Kafka endpoint
 		tempKafka := &Kafka{}
 		kafkaEndpoint := tempKafka.New().(*Kafka)
 
@@ -220,7 +220,7 @@ func TestKafkaEndpointIdempotencyAndSafety(t *testing.T) {
 		err := kafkaEndpoint.Init(config, configuration)
 		assert.Nil(t, err)
 
-		// 并发路由管理测试
+		// Concurrent route management tests
 		const numGoroutines = 3
 		var wg sync.WaitGroup
 		errChan := make(chan error, numGoroutines*2)
@@ -230,18 +230,18 @@ func TestKafkaEndpointIdempotencyAndSafety(t *testing.T) {
 			go func(index int) {
 				defer wg.Done()
 
-				// 创建独特的路由
+				// Create unique routes
 				router := impl.NewRouter().From(fmt.Sprintf("test-topic-%d", index)).Transform(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 					exchange.Out.SetBody([]byte(fmt.Sprintf("processed-%d", index)))
 					return true
 				}).End()
 
-				// 尝试添加路由
+				// Try adding a route
 				routerId, err := kafkaEndpoint.AddRouter(router)
 				if err != nil {
 					errChan <- fmt.Errorf("goroutine %d add router: %v", index, err)
 				} else {
-					// 尝试移除路由
+					// Try removing the route
 					err = kafkaEndpoint.RemoveRouter(routerId)
 					if err != nil {
 						errChan <- fmt.Errorf("goroutine %d remove router: %v", index, err)
@@ -253,20 +253,20 @@ func TestKafkaEndpointIdempotencyAndSafety(t *testing.T) {
 		wg.Wait()
 		close(errChan)
 
-		// 收集错误（预期会有连接错误，但不应该有并发问题）
+		// Collect errors (expect connection errors, but there should be no concurrency issues)
 		for err := range errChan {
 			t.Logf("Expected error (no Kafka server): %v", err)
 		}
 	})
 }
 
-// TestKafkaEndpointShutdownBehavior 测试Kafka endpoint的关闭行为
+// TestKafkaEndpointShutdownBehavior Tests the closing behavior of Kafka endpoint
 func TestKafkaEndpointShutdownBehavior(t *testing.T) {
 
 	config := engine.NewConfig()
 
 	t.Run("GracefulShutdown", func(t *testing.T) {
-		// 使用New()方法正确初始化Kafka endpoint
+		// Use the New() method to properly initialize the Kafka endpoint
 		tempKafka := &Kafka{}
 		kafkaEndpoint := tempKafka.New().(*Kafka)
 
@@ -278,26 +278,26 @@ func TestKafkaEndpointShutdownBehavior(t *testing.T) {
 		err := kafkaEndpoint.Init(config, configuration)
 		assert.Nil(t, err)
 
-		// 验证关闭状态检查
+		// Verify the closed status check
 		assert.False(t, kafkaEndpoint.IsShuttingDown())
 
-		// 开始关闭
+		// Start closing
 		err = kafkaEndpoint.Close()
 		assert.Nil(t, err)
 
-		// 验证关闭状态
+		// Verify the closed status
 		assert.True(t, kafkaEndpoint.IsShuttingDown())
 
-		// 验证关闭超时设置
+		// Verify that timeout settings are off
 		timeout := kafkaEndpoint.GetShutdownTimeout()
 		assert.Equal(t, 30*time.Second, timeout)
 	})
 
 	t.Run("ShutdownWithTimeout", func(t *testing.T) {
-		// 使用New()方法正确初始化Kafka endpoint
+		// Use the New() method to properly initialize the Kafka endpoint
 		tempKafka := &Kafka{}
 		kafkaEndpoint := tempKafka.New().(*Kafka)
-		kafkaEndpoint.shutdownTimeout = 5 * time.Second // 设置较短的超时
+		kafkaEndpoint.shutdownTimeout = 5 * time.Second // Set a shorter timeout
 
 		configuration := types.Configuration{
 			"server":  "localhost:9092",
@@ -307,29 +307,29 @@ func TestKafkaEndpointShutdownBehavior(t *testing.T) {
 		err := kafkaEndpoint.Init(config, configuration)
 		assert.Nil(t, err)
 
-		// 测试带超时的关闭
+		// Test the band to close off after a timeout
 		start := time.Now()
 		err = kafkaEndpoint.Close()
 		duration := time.Since(start)
 
 		assert.Nil(t, err)
-		// 关闭时间应该短于超时时间（因为没有实际的消费者）
+		// Closing times should be shorter than the timeouts (since there are no actual consumers).
 		assert.True(t, duration < 5*time.Second)
 	})
 }
 
-// TestKafkaEndpointConfiguration 测试Kafka endpoint的配置处理
+// TestKafkaEndpointConfiguration tests the configuration processing of Kafka endpoint
 func TestKafkaEndpointConfiguration(t *testing.T) {
 	config := engine.NewConfig()
 
 	t.Run("DefaultConfiguration", func(t *testing.T) {
-		// 使用New()方法正确初始化Kafka endpoint
+		// Use the New() method to properly initialize the Kafka endpoint
 		tempKafka := &Kafka{}
 		newInstance := tempKafka.New()
 		newKafka, ok := newInstance.(*Kafka)
 		assert.True(t, ok)
 
-		// 验证默认配置
+		// Verify the default configuration
 		assert.Equal(t, "127.0.0.1:9092", newKafka.Config.Server)
 		assert.Equal(t, "rulego", newKafka.Config.GroupId)
 		assert.False(t, newKafka.Config.SASL.Enable)
@@ -338,7 +338,7 @@ func TestKafkaEndpointConfiguration(t *testing.T) {
 	})
 
 	t.Run("CustomConfiguration", func(t *testing.T) {
-		// 使用New()方法正确初始化Kafka endpoint
+		// Use the New() method to properly initialize the Kafka endpoint
 		tempKafka := &Kafka{}
 		kafkaEndpoint := tempKafka.New().(*Kafka)
 
@@ -360,7 +360,7 @@ func TestKafkaEndpointConfiguration(t *testing.T) {
 		err := kafkaEndpoint.Init(config, configuration)
 		assert.Nil(t, err)
 
-		// 验证自定义配置
+		// Verify custom configurations
 		assert.Equal(t, "kafka1:9092,kafka2:9092", kafkaEndpoint.Config.Server)
 		assert.Equal(t, "custom-group", kafkaEndpoint.Config.GroupId)
 		assert.True(t, kafkaEndpoint.Config.SASL.Enable)
@@ -372,11 +372,11 @@ func TestKafkaEndpointConfiguration(t *testing.T) {
 	})
 
 	t.Run("LegacyBrokersConfiguration", func(t *testing.T) {
-		// 使用New()方法正确初始化Kafka endpoint
+		// Use the New() method to properly initialize the Kafka endpoint
 		tempKafka := &Kafka{}
 		kafkaEndpoint := tempKafka.New().(*Kafka)
 
-		// 测试旧版本的brokers配置
+		// Test older versions of brokers configurations
 		configuration := types.Configuration{
 			"brokers": []string{"legacy1:9092", "legacy2:9092"},
 			"groupId": "legacy-group",
@@ -385,31 +385,31 @@ func TestKafkaEndpointConfiguration(t *testing.T) {
 		err := kafkaEndpoint.Init(config, configuration)
 		assert.Nil(t, err)
 
-		// 验证旧版本配置仍然有效
+		// Verify that the old version configuration is still valid
 		assert.Equal(t, 2, len(kafkaEndpoint.brokers))
 		assert.Equal(t, "legacy1:9092", kafkaEndpoint.brokers[0])
 		assert.Equal(t, "legacy2:9092", kafkaEndpoint.brokers[1])
 	})
 
 	t.Run("EmptyGroupIdHandling", func(t *testing.T) {
-		// 使用New()方法正确初始化Kafka endpoint
+		// Use the New() method to properly initialize the Kafka endpoint
 		tempKafka := &Kafka{}
 		kafkaEndpoint := tempKafka.New().(*Kafka)
 
 		configuration := types.Configuration{
 			"server":  "localhost:9092",
-			"groupId": "  ", // 空白字符串
+			"groupId": "  ", // Blank string
 		}
 
 		err := kafkaEndpoint.Init(config, configuration)
 		assert.Nil(t, err)
 
-		// 验证空的groupId被设置为默认值
+		// The empty groupId is set to the default value
 		assert.Equal(t, "rulego", kafkaEndpoint.Config.GroupId)
 	})
 }
 
-// createKafkaTestRouter 创建测试路由
+// createKafkaTestRouter Creates a test route
 func createKafkaTestRouter(topic string) endpointApi.Router {
 	return impl.NewRouter().From(topic).To("chain:kafka-test").End()
 }

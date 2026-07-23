@@ -40,13 +40,13 @@ const (
 )
 
 func TestEndpoint(t *testing.T) {
-	// 从环境变量获取RabbitMQ服务器地址
+	// Obtain the RabbitMQ server address from the environment variable
 	server := os.Getenv("RABBITMQ_URL")
 	if server == "" {
 		server = "amqp://guest:guest@localhost:5672/"
 	}
 
-	// 如果设置了跳过 RabbitMQ 测试，则跳过
+	// If you set to skip the RabbitMQ test, skip it
 	if os.Getenv("SKIP_RABBITMQ_TESTS") == "true" {
 		t.Skip("Skipping RabbitMQ tests")
 	}
@@ -56,10 +56,10 @@ func TestEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	config := rulego.NewConfig(types.WithDefaultPool())
-	// 注册规则链
+	// Register the rule chain
 	_, _ = rulego.New("default", buf, rulego.WithConfig(config))
 
-	// 启动enpoint接收服务
+	// Start the Enpoint receiving service
 	ep, err := endpoint.Registry.New(Type, config, Config{
 		Server:   server,
 		Exchange: exchange,
@@ -69,34 +69,34 @@ func TestEndpoint(t *testing.T) {
 		return
 	}
 
-	// 路由1
+	// Route 1
 	router1 := endpoint.NewRouter().From(topicRequest).Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		assert.Equal(t, "test message", exchange.In.GetMsg().GetData())
 		return true
 	}).To("chain:default").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
-		// 往指定主题发送数据，用于响应
+		// Send data to a specified topic for response
 		exchange.Out.Headers().Add(KeyResponseTopic, topicResponse)
 		exchange.Out.SetBody([]byte("this is response"))
 		return true
 	}).End()
 
 	count := int32(0)
-	// 模拟获取响应
+	// Simulate to obtain responses
 	router2 := endpoint.NewRouter().SetId("router3").From(topicResponse).Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
-		//fmt.Println("接收到数据：device.msg.response", exchange.In.GetMsg())
+		//fmt.Println("Data received: device.msg.response", exchange.In.GetMsg())
 		assert.Equal(t, "this is response", exchange.In.GetMsg().GetData())
 		atomic.AddInt32(&count, 1)
 		return true
 	}).End()
 
-	// 模拟获取响应,相同主题
+	// Simulate to get responses, same theme
 	router3 := endpoint.NewRouter().SetId("router3").From(topicResponse).Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		assert.Equal(t, "this is response", exchange.In.GetMsg().GetData())
 		atomic.AddInt32(&count, 1)
 		return true
 	}).End()
 
-	// 注册路由
+	// Register the route
 	_, err = ep.AddRouter(router1)
 	if err != nil {
 		t.Skipf("Failed to add router1 (RabbitMQ server may not be available): %v", err)
@@ -109,14 +109,14 @@ func TestEndpoint(t *testing.T) {
 	}
 	router3Id, err := ep.AddRouter(router3)
 	assert.NotNil(t, err)
-	// 启动服务
+	// Start the server
 	err = ep.Start()
 	if err != nil {
 		t.Skipf("Failed to start RabbitMQ endpoint: %v", err)
 		return
 	}
 
-	// 测试发布和订阅
+	// Test publishing and subscriptions
 	conn, err := amqp.Dial(server)
 	if err != nil {
 		t.Skipf("RabbitMQ server not available: %v", err)
@@ -130,12 +130,12 @@ func TestEndpoint(t *testing.T) {
 	}
 	defer channel.Close()
 
-	// 发布消息到device.msg.request
+	// Send messages to device.msg.request
 	err = channel.Publish(
-		exchange,     // 发布到的交换机
-		topicRequest, // 路由键
-		false,        // 表示是否要求消息必须被路由到至少一个队列
-		false,        // 是否要求消息立即被消费者接收
+		exchange,     // Released to the switch
+		topicRequest, // Router key
+		false,        // Indicates whether messages must be routed to at least one queue
+		false,        // Whether to request messages to be received by consumers immediately
 		amqp.Publishing{
 			ContentType:     ContentTypeJson,
 			ContentEncoding: KeyUTF8,
@@ -145,20 +145,20 @@ func TestEndpoint(t *testing.T) {
 		t.Skipf("Failed to publish message: %v", err)
 		return
 	}
-	// 等待消息处理
+	// Waiting for the message to be processed
 	time.Sleep(time.Second * 1)
 
 	assert.Equal(t, int32(1), atomic.LoadInt32(&count))
 
 	atomic.StoreInt32(&count, 0)
-	//删除一个相同的主题
+	//Delete the same topic
 	_ = ep.RemoveRouter(router3Id)
-	// 发布消息到device.msg.request
+	// Send messages to device.msg.request
 	err = channel.Publish(
-		exchange,     // 发布到的交换机
-		topicRequest, // 路由键
-		false,        // 表示是否要求消息必须被路由到至少一个队列
-		false,        // 是否要求消息立即被消费者接收
+		exchange,     // Released to the switch
+		topicRequest, // Router key
+		false,        // Indicates whether messages must be routed to at least one queue
+		false,        // Whether to request messages to be received by consumers immediately
 		amqp.Publishing{
 			ContentType:     ContentTypeJson,
 			ContentEncoding: KeyUTF8,
@@ -168,7 +168,7 @@ func TestEndpoint(t *testing.T) {
 		t.Skipf("Failed to publish second message: %v", err)
 		return
 	}
-	// 等待消息处理
+	// Waiting for the message to be processed
 	time.Sleep(time.Second * 1)
 
 	assert.Equal(t, int32(0), atomic.LoadInt32(&count))

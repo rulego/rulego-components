@@ -32,96 +32,96 @@ import (
 	"github.com/rulego/rulego/test/assert"
 )
 
-// TestKafkaDSLEndpoint 测试使用DSL方式启动Kafka endpoint并进行动态路由和热更新
-// 本测试演示了如何通过ruleEngine.ReloadSelf()方法实现以下功能：
-// 1. 初始化Kafka endpoint和路由配置
-// 2. 通过ReloadSelf()动态添加新的路由（告警路由和日志路由）
-// 3. 通过ReloadSelf()删除指定路由（删除告警路由，保留其他路由）
-// 4. 通过ReloadSelf()进行完整的热更新（替换所有路由和处理节点）
+// TestKafkaDSLEndpoint tests start Kafka endpoints using DSL, perform dynamic routing, and hot updates
+// This test demonstrates how to achieve the following functionality using the ruleEngine.ReloadSelf() method:
+// 1. Initialize Kafka endpoint and routing configuration
+// 2. Dynamically add new routes (alarm routes and log routes) via ReloadSelf()
+// 3. Delete specified routes via ReloadSelf() (remove alert routes, keep other routes)
+// 4. Complete hot update via ReloadSelf() (replacing all routing and processing nodes)
 //
-// ReloadSelf()方法的优势：
-// - 支持完整的DSL配置更新，包括endpoints、routers、nodes等
-// - 自动处理资源的创建、更新和清理
-// - 保证配置更新的原子性，避免中间状态
-// - 支持复杂的路由拓扑变更
+// Advantages of the ReloadSelf() method:
+// - Supports complete DSL configuration updates, including endpoints, routers, nodes, etc
+// - Automatically handle resource creation, updates, and cleanup
+// - Ensure the atomicity of configuration updates to avoid intermediate states
+// - Supports complex routing topology changes
 func TestKafkaDSLEndpoint(t *testing.T) {
-	// 用于验证消息接收的计数器
+	// A counter used to verify message reception
 	var sensorMsgCount, deviceMsgCount int32
-	
-	// 注册传感器数据验证函数
+
+	// Register sensor data verification functions
 	action.Functions.Register("validateSensorData", func(ctx types.RuleContext, msg types.RuleMsg) {
-		// 增加计数器
+		// Increase the counter
 		atomic.AddInt32(&sensorMsgCount, 1)
-		
-		// 验证消息数据
+
+		// Verify message data
 		data := msg.GetData()
 		if len(data) == 0 {
 			ctx.TellFailure(msg, fmt.Errorf("sensor data is empty"))
 			return
 		}
-		
-		// 解析JSON数据
+
+		// Parse JSON data
 		var sensorData map[string]interface{}
 		if err := json.Unmarshal([]byte(data), &sensorData); err != nil {
 			ctx.TellFailure(msg, fmt.Errorf("failed to parse sensor data: %v", err))
 			return
 		}
-		
-		// 验证必要字段
+
+		// Verify the required fields
 		if _, ok := sensorData["sensorId"]; !ok {
 			ctx.TellFailure(msg, fmt.Errorf("missing sensorId field"))
 			return
 		}
-		
-		// 添加验证标记到metadata
+
+		// Add validation tags to metadata
 		msg.Metadata.PutValue("validated", "true")
 		msg.Metadata.PutValue("validatedBy", "validateSensorData")
 		msg.Metadata.PutValue("processedAt", time.Now().Format(time.RFC3339))
-		
-		// 继续处理
+
+		// Keep working on it
 		ctx.TellNext(msg, "validated")
 	})
-	
-	// 注册设备状态验证函数
+
+	// Register the device status verification function
 	action.Functions.Register("validateDeviceStatus", func(ctx types.RuleContext, msg types.RuleMsg) {
-		// 增加计数器
+		// Increase the counter
 		atomic.AddInt32(&deviceMsgCount, 1)
-		
-		// 验证消息数据
+
+		// Verify message data
 		data := msg.GetData()
 		if len(data) == 0 {
 			ctx.TellFailure(msg, fmt.Errorf("device status data is empty"))
 			return
 		}
-		
-		// 解析JSON数据
+
+		// Parse JSON data
 		var deviceData map[string]interface{}
 		if err := json.Unmarshal([]byte(data), &deviceData); err != nil {
 			ctx.TellFailure(msg, fmt.Errorf("failed to parse device data: %v", err))
 			return
 		}
-		
-		// 验证必要字段
+
+		// Verify the required fields
 		if _, ok := deviceData["deviceId"]; !ok {
 			ctx.TellFailure(msg, fmt.Errorf("missing deviceId field"))
 			return
 		}
-		
+
 		if _, ok := deviceData["status"]; !ok {
 			ctx.TellFailure(msg, fmt.Errorf("missing status field"))
 			return
 		}
-		
-		// 添加验证标记到metadata
+
+		// Add validation tags to metadata
 		msg.Metadata.PutValue("validated", "true")
 		msg.Metadata.PutValue("validatedBy", "validateDeviceStatus")
 		msg.Metadata.PutValue("processedAt", time.Now().Format(time.RFC3339))
-		
-		// 继续处理
+
+		// Keep working on it
 		ctx.TellNext(msg, "validated")
 	})
-	
-	// 创建初始的DSL配置
+
+	// Create an initial DSL configuration
 	initialDSL := `{
 		"ruleChain": {
 			"id": "kafka_dsl_test",
@@ -216,26 +216,26 @@ func TestKafkaDSLEndpoint(t *testing.T) {
 		}
 	}`
 
-	// 创建规则引擎配置
+	// Create rule engine configurations
 	config := rulego.NewConfig(
 		types.WithDefaultPool(),
 		types.WithOnDebug(func(chainId, flowType string, nodeId string, msg types.RuleMsg, relationType string, err error) {
-			//t.Logf("[Kafka调试] 链: %s, 节点: %s, 关系: %s, 消息: %s", chainId, nodeId, relationType, msg.GetData())
-			// 添加断言验证调试回调的参数
+			//t.Logf("[Kafka Debugging] Chain: %s, Node: %s, Relation: %s, Message: %s", chainId, nodeId, relationType, msg.GetData())
+			// Add parameters to assert verification for debugging callbacks
 			assert.True(t, len(chainId) > 0, "chainId should not be empty")
 			assert.True(t, len(nodeId) > 0, "nodeId should not be empty")
 		}),
 	)
 
-	// 使用DSL创建包含嵌入式endpoint的规则链
+	// Use DSL to create a rule chain containing embedded endpoints
 	ruleEngine, err := rulego.New("kafka_dsl_test", []byte(initialDSL), engine.WithConfig(config))
 	assert.Nil(t, err)
 	assert.NotNil(t, ruleEngine)
 
-	// 等待Kafka消费者启动 - CI环境需要更长时间
+	// Waiting for Kafka consumers to get started – CI environments take longer
 	time.Sleep(time.Second * 10)
 
-	// 创建Kafka生产者用于测试，并验证连接
+	// Create Kafka producers for testing and verifying connections
 	saramaConfig := sarama.NewConfig()
 	saramaConfig.Producer.Return.Successes = true
 	saramaConfig.Producer.Retry.Max = 5
@@ -244,18 +244,18 @@ func TestKafkaDSLEndpoint(t *testing.T) {
 	assert.Nil(t, err)
 	defer producer.Close()
 
-	// 额外等待确保消费者完全准备好接收消息
+	// The extra wait ensures consumers are fully prepared to receive messages
 	time.Sleep(time.Second * 3)
 
-	// 测试初始路由
+	// Test the initial route
 	t.Run("TestInitialRoutes", func(t *testing.T) {
-		// 重置计数器
+		// Reset the counter
 		atomic.StoreInt32(&sensorMsgCount, 0)
 		atomic.StoreInt32(&deviceMsgCount, 0)
-		
-		// 注意：这个测试通过Kafka消息触发规则链处理，不需要直接调用OnMsg
 
-		// 发送传感器数据消息
+		// Note: This test is processed by the Kafka message triggering the rule chain, so there is no need to call OnMsg directly
+
+		// Send sensor data messages
 		sensorData := map[string]interface{}{
 			"sensorId":    "temp001",
 			"temperature": 25.5,
@@ -269,7 +269,7 @@ func TestKafkaDSLEndpoint(t *testing.T) {
 		})
 		assert.Nil(t, err)
 
-		// 发送设备状态消息
+		// Send device status messages
 		deviceStatus := map[string]interface{}{
 			"deviceId": "device001",
 			"status":   "online",
@@ -282,23 +282,23 @@ func TestKafkaDSLEndpoint(t *testing.T) {
 		})
 		assert.Nil(t, err)
 
-		// 等待消息处理完成
+		// Wait for message processing to complete
 		time.Sleep(time.Second * 3)
 
-		// 验证functions节点是否正确处理了消息
+		// Verify whether the functions node has correctly processed the message
 		assert.True(t, atomic.LoadInt32(&sensorMsgCount) > 0, "传感器验证函数应该被调用")
 		assert.True(t, atomic.LoadInt32(&deviceMsgCount) > 0, "设备状态验证函数应该被调用")
-		
-		t.Logf("传感器消息处理次数: %d", atomic.LoadInt32(&sensorMsgCount))
-		t.Logf("设备状态消息处理次数: %d", atomic.LoadInt32(&deviceMsgCount))
+
+		t.Logf("Sensor message processing frequency: %d", atomic.LoadInt32(&sensorMsgCount))
+		t.Logf("Device status message processing frequency: %d", atomic.LoadInt32(&deviceMsgCount))
 
 	})
 
-	// 动态添加新路由 - 通过ReloadSelf方式更新DSL配置
+	// Dynamically add new routes - update DSL configurations via ReloadSelf
 	t.Run("AddDynamicRoutes", func(t *testing.T) {
 		//var alertCount, logCount int32
 
-		// 创建包含新路由的DSL配置
+		// Create a DSL configuration containing the new route
 		expandedDSL := `{
 			"ruleChain": {
 				"id": "kafka_dsl_test",
@@ -400,13 +400,13 @@ func TestKafkaDSLEndpoint(t *testing.T) {
 			}
 		}`
 
-		// 通过ReloadSelf方式添加新路由
+		// Add a new route via the ReloadSelf method
 		err := ruleEngine.ReloadSelf([]byte(expandedDSL))
 		assert.Nil(t, err)
 
 		time.Sleep(time.Second * 2)
 
-		// 测试新添加的告警路由
+		// Test the newly added alarm route
 		alertMessage := map[string]interface{}{
 			"level":     "critical",
 			"message":   "System overload detected",
@@ -420,7 +420,7 @@ func TestKafkaDSLEndpoint(t *testing.T) {
 		})
 		assert.Nil(t, err)
 
-		// 测试新添加的日志路由
+		// Test the newly added log route
 		logMessage := map[string]interface{}{
 			"level":     "info",
 			"message":   "User login successful",
@@ -438,9 +438,9 @@ func TestKafkaDSLEndpoint(t *testing.T) {
 
 	})
 
-	// 测试路由删除 - 通过ReloadSelf方式删除路由
+	// Test route deletion - Remove the route via ReloadSelf
 	t.Run("RemoveRoute", func(t *testing.T) {
-		// 创建删除告警路由后的DSL配置（只保留原始路由和日志路由）
+		// Create a DSL configuration after deleting the alert route (retaining only the original route and log route).
 		reducedDSL := `{
 			"ruleChain": {
 				"id": "kafka_dsl_test",
@@ -524,13 +524,13 @@ func TestKafkaDSLEndpoint(t *testing.T) {
 			}
 		}`
 
-		// 通过ReloadSelf方式删除告警路由
+		// Delete alert routes via ReloadSelf
 		err := ruleEngine.ReloadSelf([]byte(reducedDSL))
 		assert.Nil(t, err)
 
 		time.Sleep(time.Second * 2)
 
-		// 发送告警消息，应该不会被处理（因为告警路由已被删除）
+		// Sending an alert message should not be processed (because the alert route has been deleted)
 		alertMessage := map[string]interface{}{
 			"level":     "warning",
 			"message":   "This alert should not be processed",
@@ -543,7 +543,7 @@ func TestKafkaDSLEndpoint(t *testing.T) {
 		})
 		assert.Nil(t, err)
 
-		// 发送日志消息，应该正常处理（因为日志路由仍然存在）
+		// Sending log messages should handle normally (because log routing still exists).
 		logMessage := map[string]interface{}{
 			"level":     "info",
 			"message":   "This log should be processed",
@@ -560,9 +560,9 @@ func TestKafkaDSLEndpoint(t *testing.T) {
 		time.Sleep(time.Second * 2)
 	})
 
-	// 测试热更新 - 重新加载整个DSL配置
+	// Test hot update – reload the entire DSL configuration
 	t.Run("HotReload", func(t *testing.T) {
-		// 创建更新后的DSL配置
+		// Create the updated DSL configuration
 		updatedDSL := `{
 			"ruleChain": {
 				"id": "kafka_dsl_test",
@@ -610,13 +610,13 @@ func TestKafkaDSLEndpoint(t *testing.T) {
 			}
 		}`
 
-		// 执行热更新
+		// Perform hot updates
 		err := ruleEngine.ReloadSelf([]byte(updatedDSL))
 		assert.Nil(t, err)
 
 		time.Sleep(time.Second * 2)
 
-		// 测试更新后的路由
+		// Test the updated route
 		updatedMessage := map[string]interface{}{
 			"message":   "This is an updated message",
 			"version":   "2.0",
@@ -629,7 +629,7 @@ func TestKafkaDSLEndpoint(t *testing.T) {
 		})
 		assert.Nil(t, err)
 
-		// 验证旧路由不再工作 - 发送到原来的topic应该不会被处理
+		// Verify that the old route no longer works — sending to the original topic should not be processed
 		oldTopicMessage := map[string]interface{}{
 			"sensorId":    "temp002",
 			"temperature": 30.0,
@@ -637,7 +637,7 @@ func TestKafkaDSLEndpoint(t *testing.T) {
 		}
 		oldTopicJSON, _ := json.Marshal(oldTopicMessage)
 		_, _, err = producer.SendMessage(&sarama.ProducerMessage{
-			Topic: "sensor.data", // 这个路由在更新后的DSL中已经不存在
+			Topic: "sensor.data", // This routing no longer exists in the updated DSL
 			Value: sarama.StringEncoder(oldTopicJSON),
 		})
 		assert.Nil(t, err)
@@ -646,17 +646,17 @@ func TestKafkaDSLEndpoint(t *testing.T) {
 
 	})
 
-	// 清理资源
+	// Release resources
 	ruleEngine.Stop(context.Background())
-	
-	// 清理注册的函数
+
+	// Clean up registered functions
 	action.Functions.UnRegister("validateSensorData")
 	action.Functions.UnRegister("validateDeviceStatus")
 }
 
-// TestKafkaDSLWithMultipleConsumers 测试Kafka DSL配置中的多消费者功能
+// TestKafkaDSLWithMultipleConsumers tests the multi-consumer features in the Kafka DSL configuration
 func TestKafkaDSLWithMultipleConsumers(t *testing.T) {
-	// 多消费者DSL配置
+	// Multi-consumer DSL configuration
 	multiConsumerDSL := `{
 		"ruleChain": {
 			"id": "kafka_multi_consumer_test",
@@ -733,21 +733,21 @@ func TestKafkaDSLWithMultipleConsumers(t *testing.T) {
 		}
 	}`
 
-	// 创建规则引擎配置
+	// Create rule engine configurations
 	config := rulego.NewConfig(
 		types.WithDefaultPool(),
 		types.WithOnDebug(func(chainId, flowType string, nodeId string, msg types.RuleMsg, relationType string, err error) {
-			//t.Logf("[多消费者调试] 链: %s, 节点: %s, 消息: %s", chainId, nodeId, msg.GetData())
+			//t.Logf("[Multi-Consumer Debugging] Chain: %s, Node: %s, Message: %s", chainId, nodeId, msg.GetData())
 		}),
 	)
 
-	// 创建规则引擎
+	// Create a rule engine
 	ruleEngine, err := rulego.New("kafka_multi_consumer_test", []byte(multiConsumerDSL), engine.WithConfig(config))
 	assert.Nil(t, err)
 
-	// 等待多个消费者启动
+	// Wait for multiple consumers to launch
 	time.Sleep(time.Second * 3)
 
-	// 清理资源
+	// Release resources
 	ruleEngine.Stop(context.Background())
 }

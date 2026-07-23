@@ -27,12 +27,12 @@ import (
 )
 
 func TestRabbitMQClient(t *testing.T) {
-	// 如果设置了跳过 RabbitMQ 测试，则跳过
+	// If you set to skip the RabbitMQ test, skip it
 	if os.Getenv("SKIP_RABBITMQ_TESTS") == "true" {
 		t.Skip("Skipping RabbitMQ tests")
 	}
 
-	// 检查是否有可用的 RabbitMQ 服务器
+	// Check if there is a RabbitMQ server available
 	rabbitmqURL := os.Getenv("RABBITMQ_URL")
 	if rabbitmqURL == "" {
 		rabbitmqURL = "amqp://guest:guest@localhost:5672/"
@@ -85,7 +85,7 @@ func TestRabbitMQClient(t *testing.T) {
 		clientNode := node.(*ClientNode)
 		clientNode.OnMsg(ctx, msg)
 
-		// 等待消息处理
+		// Waiting for the message to be processed
 		time.Sleep(time.Millisecond * 100)
 
 		clientNode.Destroy()
@@ -93,7 +93,7 @@ func TestRabbitMQClient(t *testing.T) {
 }
 
 func TestRabbitMQClientConfig(t *testing.T) {
-	// 如果设置了跳过 RabbitMQ 测试，则跳过
+	// If you set to skip the RabbitMQ test, skip it
 	if os.Getenv("SKIP_RABBITMQ_TESTS") == "true" {
 		t.Skip("Skipping RabbitMQ tests")
 	}
@@ -113,7 +113,7 @@ func TestRabbitMQClientConfig(t *testing.T) {
 		_, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 			"server": "invalid://server:9999",
 		}, Registry)
-		// 应该能创建节点，但连接会失败
+		// It should be possible to create nodes, but connections will fail
 		assert.Nil(t, err)
 	})
 }

@@ -34,13 +34,13 @@ import (
 var testdataFolder = "../../testdata"
 
 func TestPulsarEndpoint(t *testing.T) {
-	// 检查是否有可用的 Pulsar 服务器
+	// Check if there are available Pulsar servers
 	pulsarURL := os.Getenv("PULSAR_URL")
 	if pulsarURL == "" {
 		pulsarURL = "pulsar://localhost:6650"
 	}
 
-	// 如果设置了跳过 Pulsar 测试，则跳过
+	// If you set Skip Pulsar testing, skip it
 	if os.Getenv("SKIP_PULSAR_TESTS") == "true" {
 		t.Skip("Skipping Pulsar tests")
 	}
@@ -50,10 +50,10 @@ func TestPulsarEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	config := rulego.NewConfig(types.WithDefaultPool())
-	// 注册规则链
+	// Register the rule chain
 	_, _ = rulego.New("default", buf, rulego.WithConfig(config))
 
-	// 启动Pulsar接收服务
+	// Launch of Pulsar reception service
 	pulsarEndpoint, err := endpoint.Registry.New(Type, config, Config{
 		Server: pulsarURL,
 	})
@@ -62,35 +62,35 @@ func TestPulsarEndpoint(t *testing.T) {
 		return
 	}
 
-	// 路由1
+	// Route 1
 	router1 := endpoint.NewRouter().From("device-msg-request").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		assert.Equal(t, "test message", exchange.In.GetMsg().GetData())
 		return true
 	}).To("chain:default").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
-		// 往指定主题发送数据，用于响应
+		// Send data to a specified topic for response
 		exchange.Out.Headers().Add(KeyResponseTopic, "device-msg-response")
 		exchange.Out.SetBody([]byte("this is response"))
 		return true
 	}).End()
 
 	count := int32(0)
-	// 模拟获取响应
+	// Simulate to obtain responses
 	router2 := endpoint.NewRouter().SetId("router2").From("device-msg-response").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
-		//fmt.Println("接收到数据：device-msg-response", exchange.In.GetMsg())
+		//fmt.Println("Data received: device-msg-response", exchange.In.GetMsg())
 		assert.Equal(t, "this is response", exchange.In.GetMsg().GetData())
 		atomic.AddInt32(&count, 1)
 		return true
 	}).End()
 
-	// 模拟获取响应,相同主题
+	// Simulate to get responses, same theme
 	router3 := endpoint.NewRouter().SetId("router3").From("device-msg-response").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
-		//fmt.Println("接收到数据：device-msg-response", exchange.In.GetMsg())
+		//fmt.Println("Data received: device-msg-response", exchange.In.GetMsg())
 		assert.Equal(t, "this is response", exchange.In.GetMsg().GetData())
 		atomic.AddInt32(&count, 1)
 		return true
 	}).End()
 
-	// 注册路由
+	// Register the route
 	_, err = pulsarEndpoint.AddRouter(router1, "subscription1")
 	if err != nil {
 		t.Skipf("Failed to add router1 (Pulsar server may not be available): %v", err)
@@ -104,17 +104,17 @@ func TestPulsarEndpoint(t *testing.T) {
 	router3Id, err := pulsarEndpoint.AddRouter(router3, "subscription2")
 	assert.NotNil(t, err)
 
-	// 启动服务
+	// Start the server
 	err = pulsarEndpoint.Start()
 	if err != nil {
 		t.Skipf("Failed to start Pulsar endpoint: %v", err)
 		return
 	}
 
-	// 等待消费者连接
+	// Waiting for consumers to connect
 	time.Sleep(time.Second * 3)
 
-	// 测试发布消息
+	// Test release announcement
 	client, err := pulsar.NewClient(pulsar.ClientOptions{
 		URL:               pulsarURL,
 		ConnectionTimeout: 30 * time.Second,
@@ -135,7 +135,7 @@ func TestPulsarEndpoint(t *testing.T) {
 	}
 	defer producer.Close()
 
-	// 发布消息到device-msg-request
+	// Send the message to device-msg-request
 	_, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
 		Payload: []byte("test message"),
 	})
@@ -143,16 +143,16 @@ func TestPulsarEndpoint(t *testing.T) {
 		t.Skipf("Failed to publish message: %v", err)
 		return
 	}
-	// 等待消息处理
+	// Waiting for the message to be processed
 	time.Sleep(time.Second * 5)
 
 	assert.Equal(t, int32(1), atomic.LoadInt32(&count))
 
 	atomic.StoreInt32(&count, 0)
-	// 验证router3添加失败，但router3Id应该返回routerId
+	// Verification of router3 failed, but router3Id should return routerId
 	assert.Equal(t, "router3", router3Id)
-	
-	// 再次发布消息到device-msg-request，应该只有router2处理
+
+	// Sending messages again to device-msg-request, it should only be handled by router2
 	_, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
 		Payload: []byte("test message"),
 	})
@@ -160,24 +160,24 @@ func TestPulsarEndpoint(t *testing.T) {
 		t.Skipf("Failed to publish second message: %v", err)
 		return
 	}
-	// 等待消息处理
+	// Waiting for the message to be processed
 	time.Sleep(time.Second * 5)
 
-	// 由于router3添加失败，只有router2处理消息，count应该为1
+	// Because router3 failed to add messages, only router2 handles messages, so count should be 1
 	assert.Equal(t, int32(1), atomic.LoadInt32(&count))
 
-	// 清理
+	// Cleanup
 	pulsarEndpoint.Destroy()
 }
 
 func TestPulsarEndpointWithProperties(t *testing.T) {
-	// 检查是否有可用的 Pulsar 服务器
+	// Check if there are available Pulsar servers
 	pulsarURL := os.Getenv("PULSAR_URL")
 	if pulsarURL == "" {
 		pulsarURL = "pulsar://localhost:6650"
 	}
 
-	// 如果设置了跳过 Pulsar 测试，则跳过
+	// If you set Skip Pulsar testing, skip it
 	if os.Getenv("SKIP_PULSAR_TESTS") == "true" {
 		t.Skip("Skipping Pulsar tests")
 	}
@@ -187,10 +187,10 @@ func TestPulsarEndpointWithProperties(t *testing.T) {
 		t.Fatal(err)
 	}
 	config := rulego.NewConfig(types.WithDefaultPool())
-	// 注册规则链
+	// Register the rule chain
 	_, _ = rulego.New("default", buf, rulego.WithConfig(config))
 
-	// 启动Pulsar接收服务
+	// Launch of Pulsar reception service
 	pulsarEndpoint, err := endpoint.Registry.New(Type, config, Config{
 		Server: pulsarURL,
 	})
@@ -200,35 +200,35 @@ func TestPulsarEndpointWithProperties(t *testing.T) {
 	}
 
 	count := int32(0)
-	// 路由
+	// Route
 	router := endpoint.NewRouter().From("test-topic").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		msg := exchange.In.GetMsg()
 		assert.Equal(t, "test message with properties", msg.GetData())
-		// 检查自定义属性
+		// Check custom properties
 		assert.Equal(t, "testValue", msg.Metadata.GetValue("customKey"))
 		assert.Equal(t, "device123", msg.Metadata.GetValue("deviceId"))
 		atomic.AddInt32(&count, 1)
 		return true
 	}).End()
 
-	// 注册路由
+	// Register the route
 	_, err = pulsarEndpoint.AddRouter(router, "test-subscription")
 	if err != nil {
 		t.Skipf("Failed to add router (Pulsar server may not be available): %v", err)
 		return
 	}
 
-	// 启动服务
+	// Start the server
 	err = pulsarEndpoint.Start()
 	if err != nil {
 		t.Skipf("Failed to start Pulsar endpoint: %v", err)
 		return
 	}
 
-	// 等待消费者连接
+	// Waiting for consumers to connect
 	time.Sleep(time.Second * 3)
 
-	// 测试发布带属性的消息
+	// Test posts with attributes
 	client, err := pulsar.NewClient(pulsar.ClientOptions{
 		URL:               pulsarURL,
 		ConnectionTimeout: 30 * time.Second,
@@ -249,7 +249,7 @@ func TestPulsarEndpointWithProperties(t *testing.T) {
 	}
 	defer producer.Close()
 
-	// 发布带属性的消息
+	// Release messages with attributes
 	_, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
 		Payload: []byte("test message with properties"),
 		Properties: map[string]string{
@@ -262,11 +262,11 @@ func TestPulsarEndpointWithProperties(t *testing.T) {
 		t.Skipf("Failed to publish message: %v", err)
 		return
 	}
-	// 等待消息处理
+	// Waiting for the message to be processed
 	time.Sleep(time.Second * 5)
 
 	assert.Equal(t, int32(1), atomic.LoadInt32(&count))
 
-	// 清理
+	// Cleanup
 	pulsarEndpoint.Destroy()
 }

@@ -1,25 +1,25 @@
 # FastHTTP Endpoint for RuleGo
 
-基于 [fasthttp](https://github.com/valyala/fasthttp) 库实现的高性能 `HTTP endpoint` 组件，为 RuleGo 框架提供更快的 HTTP 请求处理能力。
-可以无感代替标准 Http endpoint 组件，提供更快的 HTTP 请求处理能力。
+High-performance `HTTP endpoint` components based on the [fasthttp](https://github.com/valyala/fasthttp) library, providing faster HTTP request processing for RuleGo frameworks.
+It can seamlessly replace standard Http endpoint components, providing faster HTTP request processing capabilities.
 
-## 特性
+## Features
 
-- **高性能**: 基于 fasthttp 库，比标准 net/http 库性能更高
-- **低内存占用**: 减少内存分配，提高 GC 效率
-- **高并发**: 支持更高的并发连接数
-- **兼容性**: 与 RuleGo 原有的 HTTP endpoint 接口完全兼容
-- **配置灵活**: 支持丰富的服务器配置选项
-- **CORS 支持**: 内置跨域资源共享支持
+- **High-performance**: Based on fasthttp libraries, offering better performance than standard net/http libraries
+- **Low memory usage**: Reduces memory allocation and improves GC efficiency
+- **High Concurrency**: Supports a higher number of concurrent connections
+- **Compatibility**: Fully compatible with RuleGo's original HTTP endpoint interface
+- **Flexible Configuration**: Supports a wide range of server configuration options
+- **CORS Support**: Built-in cross-domain resource sharing support
 
-## 安装
+## Installation
 
 ```bash
 go get github.com/valyala/fasthttp
 go get github.com/fasthttp/router
 ```
 
-## 基本使用
+## Basic usage
 
 ```go
 package main
@@ -35,7 +35,7 @@ import (
 func main() {
     config := engine.NewConfig(types.WithDefaultPool())
     
-    // 创建 FastHTTP endpoint
+    // Create FastHTTP endpoint
     var nodeConfig = make(types.Configuration)
     _ = maps.Map2Struct(&fasthttp.Config{
         Server: ":8080",
@@ -49,7 +49,7 @@ func main() {
         panic(err)
     }
     
-    // 添加路由
+    // Add routes
     router := impl.NewRouter().From("/api/test").Transform(func(ctx types.RuleContext, msg types.RuleMsg) types.RuleMsg {
         msg.SetData(`{"status":"success","data":` + msg.Data + `}`)
         return msg
@@ -60,35 +60,35 @@ func main() {
         panic(err)
     }
     
-    // 启动服务
+    // Start the service
     err = endpoint.Start()
     if err != nil {
         panic(err)
     }
     
-    // 保持服务运行
+    // Keep the service running
     select {}
 }
 ```
 
-## 配置选项
+## Configuration options
 
 ```go
 type Config struct {
-    Server           string        // 服务器地址，如 ":8080"
-    CertFile         string        // TLS 证书文件路径
-    CertKeyFile      string        // TLS 私钥文件路径
-    AllowCors        bool          // 是否允许跨域
-    ReadTimeout      time.Duration // 读取超时时间
-    WriteTimeout     time.Duration // 写入超时时间
-    IdleTimeout      time.Duration // 空闲超时时间
-    MaxRequestSize   int           // 最大请求体大小
-    Concurrency      int           // 最大并发连接数
-    DisableKeepalive bool          // 是否禁用 Keep-Alive
+    Server           string        // Server address, such as ":8080"
+    CertFile         string        // TLS Path to the certificate file
+    CertKeyFile      string        // TLS Private key file path
+    AllowCors        bool          // Whether CORS is allowed
+    ReadTimeout      time.Duration // Read the timeout
+    WriteTimeout     time.Duration // Write timeout
+    IdleTimeout      time.Duration // Idle timeout
+    MaxRequestSize   int           // Maximum request body size
+    Concurrency      int           // Maximum number of concurrent connections
+    DisableKeepalive bool          // Whether to disable Keep-Alive
 }
 ```
 
-### 默认配置
+### Default configuration
 
 ```go
 Config{
@@ -102,114 +102,114 @@ Config{
 }
 ```
 
-## 性能对比
+## Performance Comparison
 
-基于我们的基准测试，FastHTTP endpoint 相比标准 HTTP endpoint 有显著的性能提升：
+Based on our benchmarks, FastHTTP endpoint shows significant performance improvements compared to standard HTTP endpoint:
 
-### 吞吐量对比
+### Throughput Comparison
 - **FastHTTP**: ~50,000 requests/second
 - **Standard HTTP**: ~30,000 requests/second
-- **性能提升**: ~1.67x
+- **Performance improvement**: ~1.67x
 
-### 内存使用对比
-- **FastHTTP**: 更少的内存分配
-- **Standard HTTP**: 更多的 GC 压力
-- **内存效率**: ~30% 更少的内存分配
+### Memory usage comparison
+- **FastHTTP**: Less memory allocation
+- **Standard HTTP**: More GC stress
+- **Memory Efficiency**: ~30% less memory allocation
 
-### 延迟对比
+### Latency comparison
 - **FastHTTP P95**: ~2ms
 - **Standard HTTP P95**: ~3.5ms
-- **延迟改善**: ~1.75x 更快
+- **Latency improvement**: ~1.75x faster
 
-## 运行测试
+## Run the test
 
-### 基本功能测试
+### Basic Function Test
 ```bash
 cd endpoint/fasthttp
 go test -v
 ```
 
-### 性能基准测试
+### Performance Benchmark
 ```bash
 go test -bench=. -benchmem
 ```
 
-### 并发性能测试
+### Concurrent Performance Testing
 ```bash
 go test -v -run=TestConcurrencyComparison
 ```
 
-### 延迟测试
+### Delay testing
 ```bash
 go test -v -run=TestLatencyComparison
 ```
 
-### 资源使用测试
+### Resource usage testing
 ```bash
 go test -v -run=TestResourceUsage
 ```
 
-## API 兼容性
+## API compatibility
 
-FastHTTP endpoint 与标准 REST endpoint 完全兼容，支持所有相同的方法：
+FastHTTP endpoint Fully compatible with Standard REST endpoint, supporting all the same methods:
 
-- `AddRouter(router, method)` - 添加路由
-- `RemoveRouter(routerId)` - 移除路由
-- `Start()` - 启动服务
-- `Close()` - 关闭服务
-- `GET()`, `POST()`, `PUT()`, `DELETE()` 等 HTTP 方法
+- `AddRouter(router, method)` - Add a route
+- `RemoveRouter(routerId)` - Remove the route
+- `Start()` - Launch service
+- `Close()` - Shut down the service
+- `GET()`, `POST()`, `PUT()`, `DELETE()`, and other HTTP methods
 
-## 消息类型
+## Message Type
 
 ### RequestMessage
-提供对 FastHTTP 请求的访问：
-- `Body()` - 获取请求体
-- `Headers()` - 获取请求头
-- `GetParam(key)` - 获取参数
-- `RequestCtx()` - 获取 FastHTTP 请求上下文
+Providing access to FastHTTP requests:
+- `Body()` - Retrieves the request body
+- `Headers()` - Retrieves the request header
+- `GetParam(key)` - Get the parameters
+- `RequestCtx()` - Retrieves the context of FastHTTP requests
 
 ### ResponseMessage
-提供对 FastHTTP 响应的控制：
-- `SetBody(body)` - 设置响应体
-- `SetStatusCode(code)` - 设置状态码
-- `Headers()` - 获取响应头
-- `RequestCtx()` - 获取 FastHTTP 请求上下文
+Providing control over FastHTTP responses:
+- `SetBody(body)` - Set the response body
+- `SetStatusCode(code)` - Set the status code
+- `Headers()` - Retrieves the response head
+- `RequestCtx()` - Retrieves the context of FastHTTP requests
 
-## 最佳实践
+## Best Practices
 
-1. **并发设置**: 根据服务器资源调整 `Concurrency` 参数
-2. **超时配置**: 合理设置读写超时时间
-3. **请求大小**: 根据业务需求调整 `MaxRequestSize`
-4. **Keep-Alive**: 在高并发场景下保持启用
-5. **CORS**: 仅在需要时启用跨域支持
+1. **Concurrency Settings**: Adjust `Concurrency` parameters based on server resources
+2. **Timeout Configuration**: Set read/write timeout reasonably
+3. **Request Size**: Adjust `MaxRequestSize` according to business needs
+4. **Keep-Alive**: Remain enabled in high-concurrency scenarios
+5. **CORS**: Enable cross-origin support only when needed
 
-## 注意事项
+## Notes
 
-1. FastHTTP 使用自己的请求/响应对象，与标准 `net/http` 不完全兼容
-2. 某些第三方中间件可能不支持 FastHTTP
-3. 在生产环境中建议进行充分的性能测试
-4. 监控内存使用情况，特别是在高并发场景下
+1. FastHTTP uses its own request/response objects, which are not fully compatible with standard `net/http`
+2. Some third-party middleware may not support FastHTTP
+3. Thorough performance testing is recommended in production environments
+4. Monitor memory usage, especially in high-concurrency scenarios
 
-## 故障排除
+## Troubleshooting
 
-### 常见问题
+### Frequently Asked Questions
 
-1. **端口占用**: 确保指定的端口未被其他服务使用
-2. **内存不足**: 在高并发下适当调整 `Concurrency` 参数
-3. **超时错误**: 检查 `ReadTimeout` 和 `WriteTimeout` 设置
-4. **请求过大**: 调整 `MaxRequestSize` 参数
+1. **Port Occupancy**: Ensure the specified port is not used by other services
+2. **Insufficient Memory**: Adjust `Concurrency` parameters appropriately under high concurrency
+3. **Timeout Error**: Check the `ReadTimeout` and `WriteTimeout` settings
+4. **Request too large**: Adjust `MaxRequestSize` parameters
 
-### 调试建议
+### Debugging Recommendations
 
-1. 启用详细日志记录
-2. 监控系统资源使用情况
-3. 使用性能分析工具（如 pprof）
-4. 逐步增加并发负载进行测试
+1. Enable detailed log logging
+2. Monitor system resource usage
+3. Use performance analysis tools (such as pprof)
+4. Gradually increase concurrent load for testing
 
-## 贡献
+## Contribution
 
-欢迎提交 Issue 和 Pull Request 来改进这个组件。
+Feel free to submit Issue and Pull Request to improve this component.
 
-## 许可证
+## License
 
 Apache License 2.0

@@ -31,7 +31,7 @@ import (
 	"github.com/rulego/rulego/utils/str"
 )
 
-// TestStreamAggregatorNode_BasicAggregation 测试基本聚合功能
+// TestStreamAggregatorNode_BasicAggregation Test basic aggregation functions
 func TestStreamAggregatorNode_BasicAggregation(t *testing.T) {
 	t.Run("滚动窗口平均值", func(t *testing.T) {
 		sql := "SELECT AVG(temperature) as avg_temp, COUNT(*) as count FROM stream GROUP BY TumblingWindow('1s')"
@@ -45,7 +45,7 @@ func TestStreamAggregatorNode_BasicAggregation(t *testing.T) {
 
 		assert.True(t, len(results) > 0, "应该有聚合结果")
 
-		// 验证第一个聚合结果
+		// Verify the first aggregate results
 		if len(results) > 0 {
 			result := results[0]
 			assert.NotNil(t, result["avg_temp"], "应该包含平均温度")
@@ -69,7 +69,7 @@ func TestStreamAggregatorNode_BasicAggregation(t *testing.T) {
 
 		assert.True(t, len(results) > 0, "应该有分组聚合结果")
 
-		// 验证聚合结果包含设备分组信息
+		// Verify that the aggregated results contain device grouping information
 		for _, result := range results {
 			assert.NotNil(t, result["deviceId"], "应该包含设备ID")
 			assert.NotNil(t, result["max_temp"], "应该包含最高温度")
@@ -97,17 +97,17 @@ func TestStreamAggregatorNode_BasicAggregation(t *testing.T) {
 	})
 }
 
-// TestStreamAggregatorNode_WindowTypes 测试不同窗口类型
+// TestStreamAggregatorNode_WindowTypes Test different window types
 func TestStreamAggregatorNode_WindowTypes(t *testing.T) {
-	// 暂时跳过计数窗口测试 - 需要确认正确的语法
-	t.Skip("计数窗口测试暂时跳过 - CountingWindow语法需要确认")
+	// Skip the counting window test for now—you need to confirm correct grammar
+	t.Skip("Counting window test temporarily skipped—CountingWindow syntax needs confirmation")
 
 	t.Run("会话窗口", func(t *testing.T) {
 		sql := "SELECT deviceId, COUNT(*) as event_count FROM stream GROUP BY deviceId, SessionWindow('2s')"
 		testData := []map[string]interface{}{
 			{"deviceId": "sensor001", "temperature": 20.0},
 			{"deviceId": "sensor001", "temperature": 22.0},
-			// 2秒后会话超时，触发新会话
+			// After 2 seconds, the session times out and triggers a new session
 		}
 
 		results := testStreamAggregator(t, sql, testData, "session window test")
@@ -115,7 +115,7 @@ func TestStreamAggregatorNode_WindowTypes(t *testing.T) {
 	})
 }
 
-// TestStreamAggregatorNode_Validation 测试节点配置验证
+// TestStreamAggregatorNode_Validation Test node configuration verification
 func TestStreamAggregatorNode_Validation(t *testing.T) {
 	t.Run("空SQL验证", func(t *testing.T) {
 		node := &StreamAggregatorNode{}
@@ -139,7 +139,7 @@ func TestStreamAggregatorNode_Validation(t *testing.T) {
 	})
 }
 
-// TestStreamAggregatorNode_ConcurrentProcessing 测试并发处理能力
+// TestStreamAggregatorNode_ConcurrentProcessing Testing concurrent processing capabilities
 func TestStreamAggregatorNode_ConcurrentProcessing(t *testing.T) {
 	sql := "SELECT deviceId, AVG(temperature) as avg_temp, COUNT(*) as count FROM stream GROUP BY deviceId, TumblingWindow('1s')"
 
@@ -148,7 +148,7 @@ func TestStreamAggregatorNode_ConcurrentProcessing(t *testing.T) {
 	var successCount int32
 	var mu sync.Mutex
 
-	// 设置全局聚合结果处理器
+	// Set up the global aggregation result processor
 	config.OnEnd = func(ctx types.RuleContext, msg types.RuleMsg, err error, relationType string) {
 		if err == nil && msg.Type == WindowEventMsgType {
 			atomic.AddInt32(&successCount, 1)
@@ -162,7 +162,7 @@ func TestStreamAggregatorNode_ConcurrentProcessing(t *testing.T) {
 		}
 	}
 
-	// 创建测试规则链
+	// Create a chain of test rules
 	ruleChainConfig := fmt.Sprintf(`{
 		"ruleChain": {
 			"id": "concurrent_aggregator_test",
@@ -189,7 +189,7 @@ func TestStreamAggregatorNode_ConcurrentProcessing(t *testing.T) {
 	assert.Nil(t, err, "规则引擎创建应该成功")
 	defer engine.Del(chainId)
 
-	// 并发测试参数
+	// Concurrent test parameters
 	const numGoroutines = 5
 	const messagesPerGoroutine = 10
 
@@ -201,7 +201,7 @@ func TestStreamAggregatorNode_ConcurrentProcessing(t *testing.T) {
 			defer wg.Done()
 
 			for j := 0; j < messagesPerGoroutine; j++ {
-				temperature := 20.0 + float64(j%20) // 温度范围 20-40
+				temperature := 20.0 + float64(j%20) // Temperature range: 20-40
 				testData := map[string]interface{}{
 					"deviceId":    fmt.Sprintf("sensor_%d", goroutineId),
 					"temperature": temperature,
@@ -212,17 +212,17 @@ func TestStreamAggregatorNode_ConcurrentProcessing(t *testing.T) {
 				msg := types.NewMsg(0, "TELEMETRY", types.JSON, types.NewMetadata(), string(msgData))
 
 				ruleEngine.OnMsg(msg)
-				time.Sleep(10 * time.Millisecond) // 模拟数据间隔
+				time.Sleep(10 * time.Millisecond) // Simulated data spacing
 			}
 		}(i)
 	}
 
 	wg.Wait()
 
-	// 等待窗口聚合触发
+	// Wait for window aggregation to trigger
 	time.Sleep(3 * time.Second)
 
-	// 验证聚合结果结构
+	// Verify the aggregated result structure
 	mu.Lock()
 	aggregateResultsCopy := make([]map[string]interface{}, len(aggregateResults))
 	copy(aggregateResultsCopy, aggregateResults)
@@ -237,7 +237,7 @@ func TestStreamAggregatorNode_ConcurrentProcessing(t *testing.T) {
 	}
 }
 
-// TestStreamAggregatorNode_ComplexAggregation 测试复杂聚合查询
+// TestStreamAggregatorNode_ComplexAggregation Test complex aggregated queries
 func TestStreamAggregatorNode_ComplexAggregation(t *testing.T) {
 	t.Run("多字段聚合", func(t *testing.T) {
 		sql := "SELECT deviceId, AVG(temperature) as avg_temp, MAX(temperature) as max_temp, MIN(temperature) as min_temp, COUNT(*) as count, SUM(humidity) as total_humidity FROM stream GROUP BY deviceId, TumblingWindow('1s')"
@@ -266,10 +266,10 @@ func TestStreamAggregatorNode_ComplexAggregation(t *testing.T) {
 		sql := "SELECT COUNT(*) as high_temp_count, AVG(temperature) as avg_high_temp FROM stream WHERE temperature > 25 GROUP BY TumblingWindow('1s')"
 
 		testData := []map[string]interface{}{
-			{"temperature": 20.0}, // 不满足条件
-			{"temperature": 30.0}, // 满足条件
-			{"temperature": 35.0}, // 满足条件
-			{"temperature": 22.0}, // 不满足条件
+			{"temperature": 20.0}, // The conditions are not met
+			{"temperature": 30.0}, // Conditions are met
+			{"temperature": 35.0}, // Conditions are met
+			{"temperature": 22.0}, // The conditions are not met
 		}
 
 		results := testStreamAggregator(t, sql, testData, "conditional aggregation test")
@@ -278,12 +278,12 @@ func TestStreamAggregatorNode_ComplexAggregation(t *testing.T) {
 	})
 }
 
-// TestStreamAggregatorNode_ArrayInput 测试数组输入处理
+// TestStreamAggregatorNode_ArrayInput Test array input processing
 func TestStreamAggregatorNode_ArrayInput(t *testing.T) {
 	t.Run("处理JSON数组输入", func(t *testing.T) {
 		sql := "SELECT AVG(temperature) as avg_temp, COUNT(*) as count FROM stream GROUP BY TumblingWindow('1s')"
 
-		// 准备数组测试数据
+		// Prepare array test data
 		arrayData := []map[string]interface{}{
 			{"temperature": 20.0, "deviceId": "sensor001"},
 			{"temperature": 25.0, "deviceId": "sensor002"},
@@ -295,19 +295,19 @@ func TestStreamAggregatorNode_ArrayInput(t *testing.T) {
 		var successCount int32
 		var mu sync.Mutex
 
-		// 设置全局聚合结果处理器
+		// Set up the global aggregation result processor
 		config.OnEnd = func(ctx types.RuleContext, msg types.RuleMsg, err error, relationType string) {
 			if err == nil && msg.Type == WindowEventMsgType {
 				atomic.AddInt32(&successCount, 1)
 
-				// 聚合结果可能是数组格式，需要正确解析
+				// The aggregated result may be in array format and needs to be parsed correctly
 				var resultArray []map[string]interface{}
 				if jsonErr := json.Unmarshal([]byte(msg.Data.String()), &resultArray); jsonErr == nil {
 					mu.Lock()
 					aggregateResults = append(aggregateResults, resultArray...)
 					mu.Unlock()
 				} else {
-					// 尝试解析为单个对象
+					// Try parsing it as a single object
 					var result map[string]interface{}
 					if jsonErr2 := json.Unmarshal([]byte(msg.Data.String()), &result); jsonErr2 == nil {
 						mu.Lock()
@@ -318,7 +318,7 @@ func TestStreamAggregatorNode_ArrayInput(t *testing.T) {
 			}
 		}
 
-		// 创建测试规则链
+		// Create a chain of test rules
 		ruleChainConfig := fmt.Sprintf(`{
 			"ruleChain": {
 				"id": "array_aggregator_test",
@@ -359,11 +359,11 @@ func TestStreamAggregatorNode_ArrayInput(t *testing.T) {
 		assert.Nil(t, err, "规则引擎创建应该成功")
 		defer engine.Del(chainId)
 
-		// 发送数组数据
+		// Send array data
 		msgData, _ := json.Marshal(arrayData)
 		msg := types.NewMsg(0, "TELEMETRY", types.JSON, types.NewMetadata(), string(msgData))
 
-		// 监控成功处理
+		// Monitoring successful processing
 		var processedSuccess int32
 		ruleEngine.OnMsg(msg, types.WithOnEnd(func(ctx types.RuleContext, msg types.RuleMsg, err error, relationType string) {
 			if err == nil {
@@ -371,7 +371,7 @@ func TestStreamAggregatorNode_ArrayInput(t *testing.T) {
 			}
 		}))
 
-		// 等待处理完成和窗口聚合触发
+		// Wait for processing to complete and window aggregation to trigger
 		time.Sleep(2 * time.Second)
 
 		finalProcessed := atomic.LoadInt32(&processedSuccess)
@@ -381,7 +381,7 @@ func TestStreamAggregatorNode_ArrayInput(t *testing.T) {
 	t.Run("处理空数组输入", func(t *testing.T) {
 		sql := "SELECT COUNT(*) as count FROM stream GROUP BY TumblingWindow('1s')"
 
-		// 空数组
+		// Empty array
 		arrayData := []map[string]interface{}{}
 
 		config := engine.NewConfig(types.WithDefaultPool())
@@ -425,7 +425,7 @@ func TestStreamAggregatorNode_ArrayInput(t *testing.T) {
 		assert.Nil(t, err, "规则引擎创建应该成功")
 		defer engine.Del(chainId)
 
-		// 发送空数组数据
+		// Send empty array data
 		msgData, _ := json.Marshal(arrayData)
 		msg := types.NewMsg(0, "TELEMETRY", types.JSON, types.NewMetadata(), string(msgData))
 
@@ -443,7 +443,7 @@ func TestStreamAggregatorNode_ArrayInput(t *testing.T) {
 	})
 }
 
-// TestStreamAggregatorNode_DataTypeValidation 测试数据类型校验
+// TestStreamAggregatorNode_DataTypeValidation Test data type validation
 func TestStreamAggregatorNode_DataTypeValidation(t *testing.T) {
 	sql := "SELECT AVG(temperature) as avg_temp FROM stream GROUP BY TumblingWindow('1s')"
 
@@ -551,23 +551,23 @@ func TestStreamAggregatorNode_DataTypeValidation(t *testing.T) {
 	}
 }
 
-// testStreamAggregator 通用的聚合测试辅助函数
+// testStreamAggregator is a general aggregation test auxiliary function
 func testStreamAggregator(t *testing.T, sql string, testData []map[string]interface{}, description string) []map[string]interface{} {
 	config := engine.NewConfig(types.WithDefaultPool())
 	var results []map[string]interface{}
 	var mu sync.Mutex
 
-	// 设置全局聚合结果处理器
+	// Set up the global aggregation result processor
 	config.OnEnd = func(ctx types.RuleContext, msg types.RuleMsg, err error, relationType string) {
 		if err == nil && msg.Type == WindowEventMsgType {
-			// 聚合结果可能是数组格式，需要正确解析
+			// The aggregated result may be in array format and needs to be parsed correctly
 			var resultArray []map[string]interface{}
 			if jsonErr := json.Unmarshal([]byte(msg.Data.String()), &resultArray); jsonErr == nil {
 				mu.Lock()
 				results = append(results, resultArray...)
 				mu.Unlock()
 			} else {
-				// 尝试解析为单个对象
+				// Try parsing it as a single object
 				var result map[string]interface{}
 				if jsonErr2 := json.Unmarshal([]byte(msg.Data.String()), &result); jsonErr2 == nil {
 					mu.Lock()
@@ -578,7 +578,7 @@ func testStreamAggregator(t *testing.T, sql string, testData []map[string]interf
 		}
 	}
 
-	// 创建测试规则链
+	// Create a chain of test rules
 	ruleChainConfig := fmt.Sprintf(`{
 		"ruleChain": {
 			"id": "aggregator_test_chain",
@@ -620,18 +620,18 @@ func testStreamAggregator(t *testing.T, sql string, testData []map[string]interf
 	assert.Nil(t, err, "规则引擎创建应该成功")
 	defer engine.Del(chainId)
 
-	// 发送测试数据
+	// Send test data
 	for _, data := range testData {
 		msgData, _ := json.Marshal(data)
 		msg := types.NewMsg(0, "TELEMETRY", types.JSON, types.NewMetadata(), string(msgData))
 		ruleEngine.OnMsg(msg)
-		time.Sleep(50 * time.Millisecond) // 模拟数据间隔
+		time.Sleep(50 * time.Millisecond) // Simulated data spacing
 	}
 
-	// 等待窗口聚合触发
+	// Wait for window aggregation to trigger
 	time.Sleep(2 * time.Second)
 
-	// 使用互斥锁保护对 results 的读取
+	// Use mutex locks to protect results reading
 	mu.Lock()
 	resultsCopy := make([]map[string]interface{}, len(results))
 	copy(resultsCopy, results)

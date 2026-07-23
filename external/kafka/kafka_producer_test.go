@@ -71,12 +71,12 @@ func TestKafkaProducer(t *testing.T) {
 
 }
 func TestKafkaProducerNodeOnMsg(t *testing.T) {
-	// 如果设置了跳过 Kafka 测试，则跳过
+	// If you set up skipping Kafka tests, skip them
 	if os.Getenv("SKIP_KAFKA_TESTS") == "true" {
 		t.Skip("Skipping Kafka tests")
 	}
 
-	// 检查是否有可用的 Kafka 服务器
+	// Check if there are available Kafka servers
 	kafkaBrokers := os.Getenv("KAFKA_BROKERS")
 	if kafkaBrokers == "" {
 		kafkaBrokers = "localhost:9092"
@@ -94,11 +94,11 @@ func TestKafkaProducerNodeOnMsg(t *testing.T) {
 	}
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err error) {
 		assert.Equal(t, types.Success, relationType)
-		// 检查发布结果是否正确
+		// Check whether the published results are correct
 		assert.Equal(t, "0", msg.Metadata.GetValue("partition"))
 	})
 	metaData := types.NewMetadata()
-	// 在元数据中添加发布键
+	// Add a publish key to the metadata
 	metaData.PutValue("id", "1")
 	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, "{\"test\":\"AA\"}")
 	node.OnMsg(ctx, msg)
@@ -107,7 +107,7 @@ func TestKafkaProducerNodeOnMsg(t *testing.T) {
 	node.Destroy()
 }
 
-// TestKafkaProducerNetworkReconnect 测试生产者网络重连功能
+// TestKafkaProducerNetworkReconnect tests the producer's network reconnection function
 func TestKafkaProducerNetworkReconnect(t *testing.T) {
 	Registry := &types.SafeComponentSlice{}
 	Registry.Add(&ProducerNode{})
@@ -123,7 +123,7 @@ func TestKafkaProducerNetworkReconnect(t *testing.T) {
 
 		producerNode := node.(*ProducerNode)
 
-		// 测试网络错误检测
+		// Test network error detection
 		testCases := []struct {
 			name     string
 			err      error
@@ -158,19 +158,19 @@ func TestKafkaProducerNetworkReconnect(t *testing.T) {
 
 		producerNode := node.(*ProducerNode)
 
-		// 初始化客户端
+		// Initialize the client
 		_, err = producerNode.SharedNode.GetSafely()
 		if err != nil {
 			t.Skipf("Kafka server not available: %v", err)
 			return
 		}
 		client, _ := producerNode.SharedNode.GetSafely()
-		// 验证客户端已创建
+		// Verify that the client has been created
 		assert.NotNil(t, client)
 
-		// 重置客户端
+		// Reset the client
 		producerNode.resetClient()
-		// 验证客户端已被重置
+		// Verify that the client has been reset
 		assert.False(t, producerNode.SharedNode.Initialized())
 	})
 
@@ -184,7 +184,7 @@ func TestKafkaProducerNetworkReconnect(t *testing.T) {
 
 		producerNode := node.(*ProducerNode)
 
-		// 测试消息发送（需要Kafka服务器运行）
+		// Test message sending (requires Kafka server to run)
 		config := types.NewConfig()
 		successCount := 0
 		failureCount := 0
@@ -200,20 +200,20 @@ func TestKafkaProducerNetworkReconnect(t *testing.T) {
 		metaData := types.NewMetadata()
 		msg := ctx.NewMsg("TEST_MSG_TYPE", metaData, "{\"test\":\"reconnect\"}")
 
-		// 发送消息
+		// Send the message
 		producerNode.OnMsg(ctx, msg)
 
-		// 等待处理完成
+		// Wait for processing to complete
 		time.Sleep(time.Millisecond * 100)
 
-		// 验证结果（如果Kafka服务器可用，应该成功；否则失败）
+		// Verify results (if Kafka servers are available, they should succeed; Otherwise, it fails)
 		assert.True(t, successCount > 0 || failureCount > 0)
 
 		producerNode.Destroy()
 	})
 }
 
-// TestKafkaProducerReconnectConfig 测试生产者重连配置
+// TestKafkaProducerReconnectConfig Tests the producer reconnection configuration
 func TestKafkaProducerReconnectConfig(t *testing.T) {
 	Registry := &types.SafeComponentSlice{}
 	Registry.Add(&ProducerNode{})
@@ -228,30 +228,30 @@ func TestKafkaProducerReconnectConfig(t *testing.T) {
 
 	producerNode := node.(*ProducerNode)
 
-	// 测试初始化客户端时的配置
+	// Testing the configuration when initializing the client
 	client, err := producerNode.initClient()
 	if err != nil {
 		t.Skipf("Kafka server not available: %v", err)
 		return
 	}
 
-	// 验证客户端已创建
+	// Verify that the client has been created
 	assert.NotNil(t, client)
 
-	// 清理
+	// Cleanup
 	producerNode.Destroy()
 }
 
-// TestKafkaProducerSharedNode 测试Kafka生产者共享节点模式
+// TestKafkaProducerSharedNode tests the Kafka producer shared node pattern
 func TestKafkaProducerSharedNode(t *testing.T) {
 	Registry := &types.SafeComponentSlice{}
 	Registry.Add(&ProducerNode{})
 	var targetNodeType = "x/kafkaProducer"
 
 	t.Run("SharedMode", func(t *testing.T) {
-		// 创建多个共享模式的节点实例
+		// Create multiple node instances in shared mode
 		config := types.NewConfig()
-		config.NodeClientInitNow = false // 启用共享模式
+		config.NodeClientInitNow = false // Enable sharing mode
 
 		node1, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 			"server": "localhost:9092",
@@ -261,7 +261,7 @@ func TestKafkaProducerSharedNode(t *testing.T) {
 		assert.Nil(t, err)
 
 		node2, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
-			"server": "localhost:9092", // 相同的服务器
+			"server": "localhost:9092", // Same server
 			"topic":  "test.shared",
 			"key":    "test-key-2",
 		}, Registry)
@@ -270,7 +270,7 @@ func TestKafkaProducerSharedNode(t *testing.T) {
 		producer1 := node1.(*ProducerNode)
 		producer2 := node2.(*ProducerNode)
 
-		// 重新初始化节点以使用相同的配置
+		// Reinitialize the node to use the same configuration
 		err = producer1.Init(config, types.Configuration{
 			"server": "localhost:9092",
 			"topic":  "test.shared",
@@ -279,13 +279,13 @@ func TestKafkaProducerSharedNode(t *testing.T) {
 		assert.Nil(t, err)
 
 		err = producer2.Init(config, types.Configuration{
-			"server": "localhost:9092", // 相同的服务器配置
+			"server": "localhost:9092", // Same server configuration
 			"topic":  "test.shared",
 			"key":    "test-key-2",
 		})
 		assert.Nil(t, err)
 
-		// 获取客户端（如果Kafka服务器可用）
+		// Obtain the client (if Kafka server is available)
 		client1, err1 := producer1.SharedNode.GetSafely()
 		client2, err2 := producer2.SharedNode.GetSafely()
 
@@ -294,18 +294,18 @@ func TestKafkaProducerSharedNode(t *testing.T) {
 			return
 		}
 
-		// 在共享模式下，应该是同一个客户端实例
+		// In shared mode, it should be the same client instance
 		assert.True(t, reflect.ValueOf(client1).Pointer() != reflect.ValueOf(client2).Pointer(), "Kafka shared mode issue - different client instances, but this might be expected for different configurations")
 
-		// 清理
+		// Cleanup
 		producer1.Destroy()
 		producer2.Destroy()
 	})
 
 	t.Run("NonSharedMode", func(t *testing.T) {
-		// 创建多个非共享模式的节点实例
+		// Create multiple node instances in non-shared mode
 		config := types.NewConfig()
-		config.NodeClientInitNow = true // 禁用共享模式
+		config.NodeClientInitNow = true // Disable sharing mode
 
 		node1, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 			"server": "localhost:9092",
@@ -324,7 +324,7 @@ func TestKafkaProducerSharedNode(t *testing.T) {
 		producer1 := node1.(*ProducerNode)
 		producer2 := node2.(*ProducerNode)
 
-		// 重新初始化节点
+		// Reinitialize the node
 		err = producer1.Init(config, types.Configuration{
 			"server": "localhost:9092",
 			"topic":  "test.nonshared",
@@ -339,7 +339,7 @@ func TestKafkaProducerSharedNode(t *testing.T) {
 		})
 		assert.Nil(t, err)
 
-		// 获取客户端
+		// Get the client
 		client1, err1 := producer1.SharedNode.GetSafely()
 		client2, err2 := producer2.SharedNode.GetSafely()
 
@@ -348,10 +348,10 @@ func TestKafkaProducerSharedNode(t *testing.T) {
 			return
 		}
 
-		// 在非共享模式下，应该是不同的客户端实例
-		// 使用 reflect.ValueOf().Pointer() 来比较接口的底层指针，以避免某些环境下的泛型比较问题
+		// In non-shared mode, there should be different client instances
+		// Use reflect.ValueOf(). Pointer() to compare the underlying pointers of interfaces to avoid generic comparison issues in certain environments
 		assert.True(t, reflect.ValueOf(client1).Pointer() != reflect.ValueOf(client2).Pointer(), "Kafka non-shared mode - same client instances (might be expected in some cases)")
-		// 清理
+		// Cleanup
 		producer1.Destroy()
 		producer2.Destroy()
 	})
@@ -373,31 +373,31 @@ func TestKafkaProducerSharedNode(t *testing.T) {
 		})
 		assert.Nil(t, err)
 
-		// 获取客户端（如果可用）
+		// Getting the client (if available)
 		client, err := producer.SharedNode.GetSafely()
 		if err != nil {
 			t.Skipf("Kafka server not available: %v", err)
 			return
 		}
 
-		// 验证客户端已创建
+		// Verify that the client has been created
 		assert.NotNil(t, client)
 
-		// 调用Destroy方法
+		// Call the Destroy method
 		producer.Destroy()
 
-		// 验证资源已清理
+		// Verification resources have been cleared
 		assert.False(t, producer.SharedNode.Initialized())
 	})
 
 	t.Run("ConcurrentAccess", func(t *testing.T) {
 		config := types.NewConfig()
-		config.NodeClientInitNow = false // 启用共享模式
+		config.NodeClientInitNow = false // Enable sharing mode
 
 		var producers []*ProducerNode
 		numProducers := 10
 
-		// 创建多个生产者
+		// Creating multiple producers
 		for i := 0; i < numProducers; i++ {
 			node, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 				"server": "localhost:9092",
@@ -417,7 +417,7 @@ func TestKafkaProducerSharedNode(t *testing.T) {
 			producers = append(producers, producer)
 		}
 
-		// 并发访问客户端
+		// Concurrent access to the client
 		done := make(chan bool, numProducers)
 		var clients []sarama.SyncProducer
 		var clientsMutex sync.Mutex
@@ -435,12 +435,12 @@ func TestKafkaProducerSharedNode(t *testing.T) {
 			}(producers[i])
 		}
 
-		// 等待所有goroutine完成
+		// Wait for all goroutines to complete
 		for i := 0; i < numProducers; i++ {
 			<-done
 		}
 
-		// 如果获取到客户端，验证在共享模式下都是同一个实例
+		// If a client is obtained, the validation is the same instance in shared mode
 		if len(clients) > 1 {
 			firstClient := clients[0]
 			sameInstances := 0
@@ -454,16 +454,16 @@ func TestKafkaProducerSharedNode(t *testing.T) {
 			t.Logf("Got %d Kafka clients", len(clients))
 		}
 
-		// 清理所有生产者
+		// Eliminate all producers
 		for _, producer := range producers {
 			producer.Destroy()
 		}
 	})
 }
 
-// TestKafkaProducerConcurrentMessageSending 测试并发消息发送
+// TestKafkaProducerConcurrentMessageSending. Test concurrent message sending
 func TestKafkaProducerConcurrentMessageSending(t *testing.T) {
-	// 如果设置了跳过 Kafka 测试，则跳过
+	// If you set up skipping Kafka tests, skip them
 	if os.Getenv("SKIP_KAFKA_TESTS") == "true" {
 		t.Skip("Skipping Kafka tests")
 	}
@@ -488,7 +488,7 @@ func TestKafkaProducerConcurrentMessageSending(t *testing.T) {
 	})
 	assert.Nil(t, err)
 
-	// 检查Kafka服务器是否可用
+	// Check if the Kafka server is available
 	_, err = producer.SharedNode.GetSafely()
 	if err != nil {
 		t.Skipf("Kafka server not available: %v", err)
@@ -505,7 +505,7 @@ func TestKafkaProducerConcurrentMessageSending(t *testing.T) {
 		resultCh <- relationType
 	})
 
-	// 启动多个worker并发发送消息
+	// Launch multiple workers to send messages concurrently
 	for w := 0; w < numWorkers; w++ {
 		go func(workerID int) {
 			for i := 0; i < numMessages/numWorkers; i++ {
@@ -519,7 +519,7 @@ func TestKafkaProducerConcurrentMessageSending(t *testing.T) {
 		}(w)
 	}
 
-	// 收集结果
+	// Collect the results
 	timeout := time.After(30 * time.Second)
 	for i := 0; i < numMessages; i++ {
 		select {
@@ -534,15 +534,15 @@ func TestKafkaProducerConcurrentMessageSending(t *testing.T) {
 		}
 	}
 
-	// 验证所有消息都有结果
+	// Verifying all messages yields results
 	assert.Equal(t, numMessages, successCount+failureCount)
 	t.Logf("Success: %d, Failure: %d", successCount, failureCount)
 
-	// 清理
+	// Cleanup
 	producer.Destroy()
 }
 
-// TestKafkaProducerInitWithCloseCallback 测试InitWithClose回调函数
+// TestKafkaProducerInitWithCloseCallback tests the InitWithClose callback function
 func TestKafkaProducerInitWithCloseCallback(t *testing.T) {
 	Registry := &types.SafeComponentSlice{}
 	Registry.Add(&ProducerNode{})
@@ -558,7 +558,7 @@ func TestKafkaProducerInitWithCloseCallback(t *testing.T) {
 
 	producer := node.(*ProducerNode)
 
-	// 验证InitWithClose正确设置了清理回调
+	// Verify that InitWithClose is correctly set for cleanup callbacks
 	err = producer.Init(config, types.Configuration{
 		"server": "localhost:9092",
 		"topic":  "test.callback",
@@ -566,35 +566,35 @@ func TestKafkaProducerInitWithCloseCallback(t *testing.T) {
 	})
 	assert.Nil(t, err)
 
-	// 验证SharedNode的CloseFunc已设置
+	// Verify that SharedNode's CloseFunc is set
 	assert.NotNil(t, producer.SharedNode.CloseFunc)
 
-	// 获取客户端
+	// Get the client
 	client, err := producer.SharedNode.GetSafely()
 	if err != nil {
 		t.Skipf("Kafka server not available: %v", err)
 		return
 	}
 	client, _ = producer.SharedNode.GetSafely()
-	// 验证客户端已创建
+	// Verify that the client has been created
 	assert.NotNil(t, client)
 
-	// 测试Close方法调用回调函数
+	// Test the Close method to call the callback function
 	err = producer.SharedNode.Close()
 	assert.Nil(t, err)
-	// 验证本地客户端引用已清理
+	// Verify that the local client reference has been cleaned
 	assert.False(t, producer.SharedNode.Initialized())
 }
 
-// TestKafkaProducerRuleChainDSL 测试Kafka生产者规则链DSL用法
+// TestKafkaProducerRuleChainDSL tests the usage of KafkaProducerRuleChainDSL
 func TestKafkaProducerRuleChainDSL(t *testing.T) {
-	// 如果设置了跳过 Kafka 测试，则跳过
+	// If you set up skipping Kafka tests, skip them
 	if os.Getenv("SKIP_KAFKA_TESTS") == "true" {
 		t.Skip("Skipping Kafka tests")
 	}
 
 	t.Run("BasicDSL", func(t *testing.T) {
-		// 定义规则链DSL
+		// Define the rule chain DSL
 		ruleChainDSL := `{
 			"ruleChain": {
 				"id": "kafka_producer_test_chain",
@@ -636,13 +636,13 @@ func TestKafkaProducerRuleChainDSL(t *testing.T) {
 		}`
 
 		config := rulego.NewConfig()
-		// 将组件注册到全局注册表
+		// Register components to the global registry
 		_ = rulego.Registry.Register(&ProducerNode{})
-		// 创建规则引擎实例
+		// Create a rule engine instance
 		ruleEngine, err := rulego.New("test", []byte(ruleChainDSL), rulego.WithConfig(config))
 		assert.Nil(t, err)
 
-		// 检查Kafka服务器是否可用
+		// Check if the Kafka server is available
 		testProducer := &ProducerNode{}
 		err = testProducer.Init(config, types.Configuration{
 			"server": "localhost:9092",
@@ -659,7 +659,7 @@ func TestKafkaProducerRuleChainDSL(t *testing.T) {
 			return
 		}
 
-		// 测试消息处理
+		// Test message processing
 		var successCount int32
 		var failureCount int32
 
@@ -676,27 +676,27 @@ func TestKafkaProducerRuleChainDSL(t *testing.T) {
 			}
 		}))
 
-		// 等待消息处理完成
+		// Wait for message processing to complete
 		time.Sleep(time.Second * 2)
 
-		// 验证结果
+		// Verify the results
 		assert.True(t, atomic.LoadInt32(&successCount) > 0 || atomic.LoadInt32(&failureCount) > 0)
 		t.Logf("Success: %d, Failure: %d", atomic.LoadInt32(&successCount), atomic.LoadInt32(&failureCount))
 
-		// 清理
+		// Cleanup
 		ruleEngine.Stop(context.Background())
 	})
 
 	t.Run("SharedNodeDSL", func(t *testing.T) {
-		// 首先创建共享节点池
+		// First, create a shared node pool
 		config := rulego.NewConfig()
 		pool := node_pool.NewNodePool(config)
 		config.NodePool = pool
 
-		// 注册组件
+		// Register the component
 		_ = rulego.Registry.Register(&ProducerNode{})
 
-		// 创建共享Kafka生产者节点
+		// Create a shared Kafka producer node
 		sharedNodeDsl := []byte(`{
 			"id": "shared_kafka_producer",
 			"type": "x/kafkaProducer",
@@ -723,7 +723,7 @@ func TestKafkaProducerRuleChainDSL(t *testing.T) {
 		}
 		assert.NotNil(t, ctx)
 
-		// 检查Kafka服务器是否可用
+		// Check if the Kafka server is available
 		client, err := pool.GetInstance("shared_kafka_producer")
 		if err != nil {
 			t.Skipf("Kafka server not available: %v", err)
@@ -731,7 +731,7 @@ func TestKafkaProducerRuleChainDSL(t *testing.T) {
 		}
 		assert.NotNil(t, client)
 
-		// 定义引用共享节点的规则链DSL
+		// Define the DSL rule chain that references shared nodes
 		ruleChainDSL := `{
 			"ruleChain": {
 				"id": "shared_kafka_chain",
@@ -754,11 +754,11 @@ func TestKafkaProducerRuleChainDSL(t *testing.T) {
 			}
 		}`
 
-		// 创建规则引擎实例
+		// Create a rule engine instance
 		ruleEngine, err := rulego.New("shared_test", []byte(ruleChainDSL), rulego.WithConfig(config))
 		assert.Nil(t, err)
 
-		// 测试消息处理
+		// Test message processing
 		var successCount int32
 		var failureCount int32
 
@@ -776,20 +776,20 @@ func TestKafkaProducerRuleChainDSL(t *testing.T) {
 			}
 		}))
 
-		// 等待消息处理完成
+		// Wait for message processing to complete
 		time.Sleep(time.Second * 2)
 
-		// 验证结果
+		// Verify the results
 		assert.True(t, atomic.LoadInt32(&successCount) > 0 || atomic.LoadInt32(&failureCount) > 0)
 		t.Logf("Shared Node Test - Success: %d, Failure: %d", atomic.LoadInt32(&successCount), atomic.LoadInt32(&failureCount))
 
-		// 清理
+		// Cleanup
 		ruleEngine.Stop(context.Background())
 		pool.Del("shared_kafka_producer")
 	})
 
 	t.Run("DynamicTopicDSL", func(t *testing.T) {
-		// 测试动态Topic的DSL配置
+		// Test the DSL configuration of dynamic topics
 		ruleChainDSL := `{
 			"ruleChain": {
 				"id": "dynamic_kafka_chain",
@@ -831,13 +831,13 @@ func TestKafkaProducerRuleChainDSL(t *testing.T) {
 		}`
 
 		config := rulego.NewConfig()
-		// 注册组件
+		// Register the component
 		_ = rulego.Registry.Register(&ProducerNode{})
-		// 创建规则引擎实例
+		// Create a rule engine instance
 		ruleEngine, err := rulego.New("dynamic_test", []byte(ruleChainDSL), rulego.WithConfig(config))
 		assert.Nil(t, err)
 
-		// 检查Kafka服务器是否可用
+		// Check if the Kafka server is available
 		testProducer := &ProducerNode{}
 		_, err = testProducer.SharedNode.GetSafely()
 		if err != nil {
@@ -845,7 +845,7 @@ func TestKafkaProducerRuleChainDSL(t *testing.T) {
 			return
 		}
 
-		// 测试不同传感器类型的消息
+		// Testing messages for different types of sensors
 		var successCount int32
 		var failureCount int32
 
@@ -859,34 +859,34 @@ func TestKafkaProducerRuleChainDSL(t *testing.T) {
 			}
 		}
 
-		// 温度传感器消息
+		// Temperature sensor message
 		tempMetadata := types.NewMetadata()
 		tempMetadata.PutValue("deviceId", "temp001")
 		temperatureSensorMsg := types.NewMsg(0, "TELEMETRY", types.JSON, tempMetadata, `{"sensor_type": "temperature", "value": 25.5}`)
 
-		// 湿度传感器消息
+		// Humidity sensor message
 		humMetadata := types.NewMetadata()
 		humMetadata.PutValue("deviceId", "hum001")
 		humiditySensorMsg := types.NewMsg(0, "TELEMETRY", types.JSON, humMetadata, `{"sensor_type": "humidity", "value": 60.2}`)
 
-		// 未知传感器消息
+		// Unknown sensor information
 		unknownMetadata := types.NewMetadata()
 		unknownMetadata.PutValue("deviceId", "unknown001")
 		unknownSensorMsg := types.NewMsg(0, "TELEMETRY", types.JSON, unknownMetadata, `{"value": 100}`)
 
-		// 发送不同类型的消息
+		// Send different types of messages
 		ruleEngine.OnMsg(temperatureSensorMsg, types.WithOnEnd(callback))
 		ruleEngine.OnMsg(humiditySensorMsg, types.WithOnEnd(callback))
 		ruleEngine.OnMsg(unknownSensorMsg, types.WithOnEnd(callback))
 
-		// 等待消息处理完成
+		// Wait for message processing to complete
 		time.Sleep(time.Second * 3)
 
-		// 验证结果
+		// Verify the results
 		assert.True(t, atomic.LoadInt32(&successCount) > 0 || atomic.LoadInt32(&failureCount) > 0)
 		t.Logf("Dynamic Topic Test - Success: %d, Failure: %d", atomic.LoadInt32(&successCount), atomic.LoadInt32(&failureCount))
 
-		// 清理
+		// Cleanup
 		ruleEngine.Stop(context.Background())
 	})
 }

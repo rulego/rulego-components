@@ -26,17 +26,17 @@ const (
 	DefaultTube              = "default"
 )
 
-// Endpoint 别名
+// Endpoint alias
 type Endpoint = BeanstalkdTubeSet
 
 var _ endpointApi.Endpoint = (*Endpoint)(nil)
 
-// 注册组件
+// Register the component
 func init() {
 	_ = endpoint.Registry.Register(&Endpoint{})
 }
 
-// beanstalk Tubeset 配置
+// beanstalk tubeset configuration
 type TubesetConfig struct {
 	Server   string   `json:"server" label:"Server" desc:"Beanstalkd server address, format: host:port" required:"true" ref:"primary"`
 	Tubesets []string `json:"tubesets" label:"Tubes" desc:"List of tube names to watch"`
@@ -48,21 +48,21 @@ type BeanstalkdTubeSet struct {
 	base.SharedNode[*beanstalk.Conn]
 	base.GracefulShutdown
 	RuleConfig types.Config
-	// beanstalk Tubeset 相关配置
+	// Configurations related to beanstalk Tubeset
 	Config TubesetConfig
-	// 路由实例
+	// Routing instances
 	Router endpointApi.Router
-	// beanstalk Tubesett实例
+	// beanstalk Tubesett example
 	// tubeset *beanstalk.TubeSet
 	started int32
 }
 
-// Type 组件类型
+// Type returns the component type
 func (x *BeanstalkdTubeSet) Type() string {
 	return Type
 }
 
-// New 创建组件实例
+// New creates a component instance
 func (x *BeanstalkdTubeSet) New() types.Node {
 	return &BeanstalkdTubeSet{
 		Config: TubesetConfig{
@@ -82,7 +82,7 @@ func (x *BeanstalkdTubeSet) Def() types.ComponentForm {
 	}
 }
 
-// Init 初始化
+// Init initializes the component
 func (x *BeanstalkdTubeSet) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	x.RuleConfig = ruleConfig
@@ -98,7 +98,7 @@ func (x *BeanstalkdTubeSet) Init(ruleConfig types.Config, configuration types.Co
 	return err
 }
 
-// Destroy 销毁
+// Destroy releases resources
 func (x *BeanstalkdTubeSet) Destroy() {
 	x.GracefulShutdown.GracefulStop(func() {
 		_ = x.Close()
@@ -106,7 +106,7 @@ func (x *BeanstalkdTubeSet) Destroy() {
 }
 
 func (x *BeanstalkdTubeSet) Close() error {
-	// SharedNode 会通过 InitWithClose 中的清理函数来管理客户端的关闭
+	// SharedNode manages client shutdowns through the cleanup function in InitWithClose
 	// SharedNode manages client closure through the cleanup function in InitWithClose
 	_ = x.SharedNode.Close()
 	x.BaseEndpoint.Destroy()
@@ -120,12 +120,12 @@ func (x *BeanstalkdTubeSet) GracefulStop() {
 	})
 }
 
-// Id 获取组件id
+// ID to obtain the component ID
 func (x *BeanstalkdTubeSet) Id() string {
 	return x.Config.Server
 }
 
-// AddRouter 添加路由
+// AddRouter adds a route
 func (x *BeanstalkdTubeSet) AddRouter(router endpointApi.Router, params ...interface{}) (string, error) {
 	if router == nil {
 		return "", errors.New("router cannot be nil")
@@ -137,7 +137,7 @@ func (x *BeanstalkdTubeSet) AddRouter(router endpointApi.Router, params ...inter
 	return router.GetId(), nil
 }
 
-// RemoveRouter 移除路由
+// RemoveRouter removes the route
 func (x *BeanstalkdTubeSet) RemoveRouter(routerId string, params ...interface{}) error {
 	x.Lock()
 	defer x.Unlock()
@@ -145,7 +145,7 @@ func (x *BeanstalkdTubeSet) RemoveRouter(routerId string, params ...interface{})
 	return nil
 }
 
-// Start 启动
+// Start
 func (x *BeanstalkdTubeSet) Start() error {
 	if atomic.LoadInt32(&x.started) == 1 {
 		return nil
@@ -177,7 +177,7 @@ func (x *BeanstalkdTubeSet) Start() error {
 			if x.GracefulShutdown.IsShuttingDown() {
 				return
 			}
-			// 增加活跃操作计数
+			// Increase the count of active operations
 			x.GracefulShutdown.IncrementActiveOperations()
 
 			reserveErr := x.reserve()
@@ -252,14 +252,14 @@ func (x *BeanstalkdTubeSet) reserve() error {
 	return nil
 }
 
-// Printf 打印日志
+// Printf prints logs
 func (x *BeanstalkdTubeSet) Printf(format string, v ...interface{}) {
 	if x.RuleConfig.Logger != nil {
 		x.RuleConfig.Logger.Printf(format, v...)
 	}
 }
 
-// initClient 初始化客户端
+// initClient initializes the client
 func (x *BeanstalkdTubeSet) initClient() (*beanstalk.Conn, error) {
 	conn, err := beanstalk.Dial("tcp", x.Config.Server)
 	return conn, err
@@ -289,7 +289,7 @@ func (r *RequestMessage) From() string {
 	return ""
 }
 
-// GetParam 不提供获取参数
+// GetParam does not provide acquisition parameters
 func (r *RequestMessage) GetParam(key string) string {
 	return ""
 }
@@ -299,7 +299,7 @@ func (r *RequestMessage) SetMsg(msg *types.RuleMsg) {
 }
 func (r *RequestMessage) GetMsg() *types.RuleMsg {
 	if r.msg == nil {
-		//默认指定是JSON格式，如果不是该类型，请在process函数中修改
+		//The default specification is JSON format. If it is not this type, please modify it in the process function
 		ruleMsg := types.NewMsg(0, BEANSTALKD_DATA_MSG_TYPE, types.JSON, types.BuildMetadata(r.stats), string(r.Body()))
 		r.msg = &ruleMsg
 	}
@@ -351,7 +351,7 @@ func (r *ResponseMessage) From() string {
 	return ""
 }
 
-// GetParam 不提供获取参数
+// GetParam does not provide acquisition parameters
 func (r *ResponseMessage) GetParam(key string) string {
 	return ""
 }
@@ -361,7 +361,7 @@ func (r *ResponseMessage) SetMsg(msg *types.RuleMsg) {
 }
 func (r *ResponseMessage) GetMsg() *types.RuleMsg {
 	if r.msg == nil {
-		//默认指定是JSON格式，如果不是该类型，请在process函数中修改
+		//The default specification is JSON format. If it is not this type, please modify it in the process function
 		ruleMsg := types.NewMsg(0, BEANSTALKD_DATA_MSG_TYPE, types.JSON, types.BuildMetadata(r.stats), string(r.Body()))
 		r.msg = &ruleMsg
 	}

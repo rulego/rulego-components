@@ -32,20 +32,20 @@ import (
 	"github.com/rulego/rulego/utils/maps"
 )
 
-// Type 组件类型
+// Type returns the component type
 const Type = types.EndpointTypePrefix + "wukongim"
 
-// Endpoint 别名
+// Endpoint alias
 type Endpoint = Wukongim
 
 var _ endpointApi.Endpoint = (*Endpoint)(nil)
 
-// 注册组件
+// Register the component
 func init() {
 	_ = endpoint.Registry.Register(&Endpoint{})
 }
 
-// RequestMessage http请求消息
+// RequestMessage http requests messages
 type RequestMessage struct {
 	headers textproto.MIMEHeader
 	body    []byte
@@ -76,7 +76,7 @@ func (r *RequestMessage) SetMsg(msg *types.RuleMsg) {
 
 func (r *RequestMessage) GetMsg() *types.RuleMsg {
 	if r.msg == nil {
-		//默认指定是JSON格式，如果不是该类型，请在process函数中修改
+		//The default specification is JSON format. If it is not this type, please modify it in the process function
 		ruleMsg := types.NewMsg(0, r.From(), types.JSON, types.NewMetadata(), string(r.Body()))
 		r.msg = &ruleMsg
 	}
@@ -97,7 +97,7 @@ func (r *RequestMessage) GetError() error {
 	return r.err
 }
 
-// ResponseMessage http响应消息
+// ResponseMessage http Response message
 type ResponseMessage struct {
 	headers    textproto.MIMEHeader
 	body       []byte
@@ -132,7 +132,7 @@ func (r *ResponseMessage) GetMsg() *types.RuleMsg {
 	return r.msg
 }
 
-// 从msg.Metadata或者响应头获取
+// From msg.Metadata or response header access
 func (r *ResponseMessage) getMetadataValue(metadataName, headerName string) string {
 	var v string
 	if r.GetMsg() != nil {
@@ -171,17 +171,17 @@ type Config struct {
 	AutoAck        bool   `json:"autoAck" label:"Auto Ack" desc:"Whether to auto-acknowledge messages"`
 }
 
-// Wukongim 接收端端点
+// Wukongim receiving endpoint
 type Wukongim struct {
 	impl.BaseEndpoint
 	base.SharedNode[*wksdk.Client]
 	RuleConfig types.Config
-	//Config 配置
+	//Config configuration
 	Config Config
 	Router endpointApi.Router
 }
 
-// Type 组件类型
+// Type returns the component type
 func (x *Wukongim) Type() string {
 	return Type
 }
@@ -210,7 +210,7 @@ func (x *Wukongim) Def() types.ComponentForm {
 	}
 }
 
-// Init 初始化
+// Init initializes the component
 func (x *Wukongim) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	x.RuleConfig = ruleConfig
@@ -225,7 +225,7 @@ func (x *Wukongim) Init(ruleConfig types.Config, configuration types.Configurati
 	return err
 }
 
-// Destroy 销毁组件
+// Destroy releases component resources
 func (x *Wukongim) Destroy() {
 	_ = x.Close()
 }

@@ -32,7 +32,7 @@ func init() {
 	_ = rulego.Registry.Register(&QueryNode{})
 }
 
-// QueryConfig 定义 OpenGemini 客户端配置
+// QueryConfig defines the OpenGemini client configuration
 type QueryConfig struct {
 	Server   string `json:"server" label:"Server" desc:"OpenGemini server address, format: http://host:port" required:"true" ref:"primary"`
 	Database string `json:"database" label:"Database" desc:"Database name" required:"true"`
@@ -42,16 +42,16 @@ type QueryConfig struct {
 	Command  string `json:"command" label:"Query" desc:"SQL query, supports ${metadata.key} and ${msg.key} substitution" required:"true"`
 }
 
-// QueryNode opengemini 查询节点
+// QueryNode opengemini query node
 type QueryNode struct {
 	*WriteNode
 	Config          QueryConfig
 	commandTemplate el.Template
-	// 标识模板是否包含变量，用于性能优化
+	// Whether the identification template contains variables for performance optimization
 	commandHasVar bool
 }
 
-// New 实现 Node 接口，创建新实例
+// New Implement the Node interface and create a new instance
 func (x *QueryNode) New() types.Node {
 	return &QueryNode{
 		Config: QueryConfig{
@@ -62,12 +62,12 @@ func (x *QueryNode) New() types.Node {
 	}
 }
 
-// Type 实现 Node 接口，返回组件类型
+// Type implements the Node interface and returns the component type
 func (x *QueryNode) Type() string {
 	return "x/opengeminiQuery"
 }
 
-// Init 初始化 OpenGemini 客户端
+// Init initializes the OpenGemini client
 func (x *QueryNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err != nil {
@@ -77,7 +77,7 @@ func (x *QueryNode) Init(ruleConfig types.Config, configuration types.Configurat
 	if err = x.WriteNode.Init(ruleConfig, configuration); err != nil {
 		return err
 	}
-	// 初始化命令模板
+	// Initialize the command template
 	commandTemplate, err := el.NewTemplate(x.Config.Command)
 	if err != nil {
 		return err
@@ -87,7 +87,7 @@ func (x *QueryNode) Init(ruleConfig types.Config, configuration types.Configurat
 	return nil
 }
 
-// OnMsg 实现 Node 接口，处理消息
+// OnMsg implements the Node interface to process messages
 func (x *QueryNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	database := x.Config.Database
 	command := x.Config.Command

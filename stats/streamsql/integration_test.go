@@ -32,15 +32,15 @@ import (
 	"time"
 )
 
-// loadRuleChainFromFile 从文件加载规则链定义
+// loadRuleChainFromFile Loads the rule chain definition from the file
 func loadRuleChainFromFile(filename string) ([]byte, error) {
-	// 构建相对于项目根目录的路径
+	// Build a path relative to the project root
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return nil, err
 	}
 
-	// 寻找项目根目录（包含go.mod的目录）
+	// Find the project root directory (the directory containing go.mod)
 	for {
 		if _, err := os.Stat(filepath.Join(currentDir, "go.mod")); err == nil {
 			break
@@ -56,7 +56,7 @@ func loadRuleChainFromFile(filename string) ([]byte, error) {
 	return ioutil.ReadFile(filePath)
 }
 
-// waitForCondition 等待条件满足，带超时
+// waitForCondition: Waits for the condition to be satisfied, with timeout
 func waitForCondition(condition func() bool, timeout time.Duration, interval time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -68,7 +68,7 @@ func waitForCondition(condition func() bool, timeout time.Duration, interval tim
 	return false
 }
 
-// TestSeparatedNodesIntegration 测试分离节点的集成测试
+// TestSeparatedNodesIntegration: Integration testing of separated nodes
 func TestSeparatedNodesIntegration(t *testing.T) {
 	t.Run("StreamTransform节点规则链测试", func(t *testing.T) {
 		config := engine.NewConfig(types.WithDefaultPool())
@@ -87,7 +87,7 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 			}
 		}
 
-		// 加载Transform测试规则链
+		// Load the Transform test rule chain
 		ruleChainData, err := loadRuleChainFromFile("test_stream_transform.json")
 		assert.Nil(t, err, "加载Transform测试规则链应该成功")
 
@@ -96,16 +96,16 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 		assert.Nil(t, err, "创建Transform规则引擎应该成功")
 		defer engine.Del(chainId)
 
-		// 准备测试数据
+		// Prepare test data
 		testCases := []struct {
 			name          string
 			temperature   float64
 			humidity      float64
 			expectSuccess bool
 		}{
-			{"高温数据", 35.5, 65.0, true},  // 满足条件 temperature > 20
-			{"正常温度", 25.5, 60.0, true},  // 满足条件
-			{"低温数据", 15.0, 55.0, false}, // 不满足条件，会被过滤
+			{"高温数据", 35.5, 65.0, true},  // Conditions are met: temperature > 20
+			{"正常温度", 25.5, 60.0, true},  // Conditions are met
+			{"低温数据", 15.0, 55.0, false}, // If the conditions are not met, they will be filtered
 		}
 
 		for _, tc := range testCases {
@@ -114,19 +114,19 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 				atomic.StoreInt32(&transformFailure, 0)
 				atomic.StoreInt32(&processCompleted, 0)
 
-				// 创建测试消息
+				// Create test messages
 				metaData := types.NewMetadata()
 				metaData.PutValue("deviceId", "sensor001")
 				msgData := fmt.Sprintf(`{"temperature": %.1f, "humidity": %.1f, "deviceId": "sensor001"}`,
 					tc.temperature, tc.humidity)
 				msg := types.NewMsg(0, "TELEMETRY", types.JSON, metaData, msgData)
 
-				// 处理消息
+				// Process the message
 				ruleEngine.OnMsg(msg, types.WithOnEnd(func(ctx types.RuleContext, msg types.RuleMsg, err error, relationType string) {
 					assert.Nil(t, err, "处理不应该出错")
 				}))
 
-				// 等待处理完成
+				// Wait for processing to complete
 				success := waitForCondition(func() bool {
 					return atomic.LoadInt32(&processCompleted) >= 1
 				}, 3*time.Second, 50*time.Millisecond)
@@ -154,7 +154,7 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 		var mu sync.Mutex
 		var resultReceived = make(chan struct{}, 10)
 
-		// 设置全局聚合结果处理器
+		// Set up the global aggregation result processor
 		config.OnEnd = func(ctx types.RuleContext, msg types.RuleMsg, err error, relationType string) {
 			if err == nil && msg.Type == WindowEventMsgType {
 				atomic.AddInt32(&successCount, 1)
@@ -173,7 +173,7 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 			}
 		}
 
-		// 加载Aggregator测试规则链
+		// Load the Aggregator to test the rule chain
 		ruleChainData, err := loadRuleChainFromFile("test_stream_aggregator.json")
 		assert.Nil(t, err, "加载Aggregator测试规则链应该成功")
 
@@ -182,7 +182,7 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 		assert.Nil(t, err, "创建Aggregator规则引擎应该成功")
 		defer engine.Del(chainId)
 
-		// 发送测试数据 - 增加数据量和频率来更容易触发窗口
+		// Sending test data – increasing the amount and frequency of data to make it easier to trigger the window
 		devices := []string{"device001", "device002"}
 		temperatures := []float64{25.0, 30.0, 35.0, 28.0, 32.0, 26.0, 33.0, 29.0}
 
@@ -195,12 +195,12 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 				msg := types.NewMsg(0, "TELEMETRY", types.JSON, metaData, msgData)
 
 				ruleEngine.OnMsg(msg)
-				time.Sleep(100 * time.Millisecond) // 稍微增加间隔
+				time.Sleep(100 * time.Millisecond) // Slightly increase the interval
 			}
 		}
 
-		// 等待窗口聚合触发 - 增加等待时间确保窗口触发
-		timeout := time.After(8 * time.Second) // 增加到8秒
+		// Wait for window aggregation trigger – increases waiting time to ensure window triggering
+		timeout := time.After(8 * time.Second) // Increased to 8 seconds
 		minResults := 1
 
 		for {
@@ -224,11 +224,11 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 		resultsCount := len(aggregateResults)
 		mu.Unlock()
 
-		// 改为更宽松的断言，因为窗口聚合可能需要特定条件才能触发
+		// Adopt a more lenient assertion, since window aggregation may require specific conditions to trigger
 		assert.True(t, finalSuccess >= 0, "聚合处理应该完成")
 		assert.True(t, resultsCount >= 0, "应该收集到聚合结果")
 
-		// 如果有结果，验证聚合结果的结构
+		// If there are results, verify the structure of the aggregated results
 		if resultsCount > 0 {
 			mu.Lock()
 			aggregateResultsCopy := make([]map[string]interface{}, len(aggregateResults))
@@ -237,7 +237,7 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 
 			firstResult := aggregateResultsCopy[0]
 
-			// 验证结果包含期望的字段
+			// The validation result contains the desired field
 			_, hasDeviceId := firstResult["deviceId"]
 			_, hasAvgTemp := firstResult["avg_temp"]
 			_, hasCount := firstResult["count"]
@@ -253,7 +253,7 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 		var mu sync.Mutex
 		var resultReceived = make(chan struct{}, 10)
 
-		// 设置全局聚合结果处理器
+		// Set up the global aggregation result processor
 		config.OnEnd = func(ctx types.RuleContext, msg types.RuleMsg, err error, relationType string) {
 			if err == nil && msg.Type == WindowEventMsgType {
 				atomic.AddInt32(&windowCount, 1)
@@ -272,7 +272,7 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 			}
 		}
 
-		// 加载窗口聚合测试规则链
+		// Load the window aggregation test rule chain
 		ruleChainData, err := loadRuleChainFromFile("test_stream_aggregator_window.json")
 		assert.Nil(t, err, "加载窗口测试规则链应该成功")
 
@@ -281,7 +281,7 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 		assert.Nil(t, err, "创建窗口聚合规则引擎应该成功")
 		defer engine.Del(chainId)
 
-		// 发送高温数据以触发报警 - 增加数据量
+		// Sending high-temperature data to trigger alarms increases data volume
 		temperatures := []float64{28.0, 32.0, 35.0, 31.0, 29.0, 33.0, 34.0, 30.0}
 
 		for i, temp := range temperatures {
@@ -292,11 +292,11 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 			msg := types.NewMsg(0, "TELEMETRY", types.JSON, metaData, msgData)
 
 			ruleEngine.OnMsg(msg)
-			time.Sleep(150 * time.Millisecond) // 减少间隔，让窗口更容易触发
+			time.Sleep(150 * time.Millisecond) // Reduce intervals to make windows easier to trigger
 		}
 
-		// 等待窗口聚合触发
-		timeout := time.After(5 * time.Second) // 减少等待时间，因为窗口是1秒
+		// Wait for window aggregation to trigger
+		timeout := time.After(5 * time.Second) // Reduce waiting time because the window is 1 second
 		minResults := 1
 
 		for {
@@ -325,17 +325,17 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 		assert.True(t, finalCount >= 0, "窗口聚合应该完成")
 		assert.True(t, resultsCount >= 0, "应该收集到窗口聚合结果")
 
-		// 如果有结果，验证结果的有效性
+		// If there are results, verify their validity
 		if resultsCount > 0 {
 			firstResult := windowResultsCopy[0]
 
-			// 验证结果是有效的map
+			// The verification result is a valid map
 			assert.True(t, len(firstResult) > 0, "窗口聚合结果不应该为空")
 		}
 	})
 
 	t.Run("Transform与Aggregator协同工作", func(t *testing.T) {
-		// 创建包含Transform和Aggregator的复合规则链
+		// Create a composite rule chain containing Transform and Aggregator
 		mixedRuleChain := `{
 			"ruleChain": {
 				"id": "mixed_stream_processing",
@@ -408,7 +408,7 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 		var aggregateResults []map[string]interface{}
 		var resultReceived = make(chan struct{}, 10)
 
-		// 设置全局聚合结果处理器
+		// Set up the global aggregation result processor
 		config.OnEnd = func(ctx types.RuleContext, msg types.RuleMsg, err error, relationType string) {
 			if err == nil && msg.Type == WindowEventMsgType {
 				atomic.AddInt32(&aggregateCount, 1)
@@ -427,7 +427,7 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 			}
 		}
 
-		// 修复OnDebug回调，正确匹配Transform节点
+		// Fixed OnDebug callback and correctly matched the Transform node
 		config.OnDebug = func(chainId, flowType string, nodeId string, msg types.RuleMsg, relationType string, err error) {
 			if flowType == types.Out && nodeId == "filter" && relationType == types.Success {
 				atomic.AddInt32(&transformCount, 1)
@@ -439,18 +439,18 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 		assert.Nil(t, err, "创建混合处理规则引擎应该成功")
 		defer engine.Del(chainId)
 
-		// 发送测试数据
+		// Send test data
 		testData := []struct {
 			deviceId    string
 			temperature float64
 			humidity    float64
 			shouldPass  bool
 		}{
-			{"device001", 25.0, 60.0, true},  // 会通过过滤器
-			{"device001", 30.0, 65.0, true},  // 会通过过滤器
-			{"device002", 15.0, 55.0, false}, // 被过滤器过滤掉
-			{"device002", 35.0, 70.0, true},  // 会通过过滤器
-			{"device001", 28.0, 62.0, true},  // 会通过过滤器
+			{"device001", 25.0, 60.0, true},  // It will pass through a filter
+			{"device001", 30.0, 65.0, true},  // It will pass through a filter
+			{"device002", 15.0, 55.0, false}, // Filtered out by the filter
+			{"device002", 35.0, 70.0, true},  // It will pass through a filter
+			{"device001", 28.0, 62.0, true},  // It will pass through a filter
 		}
 
 		expectedPassCount := 0
@@ -468,27 +468,27 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 			msg := types.NewMsg(0, "TELEMETRY", types.JSON, metaData, msgData)
 
 			ruleEngine.OnMsg(msg)
-			time.Sleep(150 * time.Millisecond) // 增加间隔让系统有时间处理
+			time.Sleep(150 * time.Millisecond) // Increasing intervals gives the system time to process
 		}
 
-		// 等待Transform处理完成
+		// Wait for Transform to finish
 		transformSuccess := waitForCondition(func() bool {
 			return atomic.LoadInt32(&transformCount) >= int32(expectedPassCount)
-		}, 5*time.Second, 100*time.Millisecond) // 增加等待时间
+		}, 5*time.Second, 100*time.Millisecond) // Increased waiting times
 
-		// 等待可能的聚合结果（可选）
-		timeout := time.After(6 * time.Second) // 增加等待时间
+		// Waiting for possible aggregation results (optional)
+		timeout := time.After(6 * time.Second) // Increased waiting times
 		select {
 		case <-resultReceived:
-			// 收到聚合结果
+			// Receive aggregated results
 		case <-timeout:
-			// 超时，没有聚合结果也是正常的
+			// Timeouts and no aggregate results are normal
 		}
 
 		finalTransformCount := atomic.LoadInt32(&transformCount)
 		finalAggregateCount := atomic.LoadInt32(&aggregateCount)
 
-		// 验证结果
+		// Verify the results
 		assert.True(t, transformSuccess, "Transform处理应该在超时前完成")
 		assert.Equal(t, int32(expectedPassCount), finalTransformCount,
 			"应该有%d条数据通过过滤器", expectedPassCount)
@@ -500,7 +500,7 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 		copy(aggregateResultsCopy, aggregateResults)
 		mu.Unlock()
 
-		// 如果有聚合结果，验证其有效性
+		// If aggregated results are available, verify their effectiveness
 		if resultsCount > 0 {
 			firstResult := aggregateResultsCopy[0]
 

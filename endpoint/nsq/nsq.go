@@ -39,23 +39,23 @@ import (
 	"github.com/rulego/rulego/utils/runtime"
 )
 
-// Type 组件类型
+// Type returns the component type
 const Type = types.EndpointTypePrefix + "nsq"
 
-// KeyResponseTopic 响应主题metadataKey
+// KeyResponseTopic: Response topic metadataKey
 const KeyResponseTopic = "responseTopic"
 
-// Endpoint 别名
+// Endpoint alias
 type Endpoint = Nsq
 
 var _ endpointApi.Endpoint = (*Endpoint)(nil)
 
-// 注册组件
+// Register the component
 func init() {
 	_ = endpoint.Registry.Register(&Endpoint{})
 }
 
-// RequestMessage 请求消息
+// RequestMessage
 type RequestMessage struct {
 	topic   string
 	message *nsq.Message
@@ -63,12 +63,12 @@ type RequestMessage struct {
 	err     error
 }
 
-// Body 获取消息体
+// Body
 func (r *RequestMessage) Body() []byte {
 	return r.message.Body
 }
 
-// Headers 获取消息头
+// Headers: Get the message header
 func (r *RequestMessage) Headers() textproto.MIMEHeader {
 	header := make(textproto.MIMEHeader)
 	header.Set("topic", r.topic)
@@ -77,25 +77,25 @@ func (r *RequestMessage) Headers() textproto.MIMEHeader {
 	return header
 }
 
-// From 获取消息来源
+// Source: Source
 func (r *RequestMessage) From() string {
 	return string(r.topic)
 }
 
-// GetParam 获取参数
+// GetParam to get the parameters
 func (r *RequestMessage) GetParam(key string) string {
 	return ""
 }
 
-// SetMsg 设置规则消息
+// SetMsg sets the rule message
 func (r *RequestMessage) SetMsg(msg *types.RuleMsg) {
 	r.msg = msg
 }
 
-// GetMsg 获取规则消息
+// GetMsg obtains rule messages
 func (r *RequestMessage) GetMsg() *types.RuleMsg {
 	if r.msg == nil {
-		// 默认指定是JSON格式，如果不是该类型，请在process函数中修改
+		// The default specification is JSON format. If it is not this type, please modify it in the process function
 		ruleMsg := types.NewMsg(0, r.From(), types.JSON, types.NewMetadata(), string(r.Body()))
 		ruleMsg.Metadata.PutValue("messageId", string(r.message.ID[:]))
 		ruleMsg.Metadata.PutValue("attempts", fmt.Sprintf("%d", r.message.Attempts))
@@ -105,32 +105,32 @@ func (r *RequestMessage) GetMsg() *types.RuleMsg {
 	return r.msg
 }
 
-// SetStatusCode 设置状态码
+// SetStatusCode sets the status code
 func (r *RequestMessage) SetStatusCode(statusCode int) {
 }
 
-// SetBody 设置消息体
+// SetBody sets the message body
 func (r *RequestMessage) SetBody(body []byte) {
 }
 
-// SetError 设置错误
+// SetError is set incorrectly
 func (r *RequestMessage) SetError(err error) {
 	r.err = err
 }
 
-// GetError 获取错误
+// GetError retrieves an error
 func (r *RequestMessage) GetError() error {
 	return r.err
 }
 
-// nsqPublisher 对单连接或多 nsqd 轮询发布抽象，便于运行期负载均衡
+// nsqPublisher polls publish abstraction for single or multiple nsqd polls, facilitating runtime load balancing
 type nsqPublisher interface {
 	Publish(topic string, body []byte) error
 	Stop()
 }
 
-// roundRobinProducers 在多个 *nsq.Producer 上按消息轮询（round-robin）发布；
-// 单次 Publish 若失败会依次尝试其余节点，兼顾负载均衡与单节点短暂不可用时的容错。
+// roundRobinProducers Publish round-robin messages across multiple * nsq.Producer;
+// If a single Publish fails, it will try the remaining nodes one by one, balancing load balancing and fault tolerance when a single node is temporarily unavailable.
 type roundRobinProducers struct {
 	prods []*nsq.Producer
 	rr    uint32
@@ -141,7 +141,7 @@ func (p *roundRobinProducers) Publish(topic string, body []byte) error {
 	if n == 0 {
 		return errors.New("no nsqd producer in pool")
 	}
-	// 每次从轮询游标起算，使流量在节点间分散
+	// Each time starts from polling cursors, dispersing traffic between nodes
 	start := int(atomic.AddUint32(&p.rr, 1)-1) % n
 	var lastErr error
 	for i := 0; i < n; i++ {
@@ -163,7 +163,7 @@ func (p *roundRobinProducers) Stop() {
 	}
 }
 
-// ResponseMessage 响应消息
+// ResponseMessage
 type ResponseMessage struct {
 	topic     string
 	message   *nsq.Message
@@ -174,12 +174,12 @@ type ResponseMessage struct {
 	err       error
 }
 
-// Body 获取响应体
+// Body acquires the response body
 func (r *ResponseMessage) Body() []byte {
 	return r.body
 }
 
-// Headers 获取响应头
+// Headers: Get the response head
 func (r *ResponseMessage) Headers() textproto.MIMEHeader {
 	if r.headers == nil {
 		r.headers = make(map[string][]string)
@@ -187,31 +187,31 @@ func (r *ResponseMessage) Headers() textproto.MIMEHeader {
 	return r.headers
 }
 
-// From 获取消息来源
+// Source: Source
 func (r *ResponseMessage) From() string {
 	return r.topic
 }
 
-// GetParam 获取参数
+// GetParam to get the parameters
 func (r *ResponseMessage) GetParam(key string) string {
 	return ""
 }
 
-// SetMsg 设置规则消息
+// SetMsg sets the rule message
 func (r *ResponseMessage) SetMsg(msg *types.RuleMsg) {
 	r.msg = msg
 }
 
-// GetMsg 获取规则消息
+// GetMsg obtains rule messages
 func (r *ResponseMessage) GetMsg() *types.RuleMsg {
 	return r.msg
 }
 
-// SetStatusCode 设置状态码
+// SetStatusCode sets the status code
 func (r *ResponseMessage) SetStatusCode(statusCode int) {
 }
 
-// getMetadataValue 从msg.Metadata或者响应头获取值
+// getMetadataValue from msg.Metadata or response header to obtain values
 func (r *ResponseMessage) getMetadataValue(metadataName, headerName string) string {
 	var v string
 	if r.GetMsg() != nil {
@@ -225,7 +225,7 @@ func (r *ResponseMessage) getMetadataValue(metadataName, headerName string) stri
 	}
 }
 
-// SetBody 设置响应体
+// SetBody sets the response body
 func (r *ResponseMessage) SetBody(body []byte) {
 	r.body = body
 	topic := r.getMetadataValue(KeyResponseTopic, KeyResponseTopic)
@@ -237,61 +237,61 @@ func (r *ResponseMessage) SetBody(body []byte) {
 	}
 }
 
-// SetError 设置错误
+// SetError is set incorrectly
 func (r *ResponseMessage) SetError(err error) {
 	r.err = err
 }
 
-// GetError 获取错误
+// GetError retrieves an error
 func (r *ResponseMessage) GetError() error {
 	return r.err
 }
 
-// Config NSQ配置
+// Config NSQ configuration
 type Config struct {
-	// NSQ服务器地址，支持多种格式：
-	// 1. 单个nsqd: "127.0.0.1:4150"
-	// 2. 多个nsqd: "127.0.0.1:4150,127.0.0.1:4151"（对全部可达节点建连，运行期按消息轮询发布，见 README.md）
-	// 3. lookupd地址: "http://127.0.0.1:4161,http://127.0.0.1:4162"（按序尝试各 lookupd 的 /nodes，对返回的 nsqd 建连并轮询发布）
-	// 使用说明与示例见同目录 README.md
+	// NSQ server address, supports multiple formats:
+	// 1. Single nsqd: "127.0.0.1:4150"
+	// 2. Multiple nsqd: "127.0.0.1:4150,127.0.0.1:4151" (establish a connection for all reachable nodes, runtime is announced by message polling, see README.md)
+	// 3. lookupd address: "http://127.0.0.1:4161,http://127.0.0.1:4162" (sequentially try the /nodes of each lookupd, link and poll the returned nsqd for publishing)
+	// Instructions and examples are in the same directory README.md
 	Server string `json:"server" label:"Server" desc:"NSQ server address. Supports nsqd 'host:port' (single or comma-separated multiple) or lookupd 'http://host:port' (comma-separated), e.g. 127.0.0.1:4150 or http://127.0.0.1:4161" required:"true" ref:"primary"`
-	// 默认频道名称，如果AddRouter时未指定则使用此值
+	// The default channel name, which is used if not specified during AddRouter
 	Channel string `json:"channel" label:"Channel" desc:"Default channel name, used when AddRouter does not specify one"`
-	// 鉴权令牌
+	// Authority and token of authority
 	AuthToken string `json:"authToken" label:"Auth Token" desc:"NSQ authentication token"`
-	// TLS证书文件
+	// TLS certificate file
 	CertFile string `json:"certFile" label:"Cert File" desc:"TLS certificate file path"`
-	// TLS私钥文件
+	// TLS private key file
 	CertKeyFile string `json:"certKeyFile" label:"Cert Key File" desc:"TLS private key file path"`
 }
 
-// Nsq NSQ接收端端点
+// NSQ NSQ receiving endpoint
 type Nsq struct {
 	impl.BaseEndpoint
 	// GracefulShutdown provides graceful shutdown capabilities
-	// GracefulShutdown 提供优雅停机功能
+	// GracefulShutdown offers an elegant shutdown function
 	base.GracefulShutdown
 	RuleConfig types.Config
-	//Config 配置
+	//Config configuration
 	Config Config
-	// 消费者映射关系，用于停止消费，key为routerId
+	// Consumer mapping relationship, used to stop consumption, key is routerId
 	consumers map[string]*nsq.Consumer
-	// 发布端（单节点或多节点轮询）
+	// Publisher (single-node or multi-node polling)
 	publisher nsqPublisher
-	// 互斥锁
+	// Mutually exclusive locks
 	mu sync.RWMutex
 }
 
-// Type 组件类型
+// Type returns the component type
 func (x *Nsq) Type() string {
 	return Type
 }
 
-// parseAddresses 解析Server字段中的地址
-// 支持格式：
-// 1. 单个nsqd: "127.0.0.1:4150"
-// 2. 多个nsqd: "127.0.0.1:4150,127.0.0.1:4151"
-// 3. lookupd地址: "http://127.0.0.1:4161,http://127.0.0.1:4162"
+// parseAddresses parses addresses in the Server field
+// Supported formats:
+// 1. Single nsqd: "127.0.0.1:4150"
+// 2. Multiple nsqd: "127.0.0.1:4150,127.0.0.1:4151"
+// 3. lookupd address: "http://127.0.0.1:4161,http://127.0.0.1:4162"
 func (x *Nsq) parseAddresses() (nsqdAddrs []string, lookupdAddrs []string) {
 	if x.Config.Server == "" {
 		return
@@ -304,23 +304,23 @@ func (x *Nsq) parseAddresses() (nsqdAddrs []string, lookupdAddrs []string) {
 			continue
 		}
 
-		// 判断是否为lookupd地址（包含http://或https://）
+		// Determine whether it is a lookupd address (including http:// or https://)
 		if strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://") {
 			lookupdAddrs = append(lookupdAddrs, addr)
 		} else {
-			// 普通的nsqd地址
+			// A regular nsqd address
 			nsqdAddrs = append(nsqdAddrs, addr)
 		}
 	}
 	return
 }
 
-// Id 获取组件ID
+// ID to obtain the component ID
 func (x *Nsq) Id() string {
 	return x.Config.Server
 }
 
-// New 创建新实例
+// New creates an instance
 func (x *Nsq) New() types.Node {
 	return &Nsq{
 		Config: Config{
@@ -347,21 +347,21 @@ func (x *Nsq) Def() types.ComponentForm {
 	}
 }
 
-// Init 初始化
+// Init initializes the component
 func (x *Nsq) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	x.RuleConfig = ruleConfig
 	x.consumers = make(map[string]*nsq.Consumer)
 
-	// 初始化优雅停机功能
+	// Initialize the elegant shutdown function
 	x.GracefulShutdown.InitGracefulShutdown(x.RuleConfig.Logger, 0)
 
-	// 初始化生产者
+	// Initialize the producer
 	if x.Config.Server != "" {
-		// 解析地址配置
+		// Parse address configuration
 		nsqdAddrs, lookupdAddrs := x.parseAddresses()
 
-		// 多地址时对所有可达 nsqd 建立 Producer，运行期由 roundRobinProducers 轮询发布
+		// For multiple addresses, a Producer is created for all accessible nsqd, and runtime is polled and released by roundRobinProducers
 		producerConfig := nsq.NewConfig()
 		if x.Config.AuthToken != "" {
 			producerConfig.AuthSecret = x.Config.AuthToken
@@ -393,32 +393,32 @@ func (x *Nsq) Init(ruleConfig types.Config, configuration types.Configuration) e
 	return err
 }
 
-// Destroy 销毁
+// Destroy releases resources
 func (x *Nsq) Destroy() {
 	x.GracefulShutdown.GracefulStop(func() {
 		_ = x.Close()
 	})
 }
 
-// GracefulStop 优雅停机
+// GracefulStop Graceful Stop
 func (x *Nsq) GracefulStop() {
 	x.GracefulShutdown.GracefulStop(func() {
 		_ = x.Close()
 	})
 }
 
-// Close 关闭连接
+// Close Close closes the connection
 func (x *Nsq) Close() error {
 	x.mu.Lock()
 	defer x.mu.Unlock()
 
-	// 停止所有消费者
+	// Stop all consumers
 	for _, consumer := range x.consumers {
 		consumer.Stop()
 	}
 	x.consumers = make(map[string]*nsq.Consumer)
 
-	// 停止发布端
+	// Stop publishing the platform
 	if x.publisher != nil {
 		x.publisher.Stop()
 		x.publisher = nil
@@ -428,8 +428,8 @@ func (x *Nsq) Close() error {
 	return nil
 }
 
-// AddRouter 添加路由
-// 为每个路由创建独立的消费者，如果路由已存在则直接报错
+// AddRouter adds a route
+// Create independent consumers for each route, and if the route already exists, it will directly throw an error
 func (x *Nsq) AddRouter(router endpointApi.Router, params ...interface{}) (string, error) {
 	if router == nil {
 		return "", errors.New("router cannot be nil")
@@ -444,12 +444,12 @@ func (x *Nsq) AddRouter(router endpointApi.Router, params ...interface{}) (strin
 	x.mu.Lock()
 	defer x.mu.Unlock()
 
-	// 检查routerId是否已存在，如果存在则直接报错
+	// Check whether the routerId already exists; if it does, it will directly send an error
 	if _, exists := x.consumers[routerId]; exists {
 		return "", fmt.Errorf("routerId %s already exists", routerId)
 	}
 
-	// 解析topic和channel
+	// Parse topics and channels
 	from := strings.TrimSpace(router.FromToString())
 	topic := from
 	channel := strings.TrimSpace(x.Config.Channel)
@@ -457,35 +457,35 @@ func (x *Nsq) AddRouter(router endpointApi.Router, params ...interface{}) (strin
 		channel = "default"
 	}
 
-	// 如果有参数，第一个参数作为channel，优先级高于配置
+	// If there are parameters, the first parameter is treated as a channel and has higher priority than the configuration
 	if len(params) > 0 {
 		if ch, ok := params[0].(string); ok && ch != "" {
 			channel = ch
 		}
 	}
 
-	// 创建新的消费者配置
+	// Create new consumer configurations
 	consumerConfig := nsq.NewConfig()
-	// 设置鉴权配置
+	// Set authentication configurations
 	if x.Config.AuthToken != "" {
 		consumerConfig.AuthSecret = x.Config.AuthToken
 	}
 
-	// 创建消费者
+	// Create consumers
 	consumer, err := nsq.NewConsumer(topic, channel, consumerConfig)
 	if err != nil {
 		return "", err
 	}
 
-	// 禁用NSQ内部日志输出
+	// Disable NSQ internal log output
 	consumer.SetLoggerLevel(nsq.LogLevelError)
 
-	// 设置消息处理器，直接传递router参数
+	// Set the message handler and directly pass the router parameters
 	consumer.AddHandler(nsq.HandlerFunc(func(message *nsq.Message) error {
 		return x.handleMessage(message, router, topic)
 	}))
 
-	// 连接到lookupd或nsqd
+	// Connect to lookupd or nsqd
 	nsqdAddrs, lookupdAddrs := x.parseAddresses()
 	if len(lookupdAddrs) > 0 {
 		err = consumer.ConnectToNSQLookupds(lookupdAddrs)
@@ -504,13 +504,13 @@ func (x *Nsq) AddRouter(router endpointApi.Router, params ...interface{}) (strin
 		return "", err
 	}
 
-	// 保存消费者
+	// Preserve consumers
 	x.consumers[routerId] = consumer
 	return routerId, nil
 }
 
-// RemoveRouter 移除路由
-// 停止并删除指定路由的消费者
+// RemoveRouter removes the route
+// Stop and delete consumers on specified routes
 func (x *Nsq) RemoveRouter(routerId string, params ...interface{}) error {
 	x.mu.Lock()
 	defer x.mu.Unlock()
@@ -520,15 +520,15 @@ func (x *Nsq) RemoveRouter(routerId string, params ...interface{}) error {
 		return errors.New("router not found")
 	}
 
-	// 停止消费者
+	// Stop the consumer
 	consumer.Stop()
-	// 删除消费者
+	// Removing consumers
 	delete(x.consumers, routerId)
 	return nil
 }
 
-// handleMessage 处理单个消息
-// 处理NSQ消息，创建Exchange并执行指定路由的规则链处理
+// handleMessage handles individual messages
+// Handles NSQ messages, creates Exchanges, and executes rule chain processing for specified routes
 func (x *Nsq) handleMessage(message *nsq.Message, router endpointApi.Router, topic string) error {
 	defer func() {
 		if e := recover(); e != nil {
@@ -551,12 +551,12 @@ func (x *Nsq) handleMessage(message *nsq.Message, router endpointApi.Router, top
 	return nil
 }
 
-// Start 启动服务
+// Start the service
 func (x *Nsq) Start() error {
 	return nil
 }
 
-// lookupdNodesProducer 对应 lookupd /nodes 中的单个 producer
+// lookupdNodesProducer corresponds to a single producer in lookupd/nodes
 type lookupdNodesProducer struct {
 	RemoteAddress    string `json:"remote_address"`
 	Hostname         string `json:"hostname"`
@@ -570,7 +570,7 @@ func nsqdAddrFromLookupdProducer(p lookupdNodesProducer) (string, bool) {
 	if p.TCPPort <= 0 || p.TCPPort > 65535 {
 		return "", false
 	}
-	// 与历史行为一致：优先 broadcast + tcp_port，否则 remote + tcp_port
+	// Consistent with historical behavior: Broadcast + tcp_port takes priority, otherwise remote + tcp_port
 	if p.BroadcastAddress != "" {
 		return fmt.Sprintf("%s:%d", p.BroadcastAddress, p.TCPPort), true
 	}
@@ -580,7 +580,7 @@ func nsqdAddrFromLookupdProducer(p lookupdNodesProducer) (string, bool) {
 	return "", false
 }
 
-// dedupeAddrsStable 按首次出现顺序去重
+// dedupeAddrsStable removes deduplications in the order they first appear
 func dedupeAddrsStable(addrs []string) []string {
 	seen := make(map[string]struct{}, len(addrs))
 	out := make([]string, 0, len(addrs))
@@ -598,7 +598,7 @@ func dedupeAddrsStable(addrs []string) []string {
 	return out
 }
 
-// fetchNsqdProducersFromLookupd 请求单个 lookupd 的 /nodes，返回可拨号的 nsqd 地址列表
+// fetchNsqdProducersFromLookupd requests /nodes for a single lookupd and returns a list of dialable nsqd addresses
 func fetchNsqdProducersFromLookupd(lookupdAddr string) ([]string, error) {
 	apiURL := fmt.Sprintf("%s/nodes", strings.TrimSuffix(lookupdAddr, "/"))
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -638,8 +638,8 @@ func fetchNsqdProducersFromLookupd(lookupdAddr string) ([]string, error) {
 	return dedupeAddrsStable(candidates), nil
 }
 
-// discoverNsqdProducersFromLookupds 按顺序尝试多个 lookupd，在首次成功且返回非空
-// 的 nsqd 列表时即采用该列表。全部失败时汇聚错误返回。
+// discoverNsqdProducersFromLookupds Attempt multiple lookupds in order, and after the first successful attempt, return a non-empty result
+// The NSQD list is used for this list. Aggregation error returns when all fail.
 func discoverNsqdProducersFromLookupds(lookupdAddrs []string) ([]string, error) {
 	if len(lookupdAddrs) == 0 {
 		return nil, errors.New("no lookupd address configured")
@@ -667,8 +667,8 @@ func discoverNsqdProducersFromLookupds(lookupdAddrs []string) ([]string, error) 
 	return nil, fmt.Errorf("all lookupd failed: %w", errors.Join(errs...))
 }
 
-// buildReachableProducers 为每个候选地址建立 Producer 并 Ping，保留所有成功的实例；不可达会 Stop 并跳过。
-// 多实例供 roundRobinProducers 在运行期做负载均衡与发布失败时向其他节点重试。
+// buildReachableProducers creates and pings a Producer for each candidate address, keeping all successful instances; Unreachable Meeting Stop and Skip.
+// Multiple instances allow roundRobinProducers to retry load balancing during runtime and retry with other nodes if release fails.
 func buildReachableProducers(candidates []string, cfg *nsq.Config) ([]*nsq.Producer, error) {
 	if len(candidates) == 0 {
 		return nil, errors.New("no nsqd address candidates")
@@ -702,7 +702,7 @@ func buildReachableProducers(candidates []string, cfg *nsq.Config) ([]*nsq.Produ
 	return out, nil
 }
 
-// Printf 打印日志
+// Printf prints logs
 func (x *Nsq) Printf(format string, v ...interface{}) {
 	if x.RuleConfig.Logger != nil {
 		x.RuleConfig.Logger.Printf(format, v...)

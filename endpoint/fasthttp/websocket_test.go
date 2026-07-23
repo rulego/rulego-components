@@ -31,27 +31,27 @@ import (
 )
 
 func TestFastHttpWebsocketEndpoint(t *testing.T) {
-	server := ":9094" // 使用固定端口进行测试
+	server := ":9094" // Testing was conducted using fixed ports
 
-	// 创建规则引擎
+	// Create a rule engine
 	_, err := rulego.New("rule01", []byte(ruleChainFile))
 	assert.Nil(t, err)
 
-	// 创建websocket端点配置
+	// Create a WebSocket endpoint configuration
 	config := WebsocketConfig{
 		Server:    server,
 		AllowCors: true,
 	}
 
-	// 创建websocket端点
+	// Create a WebSocket endpoint
 	ep, err := endpoint.Registry.New(WebsocketType, rulego.NewConfig(), config)
 	assert.Nil(t, err)
 
 	websocketEndpoint := ep.(*FastHttpWebsocket)
 
-	// 添加路由
+	// Add routes
 	router := endpoint.NewRouter().From("/ws/:userId").Transform(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
-		// 处理websocket消息
+		// Handles websocket messages
 		msg := exchange.In.GetMsg()
 		msg.Type = "TEST"
 		msg.SetData(fmt.Sprintf("echo: %s", msg.GetData()))
@@ -62,80 +62,80 @@ func TestFastHttpWebsocketEndpoint(t *testing.T) {
 	_, err = websocketEndpoint.AddRouter(router)
 	assert.Nil(t, err)
 
-	// 启动websocket服务器
+	// Start the WebSocket server
 	err = websocketEndpoint.Start()
 	assert.Nil(t, err)
 
-	// 等待服务器启动
+	// Wait for the server to start
 	time.Sleep(200 * time.Millisecond)
 
-	// 测试websocket连接
+	// Test the WebSocket connection
 	t.Run("websocket connection test", func(t *testing.T) {
-		// 创建websocket客户端连接
+		// Create a WebSocket client connection
 		u := url.URL{Scheme: "ws", Host: fmt.Sprintf("localhost%s", server), Path: "/ws/user123"}
 		c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 		assert.Nil(t, err)
 		defer c.Close()
 
-		// 发送消息
+		// Send the message
 		testMessage := "Hello WebSocket"
 		err = c.WriteMessage(websocket.TextMessage, []byte(testMessage))
 		assert.Nil(t, err)
 
-		// 读取响应
+		// Read the response
 		_, message, err := c.ReadMessage()
 		assert.Nil(t, err)
 		expected := fmt.Sprintf("echo: %s", testMessage)
 		assert.Equal(t, expected, string(message))
 	})
 
-	// 测试二进制消息
+	// Test binary messages
 	t.Run("binary message test", func(t *testing.T) {
 		u := url.URL{Scheme: "ws", Host: fmt.Sprintf("localhost%s", server), Path: "/ws/user456"}
 		c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 		assert.Nil(t, err)
 		defer c.Close()
 
-		// 发送二进制消息
+		// Send binary messages
 		testData := []byte{0x01, 0x02, 0x03, 0x04}
 		err = c.WriteMessage(websocket.BinaryMessage, testData)
 		assert.Nil(t, err)
 
-		// 读取响应
+		// Read the response
 		_, message, err := c.ReadMessage()
 		assert.Nil(t, err)
 		expected := fmt.Sprintf("echo: %s", string(testData))
 		assert.Equal(t, expected, string(message))
 	})
 
-	// 清理
+	// Cleanup
 	err = websocketEndpoint.Close()
 	assert.Nil(t, err)
 }
 
 func TestFastHttpWebsocketEndpointWithEvents(t *testing.T) {
-	server := ":9095" // 使用固定端口进行测试
+	server := ":9095" // Testing was conducted using fixed ports
 
-	// 创建规则引擎
+	// Create a rule engine
 	_, err := rulego.New("rule01", []byte(ruleChainFile))
 	assert.Nil(t, err)
 
-	// 事件计数器 - 使用原子操作避免数据竞争
+	// Event counter – uses atomic operations to avoid data contention
 	var connectCount, disconnectCount int64
 
-	// 创建websocket端点配置
+	// Create a WebSocket endpoint configuration
 	config := WebsocketConfig{
 		Server:    server,
 		AllowCors: true,
 	}
 
-	// 创建websocket端点
+	// Create a WebSocket endpoint
 	ep, err := endpoint.Registry.New(WebsocketType, rulego.NewConfig(), config)
 	assert.Nil(t, err)
 
 	websocketEndpoint := ep.(*FastHttpWebsocket)
 
-	// 设置事件处理器
+	// Set up the event handler
 	websocketEndpoint.OnEvent = func(eventType string, params ...interface{}) {
 		switch eventType {
 		case endpointApi.EventConnect:
@@ -145,7 +145,7 @@ func TestFastHttpWebsocketEndpointWithEvents(t *testing.T) {
 		}
 	}
 
-	// 添加路由
+	// Add routes
 	router := endpoint.NewRouter().From("/ws").Transform(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		msg := exchange.In.GetMsg()
 		msg.Type = "TEST"
@@ -157,67 +157,67 @@ func TestFastHttpWebsocketEndpointWithEvents(t *testing.T) {
 	_, err = websocketEndpoint.AddRouter(router)
 	assert.Nil(t, err)
 
-	// 启动websocket服务器
+	// Start the WebSocket server
 	err = websocketEndpoint.Start()
 	assert.Nil(t, err)
 
-	// 等待服务器启动
+	// Wait for the server to start
 	time.Sleep(200 * time.Millisecond)
 
-	// 测试连接和断开事件
+	// Test connection and disconnect events
 	t.Run("connection events test", func(t *testing.T) {
 		u := url.URL{Scheme: "ws", Host: fmt.Sprintf("localhost%s", server), Path: "/ws"}
 		c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 		assert.Nil(t, err)
 
-		// 发送消息
+		// Send the message
 		err = c.WriteMessage(websocket.TextMessage, []byte("test message"))
 		assert.Nil(t, err)
 
-		// 读取响应
+		// Read the response
 		_, message, err := c.ReadMessage()
 		assert.Nil(t, err)
 		assert.Equal(t, "processed: test message", string(message))
 
-		// 关闭连接
+		// Close the connection
 		c.Close()
 
-		// 等待事件处理
+		// Waiting for the event to be handled
 		time.Sleep(100 * time.Millisecond)
 
-		// 验证事件计数
+		// Verify event counts
 		assert.Equal(t, int64(1), atomic.LoadInt64(&connectCount))
 		assert.Equal(t, int64(1), atomic.LoadInt64(&disconnectCount))
 	})
 
-	// 清理
+	// Cleanup
 	err = websocketEndpoint.Close()
 	assert.Nil(t, err)
 }
 
 func TestFastHttpWebsocketEndpointParams(t *testing.T) {
-	server := ":9096" // 使用固定端口进行测试
+	server := ":9096" // Testing was conducted using fixed ports
 
-	// 创建规则引擎
+	// Create a rule engine
 	_, err := rulego.New("rule01", []byte(ruleChainFile))
 	assert.Nil(t, err)
 
-	// 创建websocket端点配置
+	// Create a WebSocket endpoint configuration
 	config := WebsocketConfig{
 		Server:    server,
 		AllowCors: true,
 	}
 
-	// 创建websocket端点
+	// Create a WebSocket endpoint
 	ep, err := endpoint.Registry.New(WebsocketType, rulego.NewConfig(), config)
 	assert.Nil(t, err)
 
 	websocketEndpoint := ep.(*FastHttpWebsocket)
 
-	// 添加带参数的路由
+	// Add a route with parameters
 	router := endpoint.NewRouter().From("/ws/:roomId/:userId").Transform(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		msg := exchange.In.GetMsg()
-		// 获取路径参数
+		// Obtain path parameters
 		roomId := msg.Metadata.GetValue("roomId")
 		userId := msg.Metadata.GetValue("userId")
 		msg.SetData(fmt.Sprintf("room:%s,user:%s,data:%s", roomId, userId, msg.GetData()))
@@ -228,38 +228,38 @@ func TestFastHttpWebsocketEndpointParams(t *testing.T) {
 	_, err = websocketEndpoint.AddRouter(router)
 	assert.Nil(t, err)
 
-	// 启动websocket服务器
+	// Start the WebSocket server
 	err = websocketEndpoint.Start()
 	assert.Nil(t, err)
 
-	// 等待服务器启动
+	// Wait for the server to start
 	time.Sleep(200 * time.Millisecond)
 
-	// 测试路径参数
+	// Test path parameters
 	t.Run("path parameters test", func(t *testing.T) {
 		u := url.URL{Scheme: "ws", Host: fmt.Sprintf("localhost%s", server), Path: "/ws/room123/user456"}
 		c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 		assert.Nil(t, err)
 		defer c.Close()
 
-		// 发送消息
+		// Send the message
 		testMessage := "hello"
 		err = c.WriteMessage(websocket.TextMessage, []byte(testMessage))
 		assert.Nil(t, err)
 
-		// 读取响应
+		// Read the response
 		_, message, err := c.ReadMessage()
 		assert.Nil(t, err)
 		expected := "room:room123,user:user456,data:hello"
 		assert.Equal(t, expected, string(message))
 	})
 
-	// 清理
+	// Cleanup
 	err = websocketEndpoint.Close()
 	assert.Nil(t, err)
 }
 
-// 测试用的规则链配置
+// Rule chain configuration for testing
 const ruleChainFile = `
 {
   "ruleChain": {

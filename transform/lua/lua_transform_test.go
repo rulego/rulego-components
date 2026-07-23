@@ -57,7 +57,7 @@ func TestLuaTransform(t *testing.T) {
 
 	config := types.NewConfig()
 	config.Properties.PutValue("from", "test")
-	// 定义一个 Go 函数，接受两个数字参数，返回它们的和
+	// Define a Go function, take two numeric parameters, and return their sum
 	config.RegisterUdf("add", types.Script{Type: types.Lua, Content: func(L *lua.LState) int {
 		a := L.CheckNumber(1)
 		b := L.CheckNumber(2)
@@ -69,7 +69,7 @@ func TestLuaTransform(t *testing.T) {
 		return a + b
 	}})
 
-	//注册第三方lua工具库
+	//Register a third-party LUA toolbase
 	config.Properties.PutValue(luaEngine.LoadLuaLibs, "true")
 	//luaEngine.Preloader.Register(func(state *lua.LState) {
 	//	libs.Preload(state)
@@ -78,7 +78,7 @@ func TestLuaTransform(t *testing.T) {
 	factory := &LuaTransform{}
 
 	t.Run("OnMsg", func(t *testing.T) {
-		//测试自定义函数是否影响js运行时
+		//Test whether custom functions affect the JS runtime
 		jsFactory := &transform.JsTransformNode{}
 		jsNode := jsFactory.New()
 		err := jsNode.Init(config, types.Configuration{
@@ -799,7 +799,7 @@ func TestLuaTransformBinaryHeader(t *testing.T) {
 		msg1 := test.Msg{
 			MetaData:   metaData,
 			MsgType:    "SENSOR_DATA",
-			Data:       string([]byte{0x01, 0x02, 0x03}), // 原始数据
+			Data:       string([]byte{0x01, 0x02, 0x03}), // Raw data
 			DataType:   types.BINARY,
 			AfterSleep: time.Millisecond * 200,
 		}
@@ -820,10 +820,10 @@ func TestLuaTransformBinaryHeader(t *testing.T) {
 				Callback: func(msg types.RuleMsg, relationType string, err error) {
 					assert.Equal(t, types.Success, relationType)
 					result := []byte(msg.GetData())
-					// 期望结果：4字节头部 + 3字节原始数据
+					// Expected result: 4 bytes of header + 3 bytes of raw data
 					expected := []byte{0xAA, 0xBB, 0xCC, 0xDD, 0x01, 0x02, 0x03}
 					assert.Equal(t, expected, result)
-					assert.Equal(t, 7, len(result)) // 验证总长度
+					assert.Equal(t, 7, len(result)) // Verify the total length
 				},
 			},
 			{
@@ -831,7 +831,7 @@ func TestLuaTransformBinaryHeader(t *testing.T) {
 				MsgList: []test.Msg{msg2},
 				Callback: func(msg types.RuleMsg, relationType string, err error) {
 					assert.Equal(t, types.Success, relationType)
-					// 非二进制数据应该原样返回
+					// Non-binary data should be returned as is
 					assert.Equal(t, "hello world", msg.GetData())
 				},
 			},
@@ -894,11 +894,11 @@ func TestLuaTransformBinaryHeader(t *testing.T) {
 					assert.Equal(t, types.Success, relationType)
 					result := []byte(msg.GetData())
 
-					// 期望格式：[长度=3][命令=0x10][0x01,0x02,0x03][校验和=(1+2+3)%256=6]
+					// Desired format: [length=3][command=0x10][0x01,0x02,0x03][checksum=(1+2+3)%256=6]
 					expected := []byte{0x03, 0x10, 0x01, 0x02, 0x03, 0x06}
 					assert.Equal(t, expected, result)
 
-					// 验证元数据
+					// Verify metadata
 					assert.Equal(t, "custom", msg.Metadata.GetValue("protocol"))
 					assert.Equal(t, "3", msg.Metadata.GetValue("originalLength"))
 				},

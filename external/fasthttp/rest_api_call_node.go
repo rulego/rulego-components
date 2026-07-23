@@ -16,7 +16,7 @@
 
 package fasthttp
 
-//规则链节点配置示例：
+//Example of rule chain node configuration:
 // {
 //        "id": "s3",
 //        "type": "restApiCall",
@@ -52,26 +52,26 @@ import (
 )
 
 func init() {
-	//替换标准 restApiCall组件
+	//Replace the standard restApiCall component
 	_ = rulego.Registry.Unregister(Type)
 	_ = rulego.Registry.Register(&RestApiCallNode{})
 }
 
-// Type 组件类型 替换标准 restApiCall组件
+// Type component type Replace standard restApiCall components
 var Type = "restApiCall"
 
-// RestApiCallNode 将通过FastHTTP API调用GET | POST | PUT | DELETE到外部REST服务。
-// 如果请求成功，把HTTP响应消息发送到`Success`链, 否则发到`Failure`链，
-// metaData.status记录响应错误码和metaData.errorBody记录错误信息。
+// RestApiCallNode will call GET | via the FastHTTP API POST | PUT | DELETE to an external REST service.
+// If the request is `Success`ful, send the HTTP response message to the 'Success' chain; otherwise, send it to the `Failure` chain,
+// metaData.status records response error codes and metaData.errorBody records error messages.
 type RestApiCallNode struct {
-	//节点配置
+	//Node configuration
 	Config external.RestApiCallNodeConfiguration
-	//fasthttp客户端
+	//Fasthttp client
 	client   *fasthttp.Client
 	template *external.HTTPRequestTemplate
 }
 
-// Type 组件类型
+// Type returns the component type
 func (x *RestApiCallNode) Type() string {
 	return Type
 }
@@ -87,7 +87,7 @@ func (x *RestApiCallNode) New() types.Node {
 	return &RestApiCallNode{Config: config}
 }
 
-// Init 初始化
+// Init initializes the component
 func (x *RestApiCallNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
@@ -102,7 +102,7 @@ func (x *RestApiCallNode) Init(ruleConfig types.Config, configuration types.Conf
 	return err
 }
 
-// OnMsg 处理消息
+// OnMsg processes a message
 func (x *RestApiCallNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	var evn map[string]interface{}
 	if x.template.HasVar {
@@ -116,7 +116,7 @@ func (x *RestApiCallNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		endpointUrl = str.ToString(v)
 	}
 
-	// 创建fasthttp请求
+	// Create a fastHTTP request
 	req := fasthttp.AcquireRequest()
 	resp := fasthttp.AcquireResponse()
 	defer func() {
@@ -124,11 +124,11 @@ func (x *RestApiCallNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		fasthttp.ReleaseResponse(resp)
 	}()
 
-	// 设置URL和方法
+	// Set the URL and method
 	req.SetRequestURI(endpointUrl)
 	req.Header.SetMethod(x.Config.RequestMethod)
 
-	// 设置请求体
+	// Set up the request body
 	var body []byte
 	if !x.Config.WithoutRequestBody {
 		if x.template.BodyTemplate != nil {
@@ -144,12 +144,12 @@ func (x *RestApiCallNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		req.SetBody(body)
 	}
 
-	// 设置header
+	// Set the header
 	for key, value := range x.template.HeadersTemplate {
 		req.Header.Set(key.ExecuteAsString(evn), value.ExecuteAsString(evn))
 	}
 
-	// 执行请求
+	// Request fulfillment
 	err := x.client.Do(req, resp)
 	if err != nil {
 		msg.Metadata.PutValue(external.ErrorBodyMetadataKey, err.Error())
@@ -157,7 +157,7 @@ func (x *RestApiCallNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		return
 	}
 
-	// 处理响应
+	// Handle the response
 	statusCode := resp.StatusCode()
 	msg.Metadata.PutValue(external.StatusMetadataKey, fmt.Sprintf("%d %s", statusCode, fasthttp.StatusMessage(statusCode)))
 	msg.Metadata.PutValue(external.StatusCodeMetadataKey, strconv.Itoa(statusCode))
@@ -183,17 +183,17 @@ func (x *RestApiCallNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	}
 }
 
-// Destroy 销毁
+// Destroy releases resources
 func (x *RestApiCallNode) Destroy() {
 	if x.client != nil {
 		x.client.CloseIdleConnections()
-		// 等待连接完全关闭
+		// Wait for the connection to be completely shut down
 		time.Sleep(1 * time.Millisecond)
 		x.client = nil
 	}
 }
 
-// NewFastHttpClient 创建FastHTTP客户端
+// NewFastHttpClient creates a FastHTTP client
 func NewFastHttpClient(config external.RestApiCallNodeConfiguration) *fasthttp.Client {
 	client := &fasthttp.Client{
 		ReadTimeout:                   time.Duration(config.ReadTimeoutMs) * time.Millisecond,
@@ -202,18 +202,18 @@ func NewFastHttpClient(config external.RestApiCallNodeConfiguration) *fasthttp.C
 		DisablePathNormalizing:        true,
 	}
 
-	// 配置TLS
+	// Configure TLS
 	if config.InsecureSkipVerify {
 		client.TLSConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 
-	// 配置代理
+	// Configure the agent
 	if config.EnableProxy {
 		if config.UseSystemProxyProperties {
-			// 使用系统代理设置
+			// Use system proxy settings
 			client.Dial = createSystemProxyDialer()
 		} else {
-			// 使用自定义代理设置
+			// Use custom proxy settings
 			if proxyURL := external.HttpUtils.BuildProxyURL(config.ProxyScheme, config.ProxyHost, config.ProxyPort, config.ProxyUser, config.ProxyPassword); proxyURL != nil {
 				client.Dial = createProxyDialer(proxyURL)
 			}
@@ -223,28 +223,28 @@ func NewFastHttpClient(config external.RestApiCallNodeConfiguration) *fasthttp.C
 	return client
 }
 
-// createProxyDialer 创建代理拨号器
+// createProxyDialer creates a proxy dialer
 func createProxyDialer(proxyURL *url.URL) func(addr string) (net.Conn, error) {
 	return func(addr string) (net.Conn, error) {
-		// 解析目标地址
+		// Parse the target address
 		host, port, err := net.SplitHostPort(addr)
 		if err != nil {
 			return nil, err
 		}
 
-		// 连接到代理服务器
+		// Connect to the proxy server
 		proxyConn, err := net.DialTimeout("tcp", proxyURL.Host, time.Second*30)
 		if err != nil {
 			return nil, err
 		}
 
-		// 根据代理类型处理
+		// Handled according to the type of agent
 		switch proxyURL.Scheme {
 		case "http", "https":
-			// HTTP代理
+			// HTTP proxy
 			return setupHTTPProxy(proxyConn, proxyURL, host, port)
 		case "socks5":
-			// SOCKS5代理
+			// SOCKS5 agency
 			return setupSOCKS5Proxy(proxyConn, proxyURL, host, port)
 		default:
 			proxyConn.Close()
@@ -253,30 +253,30 @@ func createProxyDialer(proxyURL *url.URL) func(addr string) (net.Conn, error) {
 	}
 }
 
-// createSystemProxyDialer 创建系统代理拨号器
+// createSystemProxyDialer creates a system proxy dialer
 func createSystemProxyDialer() func(addr string) (net.Conn, error) {
 	return func(addr string) (net.Conn, error) {
-		// 获取系统代理设置
+		// Obtain system proxy settings
 		proxyURL := external.HttpUtils.GetSystemProxy()
 		if proxyURL == nil {
-			// 没有系统代理，直接连接
+			// No system proxy, direct connection
 			return fasthttp.DialDualStackTimeout(addr, time.Second*30)
 		}
-		// 使用系统代理
+		// Use system proxies
 		return createProxyDialer(proxyURL)(addr)
 	}
 }
 
-// setupHTTPProxy 设置HTTP代理
+// setupHTTPProxy Sets up an HTTP proxy
 func setupHTTPProxy(conn net.Conn, proxyURL *url.URL, targetHost, targetPort string) (net.Conn, error) {
-	// 设置连接超时
+	// Set connection timeout
 	conn.SetDeadline(time.Now().Add(time.Second * 30))
-	defer conn.SetDeadline(time.Time{}) // 清除超时设置
+	defer conn.SetDeadline(time.Time{}) // Clear timeout settings
 
-	// 构建CONNECT请求
+	// Build a CONNECT request
 	connectReq := fmt.Sprintf("CONNECT %s:%s HTTP/1.1\r\nHost: %s:%s\r\n", targetHost, targetPort, targetHost, targetPort)
 
-	// 添加代理认证
+	// Add agent certification
 	if proxyURL.User != nil {
 		if password, ok := proxyURL.User.Password(); ok {
 			auth := proxyURL.User.Username() + ":" + password
@@ -287,13 +287,13 @@ func setupHTTPProxy(conn net.Conn, proxyURL *url.URL, targetHost, targetPort str
 
 	connectReq += "\r\n"
 
-	// 发送CONNECT请求
+	// Send a CONNECT request
 	if _, err := conn.Write([]byte(connectReq)); err != nil {
 		conn.Close()
 		return nil, err
 	}
 
-	// 读取响应
+	// Read the response
 	buf := make([]byte, 1024)
 	n, err := conn.Read(buf)
 	if err != nil {
@@ -301,7 +301,7 @@ func setupHTTPProxy(conn net.Conn, proxyURL *url.URL, targetHost, targetPort str
 		return nil, err
 	}
 
-	// 检查响应状态
+	// Check the response status
 	response := string(buf[:n])
 	if !strings.Contains(response, "200 Connection established") {
 		conn.Close()
@@ -311,30 +311,30 @@ func setupHTTPProxy(conn net.Conn, proxyURL *url.URL, targetHost, targetPort str
 	return conn, nil
 }
 
-// setupSOCKS5Proxy 设置SOCKS5代理
+// setupSOCKS5Proxy Sets up SOCKS5 proxy
 func setupSOCKS5Proxy(conn net.Conn, proxyURL *url.URL, targetHost, targetPort string) (net.Conn, error) {
-	// 复用external包的SOCKS5拨号器
+	// Multiplex the SOCKS5 dialer of the external package
 	dialer := external.HttpUtils.CreateSOCKS5Dialer(proxyURL)
-	conn.Close() // 关闭原连接
+	conn.Close() // Close the original connection
 	return dialer("tcp", targetHost+":"+targetPort)
 }
 
-// base64Encode 简单的base64编码（复用external包的函数）
+// base64Encode Simple base64 encoding (functions that reuse external packets)
 func base64Encode(s string) string {
 	return external.HttpUtils.Base64Encode(s)
 }
 
-// SSE 流式数据读取 - FastHTTP版本（复用external包的ReadFromStream）
+// SSE Streaming Data Reading - FastHTTP Version (Reusing ReadFromStream for External Packages)
 func readFromFastHttpStream(ctx types.RuleContext, msg types.RuleMsg, resp *fasthttp.Response) {
-	// 创建一个适配器，将fasthttp.Response适配为http.Response
+	// Create an adapter and set fasthttp.Response is adapted to http.Response
 	body := resp.Body()
 	bodyReader := bytes.NewReader(body)
 
-	// 创建一个模拟的http.Response来复用external.HttpUtils.ReadFromStream
+	// Create a simulated http.Response: reuse external.HttpUtils.ReadFromStream
 	adaptedResp := &http.Response{
 		Body: io.NopCloser(bodyReader),
 	}
 
-	// 复用external包的ReadFromStream函数
+	// Reusing the ReadFromStream function of the external package
 	external.HttpUtils.ReadFromStream(ctx, msg, adaptedResp)
 }

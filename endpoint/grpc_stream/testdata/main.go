@@ -1,4 +1,4 @@
-// 服务端实现
+// Server-side implementation
 package main
 
 import (
@@ -16,9 +16,9 @@ type dataServer struct {
 }
 
 func (s *dataServer) StreamData(req *pb.StreamRequest, stream pb.DataService_StreamDataServer) error {
-	// 模拟发送不同类型的数据
+	// Simulating the transmission of different types of data
 	for {
-		// 发送温度数据
+		// Transmit temperature data
 		tempData := &pb.DataResponse{
 			Type:      "temperature",
 			Payload:   []byte(`{"value": 25.5, "unit": "C"}`),
@@ -30,7 +30,7 @@ func (s *dataServer) StreamData(req *pb.StreamRequest, stream pb.DataService_Str
 
 		time.Sleep(time.Second)
 
-		// 发送湿度数据
+		// Send humidity data
 		humidityData := &pb.DataResponse{
 			Type:      "humidity",
 			Payload:   []byte(`{"value": 60, "unit": "%"}`),
@@ -53,7 +53,7 @@ func main() {
 	grpcServer := grpc.NewServer()
 	pb.RegisterDataServiceServer(grpcServer, &dataServer{})
 
-	// 注册反射服务 - 添加这行
+	// Register for the reflection service - add this line
 	reflection.Register(grpcServer)
 
 	fmt.Println("Server starting at :9000")

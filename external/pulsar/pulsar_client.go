@@ -31,52 +31,52 @@ import (
 	"github.com/rulego/rulego/utils/maps"
 )
 
-// 注册组件
+// Register the component
 func init() {
 	_ = rulego.Registry.Register(&ClientNode{})
 }
 
-// ClientNodeConfiguration Pulsar客户端节点配置
+// ClientNodeConfiguration Pulsar client node configuration
 type ClientNodeConfiguration struct {
-	// Pulsar服务器地址
+	// Pulsar server address
 	Server string `json:"server" label:"Server" desc:"Pulsar server address, e.g. pulsar://host:port" required:"true" ref:"primary"`
-	// 发布主题，支持${}变量
+	// Publish topics, support ${} variables
 	Topic string `json:"topic" label:"Topic" desc:"Publish topic. Supports ${metadata.key} and ${msg.key} substitution" required:"true"`
-	// 消息键模板，支持${}变量
+	// Message key template, supports ${} variables
 	Key string `json:"key" label:"Key" desc:"Message key. Supports ${metadata.key} and ${msg.key} substitution"`
-	// Headers 请求头
+	// Headers request heads
 	Headers map[string]string `json:"headers" label:"Headers" desc:"Message headers. Supports ${metadata.key} and ${msg.key} substitution"`
-	// 鉴权令牌
+	// Authority and token of authority
 	AuthToken string `json:"authToken" label:"Auth Token" desc:"Pulsar JWT authentication token" ref:"shared"`
-	// TLS证书文件
+	// TLS certificate file
 	CertFile string `json:"certFile" label:"Cert File" desc:"TLS certificate file path" ref:"shared"`
-	// TLS私钥文件
+	// TLS private key file
 	CertKeyFile string `json:"certKeyFile" label:"Cert Key File" desc:"TLS private key file path" ref:"shared"`
 }
 
-// ClientNode Pulsar客户端节点
+// ClientNode Pulsar client node
 type ClientNode struct {
 	base.SharedNode[pulsar.Client]
-	// 节点配置
+	// Node configuration
 	Config ClientNodeConfiguration
-	// 生产者映射，key为topic，value为对应的生产者
+	// Producer mapping: key is topic, value is the corresponding producer
 	producers sync.Map
-	//topic 模板
+	//topic template
 	topicTemplate el.Template
-	//messageKey 模板
+	//messageKey template
 	messageKeyTemplate el.Template
-	//headers 模板，支持key和value都使用变量替换
+	//Headers template, supports replacing both key and value with variables
 	headersTemplate map[*el.MixedTemplate]*el.MixedTemplate
-	// 是否包含变量
+	// Whether variables are included
 	hasVar bool
 }
 
-// Type 组件类型
+// Type returns the component type
 func (x *ClientNode) Type() string {
 	return "x/pulsarClient"
 }
 
-// New 创建新实例
+// New creates an instance
 func (x *ClientNode) New() types.Node {
 	return &ClientNode{Config: ClientNodeConfiguration{
 		Topic:  "/device/msg",
@@ -84,9 +84,9 @@ func (x *ClientNode) New() types.Node {
 	}}
 }
 
-// Init 初始化
+// Init initializes the component
 func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
-	// 去除配置中所有字符串值的前后空格
+	// Remove all preceding and following spaces for all string values in the configuration
 	base.NodeUtils.TrimStrings(configuration)
 
 	err := maps.Map2Struct(configuration, &x.Config)
@@ -94,14 +94,14 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 		_ = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (pulsar.Client, error) {
 			return x.initClient()
 		}, func(client pulsar.Client) error {
-			// 清理回调函数 - 关闭所有生产者
+			// Cleanup callback function - shut down all producers
 			x.producers.Range(func(key, value interface{}) bool {
 				if producer, ok := value.(pulsar.Producer); ok && producer != nil {
 					producer.Close()
 				}
 				return true
 			})
-			// 清空sync.Map
+			// Clear sync.Map
 			x.producers = sync.Map{}
 			if client != nil {
 				client.Close()
@@ -128,7 +128,7 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 			}
 		}
 		if len(x.Config.Headers) > 0 {
-			// 为每个header的key和value创建模板，支持变量替换
+			// Create templates for each header's key and value, supporting variable substitution
 			var headerTemplates = make(map[*el.MixedTemplate]*el.MixedTemplate)
 			for key, value := range x.Config.Headers {
 				keyTmpl, err := el.NewMixedTemplate(key)
@@ -150,14 +150,14 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 	return err
 }
 
-// OnMsg 处理消息
+// OnMsg processes a message
 func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
-	// 获取模板变量
+	// Retrieve template variables
 	var evn map[string]interface{}
 	if x.hasVar {
 		evn = base.NodeUtils.GetEvnAndMetadata(ctx, msg)
 	}
-	// 解析主题
+	// Analyze the topic
 	topic, err := x.topicTemplate.Execute(evn)
 	if err != nil {
 		ctx.TellFailure(msg, err)
@@ -165,19 +165,19 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	}
 	topicStr := str.ToString(topic)
 
-	// 获取客户端
+	// Get the client
 	client, err := x.SharedNode.GetSafely()
 	if err != nil {
 		ctx.TellFailure(msg, err)
 		return
 	}
 
-	// 获取或创建对应topic的生产者（使用sync.Map的无锁操作）
+	// Obtain or create the producer for the corresponding topic (using sync.Map's lock-free operation)
 	var producer pulsar.Producer
 	if value, exists := x.producers.Load(topicStr); exists {
 		producer = value.(pulsar.Producer)
 	} else {
-		// 创建新的生产者
+		// Create new producers
 		producerOptions := pulsar.ProducerOptions{
 			Topic: topicStr,
 		}
@@ -188,23 +188,23 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 			return
 		}
 
-		// 使用LoadOrStore确保只有一个生产者被创建和存储
+		// Using LoadOrStore ensures that only one producer is created and stored
 		if actual, loaded := x.producers.LoadOrStore(topicStr, newProducer); loaded {
-			// 如果已经存在，关闭新创建的生产者，使用已存在的
+			// If it already exists, close the newly created producer and use the existing one
 			newProducer.Close()
 			producer = actual.(pulsar.Producer)
 		} else {
-			// 使用新创建的生产者
+			// Use newly created producers
 			producer = newProducer
 		}
 	}
 
-	// 构建消息
+	// Build messages
 	producerMessage := &pulsar.ProducerMessage{
 		Payload: []byte(msg.GetData()),
 	}
 
-	// 设置消息键
+	// Set the message key
 	if x.messageKeyTemplate != nil {
 		messageKey, _ := x.messageKeyTemplate.Execute(evn)
 		if messageKeyStr := str.ToString(messageKey); messageKeyStr != "" {
@@ -212,7 +212,7 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		}
 	}
 
-	// 设置自定义属性，支持key和value都使用变量替换
+	// Set custom properties, supporting variable replacement for both key and value
 	if len(x.headersTemplate) > 0 {
 		headers := make(map[string]string)
 		for keyTmpl, valueTmpl := range x.headersTemplate {
@@ -223,7 +223,7 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		producerMessage.Properties = headers
 	}
 
-	// 发送消息
+	// Send the message
 	_, err = producer.Send(context.Background(), producerMessage)
 	if err != nil {
 		ctx.TellFailure(msg, err)
@@ -232,9 +232,9 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	}
 }
 
-// Destroy 销毁
+// Destroy releases resources
 func (x *ClientNode) Destroy() {
-	// SharedNode.Close()会自动调用Init中注册的清理回调函数
+	// SharedNode.Close() automatically calls the cleanup callback function registered in the Init
 	_ = x.SharedNode.Close()
 }
 
@@ -243,18 +243,18 @@ func (x *ClientNode) Desc() string {
 	return "Pulsar client for publishing messages. Topic and key support ${metadata.key} and ${msg.key} substitution. Routes to Success/Failure"
 }
 
-// initClient 初始化Pulsar客户端
+// initClient Initializes the Pulsar client
 func (x *ClientNode) initClient() (pulsar.Client, error) {
 	clientOptions := pulsar.ClientOptions{
 		URL: x.Config.Server,
 	}
 
-	// 设置JWT Token鉴权
+	// Set JWT Token authentication
 	if x.Config.AuthToken != "" {
 		clientOptions.Authentication = pulsar.NewAuthenticationToken(x.Config.AuthToken)
 	}
 
-	// 设置TLS配置
+	// Set up TLS configuration
 	if x.Config.CertFile != "" {
 		clientOptions.TLSCertificateFile = x.Config.CertFile
 	}

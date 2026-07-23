@@ -32,23 +32,23 @@ import (
 	"github.com/rulego/rulego/utils/runtime"
 )
 
-// Type 组件类型
+// Type returns the component type
 const Type = types.EndpointTypePrefix + "nats"
 
-// KeyResponseTopic 响应主题metadataKey
+// KeyResponseTopic: Response topic metadataKey
 const KeyResponseTopic = "responseTopic"
 
-// Endpoint 别名
+// Endpoint alias
 type Endpoint = Nats
 
 var _ endpointApi.Endpoint = (*Endpoint)(nil)
 
-// 注册组件
+// Register the component
 func init() {
 	_ = endpoint.Registry.Register(&Endpoint{})
 }
 
-// RequestMessage 请求消息
+// RequestMessage
 type RequestMessage struct {
 	request *nats.Msg
 	msg     *types.RuleMsg
@@ -79,7 +79,7 @@ func (r *RequestMessage) SetMsg(msg *types.RuleMsg) {
 
 func (r *RequestMessage) GetMsg() *types.RuleMsg {
 	if r.msg == nil {
-		// 默认指定是JSON格式，如果不是该类型，请在process函数中修改
+		// The default specification is JSON format. If it is not this type, please modify it in the process function
 		ruleMsg := types.NewMsg(0, r.From(), types.JSON, types.NewMetadata(), string(r.Body()))
 		ruleMsg.Metadata.PutValue("topic", r.From())
 		r.msg = &ruleMsg
@@ -101,7 +101,7 @@ func (r *RequestMessage) GetError() error {
 	return r.err
 }
 
-// ResponseMessage 响应消息
+// ResponseMessage
 type ResponseMessage struct {
 	request  *nats.Msg
 	response *nats.Conn
@@ -142,7 +142,7 @@ func (r *ResponseMessage) GetMsg() *types.RuleMsg {
 func (r *ResponseMessage) SetStatusCode(statusCode int) {
 }
 
-// 从msg.Metadata或者响应头获取
+// From msg.Metadata or response header access
 func (r *ResponseMessage) getMetadataValue(metadataName, headerName string) string {
 	var v string
 	if r.GetMsg() != nil {
@@ -182,21 +182,21 @@ type Config struct {
 	GroupId  string `json:"groupId" label:"Group ID" desc:"Queue group ID, uses QueueSubscribe mode for load-balanced delivery when set"`
 }
 
-// Nats NATS接收端端点
+// Nats NATS receiving endpoint
 type Nats struct {
 	impl.BaseEndpoint
 	base.SharedNode[*nats.Conn]
 	// GracefulShutdown provides graceful shutdown capabilities
-	// GracefulShutdown 提供优雅停机功能
+	// GracefulShutdown offers an elegant shutdown function
 	base.GracefulShutdown
 	RuleConfig types.Config
-	//Config 配置
+	//Config configuration
 	Config Config
-	// 订阅映射关系，用于取消订阅
+	// Subscription mapping relationship, used to cancel subscriptions
 	subscriptions map[string]*nats.Subscription
 }
 
-// Type 组件类型
+// Type returns the component type
 func (x *Nats) Type() string {
 	return Type
 }
@@ -230,12 +230,12 @@ func (x *Nats) Def() types.ComponentForm {
 	}
 }
 
-// Init 初始化
+// Init initializes the component
 func (x *Nats) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	x.RuleConfig = ruleConfig
 
-	// 初始化优雅停机功能
+	// Initialize the elegant shutdown function
 	x.GracefulShutdown.InitGracefulShutdown(x.RuleConfig.Logger, 0)
 
 	_ = x.SharedNode.InitWithClose(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*nats.Conn, error) {
@@ -249,7 +249,7 @@ func (x *Nats) Init(ruleConfig types.Config, configuration types.Configuration) 
 	return err
 }
 
-// Destroy 销毁
+// Destroy releases resources
 func (x *Nats) Destroy() {
 	x.GracefulShutdown.GracefulStop(func() {
 		_ = x.Close()
@@ -257,7 +257,7 @@ func (x *Nats) Destroy() {
 }
 
 // GracefulStop provides graceful shutdown for the NATS endpoint
-// GracefulStop 为 NATS 端点提供优雅停机
+// GracefulStop provides elegant shutdown for NATS endpoints
 func (x *Nats) GracefulStop() {
 	x.GracefulShutdown.GracefulStop(func() {
 		_ = x.Close()
@@ -265,7 +265,7 @@ func (x *Nats) GracefulStop() {
 }
 
 func (x *Nats) Close() error {
-	// SharedNode 会通过 InitWithClose 中的清理函数来管理客户端的关闭
+	// SharedNode manages client shutdowns through the cleanup function in InitWithClose
 	// SharedNode manages client closure through the cleanup function in InitWithClose
 	_ = x.SharedNode.Close()
 	x.BaseEndpoint.Destroy()
@@ -331,8 +331,8 @@ func (x *Nats) Start() error {
 	return nil
 }
 
-// createMsgHandler 创建NATS消息处理器
-// 该函数返回一个处理NATS消息的回调函数，用于处理订阅的消息
+// createMsgHandler Creates a NATS message processor
+// This function returns a callback function for handling NATS messages and is used to handle subscribed messages
 func (x *Nats) createMsgHandler(client *nats.Conn, router endpointApi.Router) func(msg *nats.Msg) {
 	return func(msg *nats.Msg) {
 		defer func() {

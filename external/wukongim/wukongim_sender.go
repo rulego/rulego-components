@@ -30,12 +30,12 @@ import (
 	"github.com/rulego/rulego/utils/str"
 )
 
-// 注册节点
+// Register the node
 func init() {
 	_ = rulego.Registry.Register(&WukongimSender{})
 }
 
-// WukongimSenderConfiguration 节点配置
+// WukongimSenderConfiguration node configuration
 type WukongimSenderConfiguration struct {
 	Server         string `json:"server" label:"Server" desc:"WuKongIM server address, format: tcp://host:port" required:"true" ref:"primary"`
 	UID            string `json:"uid" label:"UID" desc:"Login user UID" required:"true"`
@@ -53,19 +53,19 @@ type WukongimSenderConfiguration struct {
 	NoEncrypt      bool   `json:"noEncrypt" label:"No Encrypt" desc:"Do not encrypt messages"`
 }
 
-// WukongimSender wksdk.Client客户端节点，
-// 成功：转向Success链，发送消息执行结果存放在msg.Data
-// 失败：转向Failure链
+// WukongimSender wksdk.Client client node,
+// Success: Switch to the Success chain, send the message execution result, and store it in msg.Data
+// Failure: Switch to the Failure chain
 type WukongimSender struct {
 	base.SharedNode[*wksdk.Client]
-	//节点配置
+	//Node configuration
 	Config              WukongimSenderConfiguration
 	channelIdTemplate   el.Template
 	channelTypeTemplate el.Template
 	hasVar              bool
 }
 
-// Type 返回组件类型
+// Type returns the component type
 func (x *WukongimSender) Type() string {
 	return "x/wukongimSender"
 }
@@ -89,38 +89,38 @@ func (x *WukongimSender) New() types.Node {
 	}}
 }
 
-// Init 初始化组件
+// Init initializes the component
 func (x *WukongimSender) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
-		//初始化客户端
+		//Initialize the client
 		err = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*wksdk.Client, error) {
 			return x.initClient()
 		}, func(client *wksdk.Client) error {
-			// 清理回调函数
+			// Cleanup callback function
 			return client.Disconnect()
 		})
 	}
-	// 初始化频道ID模板
+	// Initialize the channel ID template
 	channelIdTemplate, err := el.NewTemplate(x.Config.ChannelID)
 	if err != nil {
 		return err
 	}
 	x.channelIdTemplate = channelIdTemplate
 
-	// 初始化频道类型模板
+	// Initialize the channel type template
 	channelTypeTemplate, err := el.NewTemplate(x.Config.ChannelType)
 	if err != nil {
 		return err
 	}
 	x.channelTypeTemplate = channelTypeTemplate
 
-	// 设置统一的 hasVar 变量
+	// Set a unified hasVar variable
 	x.hasVar = channelIdTemplate.HasVar() || channelTypeTemplate.HasVar()
 	return nil
 }
 
-// OnMsg 处理消息
+// OnMsg processes a message
 func (x *WukongimSender) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	ctype := x.Config.ChannelType
 	cid := x.Config.ChannelID

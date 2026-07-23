@@ -25,12 +25,12 @@ import (
 	_ "github.com/rulego/rulego-components/external/redis"
 )
 
-// 测试x/redisClient组件
+// Test the x/redisClient component
 func main() {
 
 	config := rulego.NewConfig()
 
-	//初始化规则引擎实例
+	//Initialize the rule engine instance
 	ruleEngine, err := rulego.New("rule01", []byte(chainJsonFile), rulego.WithConfig(config))
 	if err != nil {
 		panic(err)
@@ -44,7 +44,7 @@ func main() {
 
 	ruleEngine.OnMsg(msg, types.WithEndFunc(func(ctx types.RuleContext, msg types.RuleMsg, err error) {
 		fmt.Println("1.msg处理结果=====")
-		//得到规则链处理结果
+		//Obtain the result of the rule chain processing
 		fmt.Println(msg, err)
 	}))
 
@@ -57,7 +57,7 @@ func main() {
 
 	ruleEngine.OnMsg(msg, types.WithEndFunc(func(ctx types.RuleContext, msg types.RuleMsg, err error) {
 		fmt.Println("2.msg处理结果=====")
-		//得到规则链处理结果
+		//Obtain the result of the rule chain processing
 		fmt.Println(msg, err)
 	}))
 

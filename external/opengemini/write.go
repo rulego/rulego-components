@@ -34,7 +34,7 @@ func init() {
 	_ = rulego.Registry.Register(&WriteNode{})
 }
 
-// WriteConfig 定义 OpenGemini 客户端配置
+// WriteConfig defines the OpenGemini client configuration
 type WriteConfig struct {
 	Server   string `json:"server" label:"Server" desc:"OpenGemini server address, format: http://host:port" required:"true" ref:"primary"`
 	Database string `json:"database" label:"Database" desc:"Database name" required:"true"`
@@ -43,17 +43,17 @@ type WriteConfig struct {
 	Token    string `json:"token" label:"Token" desc:"Authentication token" ref:"shared"`
 }
 
-// WriteNode opengemini 写节点
+// WriteNode opengemini writes nodes
 type WriteNode struct {
 	base.SharedNode[opengemini.Client]
 	Config           WriteConfig
 	opengeminiConfig *opengemini.Config
-	// databaseTemplate 数据库模板，用于解析动态数据库名称
+	// databaseTemplate: A database template used to parse dynamic database names
 	// databaseTemplate template for resolving dynamic database name
 	databaseTemplate el.Template
 }
 
-// New 实现 Node 接口，创建新实例
+// New Implement the Node interface and create a new instance
 func (x *WriteNode) New() types.Node {
 	return &WriteNode{
 		Config: WriteConfig{
@@ -63,12 +63,12 @@ func (x *WriteNode) New() types.Node {
 	}
 }
 
-// Type 实现 Node 接口，返回组件类型
+// Type implements the Node interface and returns the component type
 func (x *WriteNode) Type() string {
 	return "x/opengeminiWrite"
 }
 
-// Init 初始化 OpenGemini 客户端
+// Init initializes the OpenGemini client
 func (x *WriteNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err != nil {
@@ -91,7 +91,7 @@ func (x *WriteNode) Init(ruleConfig types.Config, configuration types.Configurat
 	return nil
 }
 
-// OnMsg 实现 Node 接口，处理消息
+// OnMsg implements the Node interface to process messages
 func (x *WriteNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 
 	if client, err := x.SharedNode.GetSafely(); err != nil {
@@ -106,9 +106,9 @@ func (x *WriteNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		var points []*opengemini.Point
 		if msg.DataType == types.JSON {
 			var point opengemini.Point
-			//首先解析是否是多条
+			//First, let's analyze whether there are multiple entries
 			if err := json.Unmarshal([]byte(msg.GetData()), &points); err != nil {
-				//如果不是数组，则解析为单条
+				//If not an array, it is parsed as a single entry
 				if err := json.Unmarshal([]byte(msg.GetData()), &point); err != nil {
 					ctx.TellFailure(msg, err)
 					return
@@ -117,7 +117,7 @@ func (x *WriteNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 				}
 			}
 		} else {
-			//解析 Line Protocol
+			//Parse Line Protocol
 			if points, err = parseMultiLineProtocol(msg.GetData()); err != nil {
 				ctx.TellFailure(msg, err)
 				return
@@ -144,9 +144,9 @@ func (x *WriteNode) Desc() string {
 	return "OpenGemini client for writing time-series data. Routes to Success/Failure"
 }
 
-// initClient 初始化客户端
+// initClient initializes the client
 func (x *WriteNode) initClient() (opengemini.Client, error) {
-	// 创建 OpenGemini 客户端
+	// Create the OpenGemini client
 	return opengemini.NewClient(x.opengeminiConfig)
 }
 

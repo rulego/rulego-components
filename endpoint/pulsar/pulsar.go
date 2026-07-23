@@ -35,35 +35,35 @@ import (
 	"github.com/rulego/rulego/utils/runtime"
 )
 
-// Type 组件类型
+// Type returns the component type
 const Type = types.EndpointTypePrefix + "pulsar"
 
-// KeyResponseTopic 响应主题metadataKey
+// KeyResponseTopic: Response topic metadataKey
 const KeyResponseTopic = "responseTopic"
 
-// Endpoint 别名
+// Endpoint alias
 type Endpoint = Pulsar
 
 var _ endpointApi.Endpoint = (*Endpoint)(nil)
 
-// 注册组件
+// Register the component
 func init() {
 	_ = endpoint.Registry.Register(&Endpoint{})
 }
 
-// RequestMessage 请求消息
+// RequestMessage
 type RequestMessage struct {
 	message pulsar.Message
 	msg     *types.RuleMsg
 	err     error
 }
 
-// Body 获取消息体
+// Body
 func (r *RequestMessage) Body() []byte {
 	return r.message.Payload()
 }
 
-// Headers 获取消息头
+// Headers: Get the message header
 func (r *RequestMessage) Headers() textproto.MIMEHeader {
 	header := make(textproto.MIMEHeader)
 	header.Set("topic", r.message.Topic())
@@ -73,32 +73,32 @@ func (r *RequestMessage) Headers() textproto.MIMEHeader {
 	if r.message.Key() != "" {
 		header.Set("key", r.message.Key())
 	}
-	// 添加自定义属性
+	// Add custom properties
 	for k, v := range r.message.Properties() {
 		header.Set(k, v)
 	}
 	return header
 }
 
-// From 获取消息来源
+// Source: Source
 func (r *RequestMessage) From() string {
 	return r.message.Topic()
 }
 
-// GetParam 获取参数
+// GetParam to get the parameters
 func (r *RequestMessage) GetParam(key string) string {
 	return r.message.Properties()[key]
 }
 
-// SetMsg 设置规则消息
+// SetMsg sets the rule message
 func (r *RequestMessage) SetMsg(msg *types.RuleMsg) {
 	r.msg = msg
 }
 
-// GetMsg 获取规则消息
+// GetMsg obtains rule messages
 func (r *RequestMessage) GetMsg() *types.RuleMsg {
 	if r.msg == nil {
-		// 默认指定是JSON格式，如果不是该类型，请在process函数中修改
+		// The default specification is JSON format. If it is not this type, please modify it in the process function
 		ruleMsg := types.NewMsg(0, r.From(), types.JSON, types.NewMetadata(), string(r.Body()))
 		ruleMsg.Metadata.PutValue("topic", r.message.Topic())
 		ruleMsg.Metadata.PutValue("messageId", r.message.ID().String())
@@ -107,7 +107,7 @@ func (r *RequestMessage) GetMsg() *types.RuleMsg {
 		if r.message.Key() != "" {
 			ruleMsg.Metadata.PutValue("key", r.message.Key())
 		}
-		// 添加自定义属性
+		// Add custom properties
 		for k, v := range r.message.Properties() {
 			ruleMsg.Metadata.PutValue(k, v)
 		}
@@ -116,25 +116,25 @@ func (r *RequestMessage) GetMsg() *types.RuleMsg {
 	return r.msg
 }
 
-// SetStatusCode 设置状态码
+// SetStatusCode sets the status code
 func (r *RequestMessage) SetStatusCode(statusCode int) {
 }
 
-// SetBody 设置消息体
+// SetBody sets the message body
 func (r *RequestMessage) SetBody(body []byte) {
 }
 
-// SetError 设置错误
+// SetError is set incorrectly
 func (r *RequestMessage) SetError(err error) {
 	r.err = err
 }
 
-// GetError 获取错误
+// GetError retrieves an error
 func (r *RequestMessage) GetError() error {
 	return r.err
 }
 
-// ResponseMessage 响应消息
+// ResponseMessage
 type ResponseMessage struct {
 	message   pulsar.Message
 	producers *sync.Map
@@ -145,12 +145,12 @@ type ResponseMessage struct {
 	err       error
 }
 
-// Body 获取响应体
+// Body acquires the response body
 func (r *ResponseMessage) Body() []byte {
 	return r.body
 }
 
-// Headers 获取响应头
+// Headers: Get the response head
 func (r *ResponseMessage) Headers() textproto.MIMEHeader {
 	if r.headers == nil {
 		r.headers = make(map[string][]string)
@@ -158,31 +158,31 @@ func (r *ResponseMessage) Headers() textproto.MIMEHeader {
 	return r.headers
 }
 
-// From 获取消息来源
+// Source: Source
 func (r *ResponseMessage) From() string {
 	return r.message.Topic()
 }
 
-// GetParam 获取参数
+// GetParam to get the parameters
 func (r *ResponseMessage) GetParam(key string) string {
 	return r.message.Properties()[key]
 }
 
-// SetMsg 设置规则消息
+// SetMsg sets the rule message
 func (r *ResponseMessage) SetMsg(msg *types.RuleMsg) {
 	r.msg = msg
 }
 
-// GetMsg 获取规则消息
+// GetMsg obtains rule messages
 func (r *ResponseMessage) GetMsg() *types.RuleMsg {
 	return r.msg
 }
 
-// SetStatusCode 设置状态码
+// SetStatusCode sets the status code
 func (r *ResponseMessage) SetStatusCode(statusCode int) {
 }
 
-// getMetadataValue 从msg.Metadata或者响应头获取值
+// getMetadataValue from msg.Metadata or response header to obtain values
 func (r *ResponseMessage) getMetadataValue(metadataName, headerName string) string {
 	var v string
 	if r.GetMsg() != nil {
@@ -196,24 +196,24 @@ func (r *ResponseMessage) getMetadataValue(metadataName, headerName string) stri
 	}
 }
 
-// SetBody 设置响应体
+// SetBody sets the response body
 func (r *ResponseMessage) SetBody(body []byte) {
 	r.body = body
 	topic := r.getMetadataValue(KeyResponseTopic, KeyResponseTopic)
 	if topic != "" && r.producers != nil && r.client != nil {
-		// 获取客户端
+		// Get the client
 		client, err := r.client.GetSafely()
 		if err != nil {
 			r.SetError(err)
 			return
 		}
 
-		// 获取或创建对应topic的生产者（使用sync.Map的无锁操作）
+		// Obtain or create the producer for the corresponding topic (using sync.Map's lock-free operation)
 		var producer pulsar.Producer
 		if value, exists := r.producers.Load(topic); exists {
 			producer = value.(pulsar.Producer)
 		} else {
-			// 创建新的生产者
+			// Create new producers
 			producerOptions := pulsar.ProducerOptions{
 				Topic: topic,
 			}
@@ -224,18 +224,18 @@ func (r *ResponseMessage) SetBody(body []byte) {
 				return
 			}
 
-			// 使用LoadOrStore确保只有一个生产者被创建和存储
+			// Using LoadOrStore ensures that only one producer is created and stored
 			if actual, loaded := r.producers.LoadOrStore(topic, newProducer); loaded {
-				// 如果已经存在，关闭新创建的生产者，使用已存在的
+				// If it already exists, close the newly created producer and use the existing one
 				newProducer.Close()
 				producer = actual.(pulsar.Producer)
 			} else {
-				// 使用新创建的生产者
+				// Use newly created producers
 				producer = newProducer
 			}
 		}
 
-		// 构建消息属性
+		// Build message attributes
 		properties := make(map[string]string)
 		for k, v := range r.Headers() {
 			if len(v) > 0 {
@@ -243,7 +243,7 @@ func (r *ResponseMessage) SetBody(body []byte) {
 			}
 		}
 
-		// 发送响应消息
+		// Send a response message
 		_, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
 			Payload:    r.body,
 			Properties: properties,
@@ -254,35 +254,35 @@ func (r *ResponseMessage) SetBody(body []byte) {
 	}
 }
 
-// SetError 设置错误
+// SetError is set incorrectly
 func (r *ResponseMessage) SetError(err error) {
 	r.err = err
 }
 
-// GetError 获取错误
+// GetError retrieves an error
 func (r *ResponseMessage) GetError() error {
 	return r.err
 }
 
-// Config Pulsar配置
+// Config Pulsar configuration
 type Config struct {
-	// Pulsar服务器地址
+	// Pulsar server address
 	Server string `json:"server" label:"Server" desc:"Pulsar server address, format: pulsar://host:port" required:"true" ref:"primary"`
-	// 默认订阅名称
+	// Default subscription name
 	SubName string `json:"subName" label:"Subscription Name" desc:"Subscription name, used as default when AddRouter does not specify one" required:"true"`
-	// 订阅类型
+	// Subscription type
 	SubType string `json:"subType" label:"Subscription Type" desc:"Subscription type: Exclusive, Shared, Failover, KeyShared" required:"true"`
-	// 消息通道缓冲池大小
+	// Message channel buffer pool size
 	PoolSize int `json:"poolSize" label:"Pool Size" desc:"Message channel buffer size, default is 100"`
-	// 鉴权令牌
+	// Authority and token of authority
 	AuthToken string `json:"authToken" label:"Auth Token" desc:"Pulsar JWT authentication token" ref:"shared"`
-	// TLS证书文件
+	// TLS certificate file
 	CertFile string `json:"certFile" label:"Cert File" desc:"TLS certificate file path" ref:"shared"`
-	// TLS私钥文件
+	// TLS private key file
 	CertKeyFile string `json:"certKeyFile" label:"Cert Key File" desc:"TLS private key file path" ref:"shared"`
 }
 
-// parseSubscriptionType 解析订阅类型字符串为pulsar.SubType（大小写不敏感）
+// parseSubscriptionType parses the subscription type string as pulsar.SubType (case-insensitive)
 func parseSubscriptionType(subscriptionType string) pulsar.SubscriptionType {
 	switch strings.ToLower(subscriptionType) {
 	case "exclusive":
@@ -294,41 +294,41 @@ func parseSubscriptionType(subscriptionType string) pulsar.SubscriptionType {
 	case "keyshared":
 		return pulsar.KeyShared
 	default:
-		return pulsar.Shared // 默认使用Shared类型
+		return pulsar.Shared // The Shared type is used by default
 	}
 }
 
-// Pulsar Pulsar接收端端点
+// Pulsar Pulsar Receiving Endpoint
 type Pulsar struct {
 	impl.BaseEndpoint
 	base.SharedNode[pulsar.Client]
 	// GracefulShutdown provides graceful shutdown capabilities
-	// GracefulShutdown 提供优雅停机功能
+	// GracefulShutdown offers an elegant shutdown function
 	base.GracefulShutdown
 	RuleConfig types.Config
-	//Config 配置
+	//Config configuration
 	Config Config
-	// 消费者映射关系，用于停止消费
+	// Consumer mapping relationships, used to stop consumption
 	consumers map[string]pulsar.Consumer
-	// topic+subscription组合映射，用于检查重复订阅
+	// topic+subscription combined mapping for checking duplicate subscriptions
 	subscriptions map[string]string // key: topic+subscription, value: routerId
-	// 生产者映射，key为topic，value为对应的生产者
+	// Producer mapping: key is topic, value is the corresponding producer
 	producers sync.Map
-	// 互斥锁
+	// Mutually exclusive locks
 	mu sync.RWMutex
 }
 
-// Type 组件类型
+// Type returns the component type
 func (x *Pulsar) Type() string {
 	return Type
 }
 
-// Id 获取组件ID
+// ID to obtain the component ID
 func (x *Pulsar) Id() string {
 	return x.Config.Server
 }
 
-// New 创建新实例
+// New creates an instance
 func (x *Pulsar) New() types.Node {
 	return &Pulsar{
 		Config: Config{
@@ -357,17 +357,17 @@ func (x *Pulsar) Def() types.ComponentForm {
 	}
 }
 
-// Init 初始化
+// Init initializes the component
 func (x *Pulsar) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	x.RuleConfig = ruleConfig
 	x.consumers = make(map[string]pulsar.Consumer)
 	x.subscriptions = make(map[string]string)
 
-	// 初始化优雅停机功能
+	// Initialize the elegant shutdown function
 	x.GracefulShutdown.InitGracefulShutdown(x.RuleConfig.Logger, 0)
 
-	// 初始化共享客户端
+	// Initialize the shared client
 	_ = x.SharedNode.InitWithClose(x.RuleConfig, x.Type(), x.Config.Server, true, func() (pulsar.Client, error) {
 		return x.initClient()
 	}, func(client pulsar.Client) error {
@@ -380,49 +380,49 @@ func (x *Pulsar) Init(ruleConfig types.Config, configuration types.Configuration
 	return err
 }
 
-// Destroy 销毁
+// Destroy releases resources
 func (x *Pulsar) Destroy() {
 	x.GracefulShutdown.GracefulStop(func() {
 		_ = x.Close()
 	})
 }
 
-// GracefulStop 优雅停机
+// GracefulStop Graceful Stop
 func (x *Pulsar) GracefulStop() {
 	x.GracefulShutdown.GracefulStop(func() {
 		_ = x.Close()
 	})
 }
 
-// Close 关闭连接
+// Close Close closes the connection
 func (x *Pulsar) Close() error {
 	x.mu.Lock()
 	defer x.mu.Unlock()
 
-	// 停止所有消费者
+	// Stop all consumers
 	for _, consumer := range x.consumers {
 		consumer.Close()
 	}
 	x.consumers = make(map[string]pulsar.Consumer)
 	x.subscriptions = make(map[string]string)
 
-	// 停止所有生产者（使用sync.Map的无锁操作）
+	// Stop all producers (using sync.Map's lock-free operation)
 	x.producers.Range(func(key, value interface{}) bool {
 		if producer, ok := value.(pulsar.Producer); ok && producer != nil {
 			producer.Close()
 		}
 		return true
 	})
-	// 清空sync.Map
+	// Clear sync.Map
 	x.producers = sync.Map{}
 
-	// 关闭共享客户端
+	// Close the shared client
 	_ = x.SharedNode.Close()
 	x.BaseEndpoint.Destroy()
 	return nil
 }
 
-// AddRouter 添加路由
+// AddRouter adds a route
 func (x *Pulsar) AddRouter(router endpointApi.Router, params ...interface{}) (string, error) {
 	if router == nil {
 		return "", errors.New("router cannot be nil")
@@ -446,7 +446,7 @@ func (x *Pulsar) AddRouter(router endpointApi.Router, params ...interface{}) (st
 		return routerId, fmt.Errorf("routerId %s already exists", routerId)
 	}
 
-	// 解析topic和subscription
+	// Parse topics and subscriptions
 	from := router.FromToString()
 	topic := from
 	subscription := x.Config.SubName
@@ -454,47 +454,47 @@ func (x *Pulsar) AddRouter(router endpointApi.Router, params ...interface{}) (st
 		subscription = "default"
 	}
 
-	// 如果有参数，第一个参数作为subscription
+	// If there are parameters, the first parameter is called subscription
 	if len(params) > 0 {
 		if sub, ok := params[0].(string); ok {
 			subscription = sub
 		}
 	}
 
-	// 检查topic+subscription组合是否已存在
+	// Check whether the topic+subscription combination already exists
 	subscriptionKey := topic + "|" + subscription
 	if existingRouterId, exists := x.subscriptions[subscriptionKey]; exists {
 		return routerId, fmt.Errorf("topic '%s' with subscription '%s' already exists for routerId '%s'", topic, subscription, existingRouterId)
 	}
 
-	// 解析订阅类型
+	// Resolve subscription types
 	subscriptionType := parseSubscriptionType(x.Config.SubType)
 
-	// 创建消费者配置
+	// Create consumer profiles
 	consumerOptions := pulsar.ConsumerOptions{
 		Topic:            topic,
 		SubscriptionName: subscription,
 		Type:             subscriptionType,
 	}
 
-	// 使用简化的配置
+	// Use a simplified configuration
 	consumerOptions.Topic = topic
 	consumerOptions.SubscriptionName = subscription
 
-	// 设置消息处理器
+	// Set up the message processor
 	poolSize := x.Config.PoolSize
 	if poolSize <= 0 {
-		poolSize = 100 // 默认值
+		poolSize = 100 // Default values
 	}
 	consumerOptions.MessageChannel = make(chan pulsar.ConsumerMessage, poolSize)
 
-	// 创建消费者
+	// Create consumers
 	consumer, err := client.Subscribe(consumerOptions)
 	if err != nil {
 		return "", err
 	}
 
-	// 启动消息处理协程
+	// Start the message processing coroutine
 	go func() {
 		for {
 			select {
@@ -502,13 +502,13 @@ func (x *Pulsar) AddRouter(router endpointApi.Router, params ...interface{}) (st
 				if !ok {
 					return
 				}
-				// 使用线程池或协程处理消息，避免阻塞消息接收循环
+				// Use thread pools or coroutines to process messages to avoid blocking message reception loops
 				if x.RuleConfig.Pool != nil {
 					_ = x.RuleConfig.Pool.Submit(func() {
 						x.handleMessage(msg, router)
 					})
 				} else {
-					// 开启协程处理消息，确保不阻塞消息接收
+					// Enable coroutine message processing to ensure message reception is not blocked
 					go x.handleMessage(msg, router)
 				}
 			}
@@ -520,8 +520,8 @@ func (x *Pulsar) AddRouter(router endpointApi.Router, params ...interface{}) (st
 	return routerId, nil
 }
 
-// handleMessage 处理单个消息
-// 处理Pulsar消息，创建Exchange并执行规则链处理
+// handleMessage handles individual messages
+// Processes Pulsar messages, creates Exchanges, and executes rule chain processing
 func (x *Pulsar) handleMessage(msg pulsar.ConsumerMessage, router endpointApi.Router) {
 	defer func() {
 		if e := recover(); e != nil {
@@ -540,11 +540,11 @@ func (x *Pulsar) handleMessage(msg pulsar.ConsumerMessage, router endpointApi.Ro
 		},
 	}
 	x.DoProcess(context.Background(), router, exchange)
-	// 确认消息
+	// Confirm the news
 	_ = msg.Ack(msg.Message)
 }
 
-// RemoveRouter 移除路由
+// RemoveRouter removes the route
 func (x *Pulsar) RemoveRouter(routerId string, params ...interface{}) error {
 	x.mu.Lock()
 	defer x.mu.Unlock()
@@ -552,8 +552,8 @@ func (x *Pulsar) RemoveRouter(routerId string, params ...interface{}) error {
 	if consumer, ok := x.consumers[routerId]; ok {
 		consumer.Close()
 		delete(x.consumers, routerId)
-		
-		// 删除对应的subscription映射记录
+
+		// Delete the corresponding subscription mapping record
 		for key, value := range x.subscriptions {
 			if value == routerId {
 				delete(x.subscriptions, key)
@@ -565,7 +565,7 @@ func (x *Pulsar) RemoveRouter(routerId string, params ...interface{}) error {
 	return errors.New("router not found")
 }
 
-// Start 启动服务
+// Start the service
 func (x *Pulsar) Start() error {
 	if !x.SharedNode.IsInit() {
 		return x.SharedNode.InitWithClose(x.RuleConfig, x.Type(), x.Config.Server, true, func() (pulsar.Client, error) {
@@ -578,29 +578,29 @@ func (x *Pulsar) Start() error {
 		})
 	}
 
-	// 生产者将在需要时动态创建
+	// Producers will dynamically create these as needed
 	return nil
 }
 
-// Printf 打印日志
+// Printf prints logs
 func (x *Pulsar) Printf(format string, v ...interface{}) {
 	if x.RuleConfig.Logger != nil {
 		x.RuleConfig.Logger.Printf(format, v...)
 	}
 }
 
-// initClient 初始化Pulsar客户端
+// initClient Initializes the Pulsar client
 func (x *Pulsar) initClient() (pulsar.Client, error) {
 	clientOptions := pulsar.ClientOptions{
 		URL: x.Config.Server,
 	}
 
-	// 设置JWT Token鉴权
+	// Set JWT Token authentication
 	if x.Config.AuthToken != "" {
 		clientOptions.Authentication = pulsar.NewAuthenticationToken(x.Config.AuthToken)
 	}
 
-	// 设置TLS配置
+	// Set up TLS configuration
 	if x.Config.CertFile != "" {
 		clientOptions.TLSCertificateFile = x.Config.CertFile
 	}

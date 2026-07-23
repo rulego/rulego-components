@@ -59,13 +59,13 @@ func TestKafkaEndpointInit(t *testing.T) {
 }
 
 func TestKafkaEndpoint(t *testing.T) {
-	// 检查是否有可用的 Kafka 服务器
+	// Check if there are available Kafka servers
 	kafkaBrokers := os.Getenv("KAFKA_BROKERS")
 	if kafkaBrokers == "" {
 		kafkaBrokers = "localhost:9092"
 	}
 
-	// 如果设置了跳过 Kafka 测试，则跳过
+	// If you set up skipping Kafka tests, skip them
 	if os.Getenv("SKIP_KAFKA_TESTS") == "true" {
 		t.Skip("Skipping Kafka tests")
 	}
@@ -75,10 +75,10 @@ func TestKafkaEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	config := rulego.NewConfig(types.WithDefaultPool())
-	//注册规则链
+	//Register the rule chain
 	_, _ = rulego.New("default", buf, rulego.WithConfig(config))
 
-	//启动kafka接收服务
+	//Kafka received services were launched
 	kafkaEndpoint, err := endpoint.Registry.New(Type, config, Config{
 		Server:  kafkaBrokers,
 		GroupId: "test01",
@@ -88,39 +88,39 @@ func TestKafkaEndpoint(t *testing.T) {
 		return
 	}
 
-	//路由1
+	//Route 1
 	router1 := endpoint.NewRouter().From("device.msg.request").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		receivedData := exchange.In.GetMsg().GetData()
-		t.Logf("接收到数据：device.msg.request, 数据内容: %s", receivedData)
+		t.Logf("Data received: device.msg.request, data content: %s", receivedData)
 
-		// 修改断言以接受实际接收到的数据格式
-		// 可能是JSON格式或其他处理后的格式
+		// Modify assertions to accept the actual data format received
+		// It may be JSON format or other processed formats
 		if receivedData != "test message" && receivedData != `{"test":"AA"}` {
-			t.Errorf("接收到意外的数据格式: %s", receivedData)
+			t.Errorf("Unexpected data format received: %s", receivedData)
 			return false
 		}
 		return true
 	}).To("chain:default").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
-		//往指定主题发送数据，用于响应
+		//Send data to a specified topic for response
 		exchange.Out.Headers().Add(KeyResponseTopic, "device.msg.response")
 		exchange.Out.SetBody([]byte("this is response"))
 		return true
 	}).End()
 
-	//模拟获取响应
+	//Simulate to obtain responses
 	router2 := endpoint.NewRouter().From("device.msg.response").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
-		//fmt.Println("接收到数据：device.msg.response", exchange.In.GetMsg())
+		//fmt.Println("Data received: device.msg.response", exchange.In.GetMsg())
 		assert.Equal(t, "this is response", exchange.In.GetMsg().GetData())
 		return true
 	}).End()
 
 	router3 := endpoint.NewRouter().From("device.msg.response").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
-		//fmt.Println("接收到数据：device.msg.response", exchange.In.GetMsg())
+		//fmt.Println("Data received: device.msg.response", exchange.In.GetMsg())
 		assert.Equal(t, "this is response", exchange.In.GetMsg().GetData())
 		return true
 	}).End()
 
-	//注册路由
+	//Register the route
 	_, err = kafkaEndpoint.AddRouter(router1)
 	if err != nil {
 		t.Errorf("Failed to add router1 (Kafka server may not be available): %v", err)
@@ -133,17 +133,17 @@ func TestKafkaEndpoint(t *testing.T) {
 	}
 	_, err = kafkaEndpoint.AddRouter(router3)
 	assert.NotNil(t, err)
-	//并启动服务
+	//And launch the service
 	err = kafkaEndpoint.Start()
 	if err != nil {
 		t.Errorf("Failed to start Kafka endpoint: %v", err)
 		return
 	}
 
-	// 等待Kafka endpoint完全启动和消费者初始化
+	// Wait for Kafka Endpoint to fully launch and consumer initialization
 	time.Sleep(5 * time.Second)
 
-	// 测试发布和订阅
+	// Test publishing and subscriptions
 	brokers := []string{kafkaBrokers}
 	producerConfig := sarama.NewConfig()
 	producerConfig.Producer.RequiredAcks = sarama.WaitForAll
@@ -170,7 +170,7 @@ func TestKafkaEndpoint(t *testing.T) {
 
 	go func(g *sync.WaitGroup) {
 		defer g.Done()
-		// 创建消费者来读取 device.msg.response
+		// Create a consumer to read device.msg.response
 		partitionConsumer, err := consumer.ConsumePartition("device.msg.response", 0, sarama.OffsetNewest)
 		if err != nil {
 			t.Errorf("Failed to start consumer for response topic: %v", err)
@@ -178,7 +178,7 @@ func TestKafkaEndpoint(t *testing.T) {
 		}
 		defer partitionConsumer.Close()
 
-		// 等待并验证响应，使用更长的超时适应CI环境
+		// Wait for and validate responses, using longer timeouts to adapt to CI environments
 		timeout := time.After(30 * time.Second)
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
@@ -201,10 +201,10 @@ func TestKafkaEndpoint(t *testing.T) {
 		}
 	}(&wg)
 
-	// 等待消费者启动和生产者完全初始化
+	// Waiting for consumers to start and producers to fully initialize
 	time.Sleep(3 * time.Second)
 
-	// 发布消息到 device.msg.request，增加重试机制
+	// Send messages to device.msg.request to add a retry mechanism
 	var sendErr error
 	for i := 0; i < 3; i++ {
 		_, _, sendErr = producer.SendMessage(&sarama.ProducerMessage{
@@ -223,7 +223,7 @@ func TestKafkaEndpoint(t *testing.T) {
 		return
 	}
 
-	// 发送消息后额外等待，确保消息被处理
+	// After sending a message, you wait extra to ensure the message is processed
 	time.Sleep(2 * time.Second)
 
 	wg.Wait()

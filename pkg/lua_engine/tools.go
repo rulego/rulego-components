@@ -196,7 +196,7 @@ func LuaTableToSlice(table *lua.LTable) []interface{} {
 	return slice
 }
 
-// ValidateLua 验证脚本是否正确
+// ValidateLua verifies whether the script is correct
 func ValidateLua(script string) error {
 	L := lua.NewState()
 	if strings.HasSuffix(script, ".lua") {

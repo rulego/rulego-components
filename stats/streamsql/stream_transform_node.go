@@ -32,52 +32,52 @@ func init() {
 	_ = rulego.Registry.Register(&StreamTransformNode{})
 }
 
-// StreamTransformNodeConfiguration 流转换器节点配置
+// StreamTransformNodeConfiguration: Stream Converter node configuration
 type StreamTransformNodeConfiguration struct {
 	// SQL is the non-aggregation query statement (filter, transform, field selection).
 	// Example: SELECT temperature, humidity FROM stream WHERE temperature > 20
 	SQL string `json:"sql" label:"SQL" desc:"Non-aggregation SQL for filtering/transforming. Example: SELECT temperature FROM stream WHERE temperature > 20" required:"true"`
 }
 
-// StreamTransformNode 流转换器节点
+// StreamTransformNode Stream Transformer node
 //
-// 功能说明：
-// - 专门处理非聚合查询，如数据过滤、字段转换、格式变换等
-// - 支持单条数据和数组数据输入：
-//   - 单条数据：直接进行转换处理
-//   - 数组数据：遍历转换每个元素，将成功转换的结果合并成数组输出
+// Function Description:
+// - Specialized in handling non-aggregated queries, such as data filtering, field conversion, format transformation, etc
+// - Supports single data entry and array data input:
+//   - Single data entry: Directly converts and processes
+//   - Array data: Traverse and transform each element, merging the successful results into an array output
 //
-// - 数据符合WHERE条件并转换成功，则通过`Success`链输出，否则通过`Failure`链输出
-// - 对于数组输入，只要有任何元素转换成功，就会通过Success链输出合并结果
+// - If the data meets the WHERE conditions and the conversion is `Success`ful, output via the 'Success' chain; otherwise, output via the `Failure` chain
+// - For array inputs, as long as any element successfully converts, the merging result will be output via the Success chain
 //
-// 数据流向：
-// - 单条数据：输入 -> SQL转换 -> Success/Failure输出
-// - 数组数据：输入数组 -> 逐个转换 -> 合并成功结果 -> Success输出（如有成功项）/ Failure输出（全部失败）
+// Data Flow:
+// - Single data: input -> SQL conversion -> Success/Failure output
+// - Array data: input array -> Convert one by one -> merge successful result -> Success output (if there are successful entries) / Failure output (all failures)
 //
-// 注意事项：
-// - 转换处理是同步的，会阻塞当前消息的处理
-// - WHERE条件不匹配的数据会被过滤掉，不包含在输出结果中
-// - 对于数组输入，部分元素转换失败不会影响整体结果，只影响最终数组的元素数量
+// Notes:
+// - Conversion processing is synchronous and blocks the current message processing
+// - Data that does not match WHERE conditions will be filtered out and not included in the output results
+// - For array input, failure in some element conversion does not affect the overall result, only the number of elements in the final array
 type StreamTransformNode struct {
-	// 节点配置
+	// Node configuration
 	Config StreamTransformNodeConfiguration
-	// StreamSQL实例，用于执行SQL转换查询
+	// StreamSQL instance used to execute SQL conversion queries
 	streamsql *streamsql.Streamsql
 }
 
-// Type 返回组件类型标识
+// Type returns the component type identifier
 func (x *StreamTransformNode) Type() string {
 	return "x/streamTransform"
 }
 
-// New 创建流转换器节点实例
+// New: Create a Stream Converter node instance
 func (x *StreamTransformNode) New() types.Node {
 	return &StreamTransformNode{
 		Config: StreamTransformNodeConfiguration{},
 	}
 }
 
-// 错误定义和常量
+// Misdefinitions and constants
 var (
 	ErrTransformSQLEmpty      = errors.New("transform SQL query is required")
 	ErrNotTransformQuery      = errors.New("SQL contains aggregation functions, use x/streamAggregator instead")
@@ -88,35 +88,35 @@ var (
 	ErrUnsupportedDataType    = errors.New("only JSON data type is supported")
 	ErrDataProcessingFailed   = errors.New("failed to process message data")
 
-	// 元数据键名，用于标识数据是否匹配转换条件
+	// Metadata keys, used to indicate whether the data matches conversion conditions
 	Match      = "match"
 	MatchTrue  = "true"
 	MatchFalse = "false"
 )
 
-// Init 初始化节点
-// 该方法在节点被加载时调用，用于验证配置和初始化StreamSQL实例
+// Init initializes the node
+// This method is called when a node is loaded to verify configuration and initialize the StreamSQL instance
 func (x *StreamTransformNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err != nil {
 		return err
 	}
 
-	// 验证SQL配置
+	// Verify SQL configuration
 	if x.Config.SQL == "" {
 		return ErrTransformSQLEmpty
 	}
 
-	// 创建StreamSQL实例
+	// Create a StreamSQL instance
 	x.streamsql = streamsql.New()
 
-	// 执行SQL初始化
+	// Execute SQL initialization
 	err = x.streamsql.Execute(x.Config.SQL)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrTransformSQLExecution, err)
 	}
 
-	// 验证是否为非聚合查询
+	// Verify whether the query is non-aggregated
 	if x.streamsql.IsAggregationQuery() {
 		return fmt.Errorf("%w: SQL='%s'", ErrNotTransformQuery, x.Config.SQL)
 	}
@@ -124,43 +124,43 @@ func (x *StreamTransformNode) Init(ruleConfig types.Config, configuration types.
 	return nil
 }
 
-// OnMsg 处理消息
-// 支持单条数据和数组数据：
-//   - 单条数据：直接进行SQL转换，成功则通过Success链输出，失败则通过Failure链输出
-//   - 数组数据：遍历每个元素进行转换，将所有成功的结果合并成数组输出
-//     如果至少有一个元素转换成功，则通过Success链输出；如果全部失败，则通过Failure链输出
+// OnMsg processes a message
+// Supports single data entries and array data:
+//   - Single data entry: Directly performs SQL transformation; if successful, output via the Success chain; if failed, output via the Failure chain
+//   - Array data: Traverse each element for transformation, merging all successful results into an array output
+//     If at least one element is successfully converted, output via the Success chain; If all fail, output is done via the Failure chain
 func (x *StreamTransformNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	if x.streamsql == nil {
 		ctx.TellFailure(msg, ErrStreamsqlInstanceNil)
 		return
 	}
 
-	// 验证数据类型，只支持JSON类型
+	// Verify data types, only support JSON types
 	if msg.DataType != types.JSON {
 		ctx.TellFailure(msg, fmt.Errorf("%w: current type is %s", ErrUnsupportedDataType, msg.DataType))
 		return
 	}
 
-	// 获取JSON数据，streamsql内部会处理类型转换
+	// Obtain JSON data, and streamsql internally handles type conversions
 	data, err := msg.GetJsonData()
 	if err != nil {
 		ctx.TellFailure(msg, fmt.Errorf("%w: %v", ErrDataProcessingFailed, err))
 		return
 	}
 
-	// 检查数据是否为数组
+	// Check if the data is an array
 	if x.isArrayData(data) {
-		// 处理数组数据
+		// Processing array data
 		x.processArrayData(ctx, msg, data)
 	} else {
-		// 处理单条数据
+		// Processing individual data entries
 		x.processSingleData(ctx, msg, data)
 	}
 }
 
-// isArrayData 检查数据是否为数组
+// isArrayData checks whether the data is an array
 func (x *StreamTransformNode) isArrayData(data interface{}) bool {
-	// 直接检查数据类型是否为slice
+	// Directly check whether the data type is slice
 	switch data.(type) {
 	case []interface{}:
 		return true
@@ -171,16 +171,16 @@ func (x *StreamTransformNode) isArrayData(data interface{}) bool {
 	}
 }
 
-// processSingleData 处理单条数据转换
+// processSingleData handles the conversion of individual data entries
 func (x *StreamTransformNode) processSingleData(ctx types.RuleContext, msg types.RuleMsg, data interface{}) {
-	// 转换为map[string]interface{}类型，支持多种map类型
+	// Convert to map[string]interface{} type, supporting multiple map types
 	mapData, err := x.convertToMapStringInterface(data)
 	if err != nil {
 		ctx.TellFailure(msg, fmt.Errorf("data type conversion failed: %w", err))
 		return
 	}
 
-	// 同步处理数据转换
+	// Data conversion is processed simultaneously
 	result, err := x.streamsql.EmitSync(mapData)
 	if err != nil {
 		ctx.TellFailure(msg, fmt.Errorf("transform processing failed: %w", err))
@@ -188,29 +188,29 @@ func (x *StreamTransformNode) processSingleData(ctx types.RuleContext, msg types
 	}
 
 	if result != nil {
-		// 转换成功，更新消息数据并发送到下一个节点
+		// After successful conversion, update the message data and send it to the next node
 		msg.SetData(str.ToString(result))
 		msg.SetDataType(types.JSON)
 		msg.Metadata.PutValue(Match, MatchTrue)
 		ctx.TellSuccess(msg)
 	} else {
-		// 数据被过滤，不符合WHERE条件，通过Failure输出
+		// The data is filtered and does not meet the WHERE condition, and output via Failure
 		msg.Metadata.PutValue(Match, MatchFalse)
 		ctx.TellFailure(msg, ErrNotMatchWhereCondition)
 	}
 }
 
-// processArrayData 处理数组数据转换
-// 遍历数组中的每个元素，进行转换处理，将成功转换的结果合并成新数组
+// processArrayData handles array data transformation
+// Traverse each element in the array, perform the transformation, and merge the successful conversion results into a new array
 func (x *StreamTransformNode) processArrayData(ctx types.RuleContext, msg types.RuleMsg, data interface{}) {
-	// 尝试转换为 []interface{}
+	// Try converting to []interface{}
 	var inputArray []interface{}
 
 	switch v := data.(type) {
 	case []interface{}:
 		inputArray = v
 	case []map[string]interface{}:
-		// 将 []map[string]interface{} 转换为 []interface{}
+		// Convert []map[string]interface{} to []interface{}
 		inputArray = make([]interface{}, len(v))
 		for i, item := range v {
 			inputArray[i] = item
@@ -223,42 +223,42 @@ func (x *StreamTransformNode) processArrayData(ctx types.RuleContext, msg types.
 	var transformedResults []interface{}
 	var failedCount int
 
-	// 遍历数组元素，逐个进行转换
+	// Traverse the array elements and convert them one by one
 	for _, item := range inputArray {
-		// 转换为map[string]interface{}类型，支持多种map类型
+		// Convert to map[string]interface{} type, supporting multiple map types
 		mapItem, err := x.convertToMapStringInterface(item)
 		if err != nil {
-			// 类型转换失败，记录失败次数，继续处理下一个元素
+			// If type conversion fails, record the number of failures and continue processing the next element
 			failedCount++
 			continue
 		}
 
 		result, err := x.streamsql.EmitSync(mapItem)
 		if err != nil {
-			// 转换出错，记录失败次数，继续处理下一个元素
+			// If a conversion error occurs, record the number of failures and continue processing the next element
 			failedCount++
 			continue
 		}
 
 		if result != nil {
-			// 转换成功且符合WHERE条件，添加到结果数组
+			// If the conversion is successful and meets the WHERE criteria, add it to the result array
 			transformedResults = append(transformedResults, result)
 		} else {
-			// 不符合WHERE条件，被过滤掉，记录失败次数
+			// If the WHERE condition is not met, it will be filtered out and the number of failures will be recorded
 			failedCount++
 		}
 	}
 
-	// 判断处理结果
+	// Assess the handling results
 	if len(transformedResults) > 0 {
-		// 至少有一个元素转换成功
+		// At least one element was successfully converted
 		resultJson, err := json.Marshal(transformedResults)
 		if err != nil {
 			ctx.TellFailure(msg, fmt.Errorf("%w: failed to marshal results: %v", ErrArrayProcessingFailed, err))
 			return
 		}
 
-		// 更新消息数据
+		// Update message data
 		msg.SetData(string(resultJson))
 		msg.SetDataType(types.JSON)
 		msg.Metadata.PutValue(Match, MatchTrue)
@@ -268,7 +268,7 @@ func (x *StreamTransformNode) processArrayData(ctx types.RuleContext, msg types.
 
 		ctx.TellSuccess(msg)
 	} else {
-		// 所有元素都转换失败或被过滤
+		// All elements fail to convert or are filtered
 		msg.Metadata.PutValue(Match, MatchFalse)
 		msg.Metadata.PutValue("originalCount", str.ToString(len(inputArray)))
 		msg.Metadata.PutValue("transformedCount", "0")
@@ -278,15 +278,15 @@ func (x *StreamTransformNode) processArrayData(ctx types.RuleContext, msg types.
 	}
 }
 
-// convertToMapStringInterface 将不同类型的map转换为map[string]interface{}
-// 支持的类型包括：map[string]interface{}, map[string]string
+// convertToMapStringInterface Converts different types of maps to map[string]interface{}
+// Supported types include: map[string]interface{}, map[string]string
 func (x *StreamTransformNode) convertToMapStringInterface(data interface{}) (map[string]interface{}, error) {
 	switch v := data.(type) {
 	case map[string]interface{}:
-		// 已经是目标类型，直接返回
+		// Already a target type, go straight back
 		return v, nil
 	case map[string]string:
-		// 转换 map[string]string 为 map[string]interface{}
+		// Convert map[string]string to map[string]interface{}
 		result := make(map[string]interface{}, len(v))
 		for key, value := range v {
 			result[key] = value
@@ -297,7 +297,7 @@ func (x *StreamTransformNode) convertToMapStringInterface(data interface{}) (map
 	}
 }
 
-// Destroy 销毁节点，释放资源
+// Destroy nodes to release resources
 func (x *StreamTransformNode) Destroy() {
 	if x.streamsql != nil {
 		x.streamsql.Stop()

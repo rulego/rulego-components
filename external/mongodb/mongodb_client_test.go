@@ -31,18 +31,18 @@ import (
 )
 
 func TestMongoDBClient(t *testing.T) {
-	// 如果设置了跳过 MongoDB 测试，则跳过
+	// If you set to skip MongoDB testing, skip it
 	if os.Getenv("SKIP_MONGODB_TESTS") == "true" {
 		t.Skip("Skipping MongoDB tests")
 	}
 
-	// 检查是否有可用的 MongoDB 服务器
+	// Check if MongoDB servers are available
 	mongoURL := os.Getenv("MONGODB_URL")
 	if mongoURL == "" {
 		mongoURL = "mongodb://localhost:27017"
 	}
 
-	// 测试 MongoDB 连接可用性
+	// Testing MongoDB connection availability
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -84,8 +84,8 @@ func TestMongoDBClient(t *testing.T) {
 			"server":     mongoURL,
 			"database":   "test_db",
 			"collection": "test_collection",
-			"opType":     "INSERT",                      // 使用大写的常量
-			"doc":        `{"name":"test","value":123}`, // INSERT操作需要doc字段
+			"opType":     "INSERT",                      // Use capitalized constants
+			"doc":        `{"name":"test","value":123}`, // The INSERT operation requires the doc field
 		}, Registry)
 		if err != nil {
 			t.Skipf("Failed to create MongoDB node: %v", err)
@@ -108,7 +108,7 @@ func TestMongoDBClient(t *testing.T) {
 		clientNode := node.(*ClientNode)
 		clientNode.OnMsg(ctx, msg)
 
-		// 等待消息处理
+		// Waiting for the message to be processed
 		time.Sleep(time.Millisecond * 200)
 
 		clientNode.Destroy()
@@ -119,8 +119,8 @@ func TestMongoDBClient(t *testing.T) {
 			"server":     mongoURL,
 			"database":   "test_db",
 			"collection": "test_collection",
-			"opType":     "QUERY",           // 使用QUERY而不是find
-			"filter":     `{"name":"test"}`, // QUERY操作需要filter字段
+			"opType":     "QUERY",           // Use QUERY instead of find
+			"filter":     `{"name":"test"}`, // The QUERY operation requires the filter field
 		}, Registry)
 		if err != nil {
 			t.Skipf("Failed to create MongoDB node: %v", err)
@@ -143,7 +143,7 @@ func TestMongoDBClient(t *testing.T) {
 		clientNode := node.(*ClientNode)
 		clientNode.OnMsg(ctx, msg)
 
-		// 等待消息处理
+		// Waiting for the message to be processed
 		time.Sleep(time.Millisecond * 200)
 
 		clientNode.Destroy()
@@ -151,7 +151,7 @@ func TestMongoDBClient(t *testing.T) {
 }
 
 func TestMongoDBClientConfig(t *testing.T) {
-	// 如果设置了跳过 MongoDB 测试，则跳过
+	// If you set to skip MongoDB testing, skip it
 	if os.Getenv("SKIP_MONGODB_TESTS") == "true" {
 		t.Skip("Skipping MongoDB tests")
 	}
@@ -175,19 +175,19 @@ func TestMongoDBClientConfig(t *testing.T) {
 			"opType":     "INSERT",
 			"doc":        `{"name":"test"}`,
 		}, Registry)
-		// 应该能创建节点，但连接会失败
+		// It should be possible to create nodes, but connections will fail
 		assert.Nil(t, err)
 	})
 
 	t.Run("EmptyDatabaseConfig", func(t *testing.T) {
 		_, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 			"server":     "mongodb://localhost:27017",
-			"database":   "", // 明确设置为空字符串
+			"database":   "", // Set explicitly to an empty string
 			"collection": "test_collection",
 			"opType":     "INSERT",
 			"doc":        `{"name":"test"}`,
 		}, Registry)
-		// 应该返回错误，因为database是必需的
+		// An error should be returned because the database is required
 		assert.NotNil(t, err)
 		if err != nil {
 			assert.Equal(t, "databaseName can not be empty", err.Error())
@@ -198,11 +198,11 @@ func TestMongoDBClientConfig(t *testing.T) {
 		_, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 			"server":     "mongodb://localhost:27017",
 			"database":   "test_db",
-			"collection": "", // 明确设置为空字符串
+			"collection": "", // Set explicitly to an empty string
 			"opType":     "INSERT",
 			"doc":        `{"name":"test"}`,
 		}, Registry)
-		// 应该返回错误，因为collection是必需的
+		// Errors should be returned because collection is required
 		assert.NotNil(t, err)
 		if err != nil {
 			assert.Equal(t, "collectionName can not be empty", err.Error())
@@ -210,26 +210,26 @@ func TestMongoDBClientConfig(t *testing.T) {
 	})
 
 	t.Run("DefaultValuesConfig", func(t *testing.T) {
-		// 测试默认值是否生效
+		// Test whether the default value is effective
 		node, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 			"server": "mongodb://localhost:27017",
 			"opType": "QUERY",
 			"filter": `{"name":"test"}`,
-			// 不设置database和collection，使用默认值
+			// Do not set database and collection; use default values
 		}, Registry)
 		assert.Nil(t, err)
 		assert.NotNil(t, node)
 
 		if node != nil {
 			clientNode := node.(*ClientNode)
-			assert.Equal(t, "test", clientNode.Config.Database)   // 默认值
-			assert.Equal(t, "user", clientNode.Config.Collection) // 默认值
+			assert.Equal(t, "test", clientNode.Config.Database)   // Default values
+			assert.Equal(t, "user", clientNode.Config.Collection) // Default values
 			assert.Equal(t, "QUERY", clientNode.Config.OpType)
 		}
 	})
 
 	t.Run("CaseInsensitiveOpType", func(t *testing.T) {
-		// 测试opType大小写不敏感
+		// Test opType case-insensitivity
 		testCases := []string{"insert", "INSERT", "Insert", "find", "FIND", "Find", "query", "QUERY"}
 
 		for _, opType := range testCases {
@@ -252,20 +252,20 @@ func TestMongoDBClientConfig(t *testing.T) {
 	})
 }
 
-// TestMongoDBCRUDOperations 测试完整的增删改查操作
+// TestMongoDBCRUDOperations tests complete CRUD operations
 func TestMongoDBCRUDOperations(t *testing.T) {
-	// 如果设置了跳过 MongoDB 测试，则跳过
+	// If you set to skip MongoDB testing, skip it
 	if os.Getenv("SKIP_MONGODB_TESTS") == "true" {
 		t.Skip("Skipping MongoDB tests")
 	}
 
-	// 检查是否有可用的 MongoDB 服务器
+	// Check if MongoDB servers are available
 	mongoURL := os.Getenv("MONGODB_URL")
 	if mongoURL == "" {
 		mongoURL = "mongodb://localhost:27017"
 	}
 
-	// 测试 MongoDB 连接可用性
+	// Testing MongoDB connection availability
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -284,7 +284,7 @@ func TestMongoDBCRUDOperations(t *testing.T) {
 	Registry.Add(&ClientNode{})
 	var targetNodeType = "x/mongodbClient"
 
-	// INSERT 操作测试
+	// INSERT operation test
 	t.Run("InsertOperations", func(t *testing.T) {
 		t.Run("InsertSingleDocument", func(t *testing.T) {
 			node, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
@@ -327,7 +327,7 @@ func TestMongoDBCRUDOperations(t *testing.T) {
 				"server":     mongoURL,
 				"database":   "test_crud",
 				"collection": "users",
-				"opType":     "insert", // 测试小写
+				"opType":     "insert", // Test lowercase
 				"doc":        `[{"name": "Alice", "age": 25}, {"name": "Bob", "age": 35}]`,
 				"one":        false,
 			}, Registry)
@@ -359,7 +359,7 @@ func TestMongoDBCRUDOperations(t *testing.T) {
 		})
 	})
 
-	// QUERY/FIND 操作测试
+	// QUERY/FIND operation testing
 	t.Run("QueryOperations", func(t *testing.T) {
 		t.Run("FindSingleDocument", func(t *testing.T) {
 			node, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
@@ -398,7 +398,7 @@ func TestMongoDBCRUDOperations(t *testing.T) {
 				"server":     mongoURL,
 				"database":   "test_crud",
 				"collection": "users",
-				"opType":     "find", // 测试小写和别名
+				"opType":     "find", // Testing lowercase and aliases
 				"filter":     `{"age": {"$gte": 25}}`,
 				"one":        false,
 			}, Registry)
@@ -430,7 +430,7 @@ func TestMongoDBCRUDOperations(t *testing.T) {
 				"server":     mongoURL,
 				"database":   "test_crud",
 				"collection": "users",
-				"opType":     "SELECT", // 测试SELECT别名
+				"opType":     "SELECT", // Test the SELECT alias
 				"filter":     `{"$and": [{"age": {"$gte": 20}}, {"age": {"$lte": 40}}]}`,
 				"one":        false,
 			}, Registry)
@@ -458,7 +458,7 @@ func TestMongoDBCRUDOperations(t *testing.T) {
 		})
 	})
 
-	// UPDATE 操作测试
+	// UPDATE operation test
 	t.Run("UpdateOperations", func(t *testing.T) {
 		t.Run("UpdateSingleDocument", func(t *testing.T) {
 			node, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
@@ -481,7 +481,7 @@ func TestMongoDBCRUDOperations(t *testing.T) {
 					t.Logf("Update single operation result: %s, error: %v", relationType, err)
 				} else {
 					assert.Equal(t, types.Success, relationType)
-					// 检查元数据中的更新统计
+					// Check update statistics in the metadata
 					matchedCount := msg.Metadata.GetValue("matchedCount")
 					modifiedCount := msg.Metadata.GetValue("modifiedCount")
 					t.Logf("Update stats - Matched: %s, Modified: %s", matchedCount, modifiedCount)
@@ -501,7 +501,7 @@ func TestMongoDBCRUDOperations(t *testing.T) {
 				"server":     mongoURL,
 				"database":   "test_crud",
 				"collection": "users",
-				"opType":     "update", // 测试小写
+				"opType":     "update", // Test lowercase
 				"filter":     `{"age": {"$gte": 25}}`,
 				"doc":        `{"status": "active", "lastUpdate": "2024-01-01"}`,
 				"one":        false,
@@ -517,7 +517,7 @@ func TestMongoDBCRUDOperations(t *testing.T) {
 					t.Logf("Update multiple operation result: %s, error: %v", relationType, err)
 				} else {
 					assert.Equal(t, types.Success, relationType)
-					// 检查元数据中的更新统计
+					// Check update statistics in the metadata
 					matchedCount := msg.Metadata.GetValue("matchedCount")
 					modifiedCount := msg.Metadata.GetValue("modifiedCount")
 					t.Logf("Update multiple stats - Matched: %s, Modified: %s", matchedCount, modifiedCount)
@@ -533,7 +533,7 @@ func TestMongoDBCRUDOperations(t *testing.T) {
 		})
 	})
 
-	// DELETE 操作测试
+	// DELETE operation test
 	t.Run("DeleteOperations", func(t *testing.T) {
 		t.Run("DeleteSingleDocument", func(t *testing.T) {
 			node, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
@@ -555,7 +555,7 @@ func TestMongoDBCRUDOperations(t *testing.T) {
 					t.Logf("Delete single operation result: %s, error: %v", relationType, err)
 				} else {
 					assert.Equal(t, types.Success, relationType)
-					// 检查元数据中的删除统计
+					// Check the deletion statistics in the metadata
 					deletedCount := msg.Metadata.GetValue("deletedCount")
 					t.Logf("Delete stats - Deleted: %s", deletedCount)
 				}
@@ -574,7 +574,7 @@ func TestMongoDBCRUDOperations(t *testing.T) {
 				"server":     mongoURL,
 				"database":   "test_crud",
 				"collection": "users",
-				"opType":     "delete", // 测试小写
+				"opType":     "delete", // Test lowercase
 				"filter":     `{"status": "active"}`,
 				"one":        false,
 			}, Registry)
@@ -589,7 +589,7 @@ func TestMongoDBCRUDOperations(t *testing.T) {
 					t.Logf("Delete multiple operation result: %s, error: %v", relationType, err)
 				} else {
 					assert.Equal(t, types.Success, relationType)
-					// 检查元数据中的删除统计
+					// Check the deletion statistics in the metadata
 					deletedCount := msg.Metadata.GetValue("deletedCount")
 					t.Logf("Delete multiple stats - Deleted: %s", deletedCount)
 				}
@@ -605,15 +605,15 @@ func TestMongoDBCRUDOperations(t *testing.T) {
 	})
 }
 
-// TestMongoDBErrorHandling 测试错误处理场景
+// TestMongoDBErrorHandling tests error handling scenarios
 func TestMongoDBErrorHandling(t *testing.T) {
 	Registry := &types.SafeComponentSlice{}
 	Registry.Add(&ClientNode{})
 	var targetNodeType = "x/mongodbClient"
 
 	t.Run("InvalidOperationType", func(t *testing.T) {
-		// 注意：此测试在没有MongoDB连接时会首先遇到连接错误
-		// 这是正常的行为，因为代码设计是先连接再处理业务逻辑
+		// Note: This test will first encounter connection errors when there is no MongoDB connection
+		// This is normal behavior because code design connects first and then processes business logic
 		node, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 			"server":     "mongodb://localhost:27017",
 			"database":   "test_crud",
@@ -621,14 +621,14 @@ func TestMongoDBErrorHandling(t *testing.T) {
 			"opType":     "INVALID_OP",
 			"doc":        `{"name":"test"}`,
 		}, Registry)
-		assert.Nil(t, err) // 节点创建应该成功
+		assert.Nil(t, err) // Node creation should be successful
 
 		config := types.NewConfig()
 		errorCalled := false
 		ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err error) {
 			if err != nil {
 				assert.Equal(t, types.Failure, relationType)
-				// 可能是连接错误或操作类型错误，都是错误处理的一部分
+				// It may be connection errors or operation type errors, all of which are part of error handling
 				errorCalled = true
 				if strings.Contains(err.Error(), "unsupported operation type") {
 					t.Logf("Got expected operation type error: %v", err)
@@ -642,21 +642,21 @@ func TestMongoDBErrorHandling(t *testing.T) {
 		clientNode := node.(*ClientNode)
 		clientNode.OnMsg(ctx, msg)
 
-		time.Sleep(time.Millisecond * 500) // 增加等待时间
+		time.Sleep(time.Millisecond * 500) // Increased waiting times
 		assert.True(t, errorCalled, "Error callback should be called (either connection or operation error)")
 		clientNode.Destroy()
 	})
 
 	t.Run("MissingDocForInsert", func(t *testing.T) {
-		// 测试INSERT操作缺少doc配置的情况
+		// Testing the INSERT operation for missing doc configuration
 		node, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 			"server":     "mongodb://localhost:27017",
 			"database":   "test_crud",
 			"collection": "users",
 			"opType":     "INSERT",
-			// 故意不设置doc字段
+			// Intentionally not set the doc field
 		}, Registry)
-		assert.Nil(t, err) // 节点创建应该成功
+		assert.Nil(t, err) // Node creation should be successful
 
 		config := types.NewConfig()
 		errorCalled := false
@@ -682,15 +682,15 @@ func TestMongoDBErrorHandling(t *testing.T) {
 	})
 
 	t.Run("MissingFilterForQuery", func(t *testing.T) {
-		// 测试QUERY操作缺少filter配置的情况
+		// Testing the QUERY operation for missing filter configuration
 		node, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 			"server":     "mongodb://localhost:27017",
 			"database":   "test_crud",
 			"collection": "users",
 			"opType":     "QUERY",
-			// 故意不设置filter字段
+			// Intentionally not set the filter field
 		}, Registry)
-		assert.Nil(t, err) // 节点创建应该成功
+		assert.Nil(t, err) // Node creation should be successful
 
 		config := types.NewConfig()
 		errorCalled := false
@@ -716,7 +716,7 @@ func TestMongoDBErrorHandling(t *testing.T) {
 	})
 }
 
-// TestMongoDBExpressionSupport 测试表达式支持
+// TestMongoDBExpressionSupport Test expression support
 func TestMongoDBExpressionSupport(t *testing.T) {
 	Registry := &types.SafeComponentSlice{}
 	Registry.Add(&ClientNode{})
@@ -725,7 +725,7 @@ func TestMongoDBExpressionSupport(t *testing.T) {
 	t.Run("DynamicDatabaseName", func(t *testing.T) {
 		node, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 			"server":     "mongodb://localhost:27017",
-			"database":   "test_${env}", // 使用模板表达式
+			"database":   "test_${env}", // Use template expressions
 			"collection": "users",
 			"opType":     "QUERY",
 			"filter":     `{"name": "test"}`,
@@ -734,11 +734,11 @@ func TestMongoDBExpressionSupport(t *testing.T) {
 
 		config := types.NewConfig()
 		ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err error) {
-			// 这个测试主要验证配置解析没有错误
+			// This test mainly verifies that the configuration resolution is correct
 			t.Logf("Dynamic database test result: %s", relationType)
 		})
 
-		// 设置环境变量值
+		// Set the environment variable value
 		metaData := types.NewMetadata()
 		metaData.PutValue("env", "dynamic")
 
@@ -754,7 +754,7 @@ func TestMongoDBExpressionSupport(t *testing.T) {
 		node, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 			"server":     "mongodb://localhost:27017",
 			"database":   "test_crud",
-			"collection": "${collection_name}", // 使用模板表达式
+			"collection": "${collection_name}", // Use template expressions
 			"opType":     "QUERY",
 			"filter":     `{"name": "test"}`,
 		}, Registry)
@@ -762,11 +762,11 @@ func TestMongoDBExpressionSupport(t *testing.T) {
 
 		config := types.NewConfig()
 		ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err error) {
-			// 这个测试主要验证配置解析没有错误
+			// This test mainly verifies that the configuration resolution is correct
 			t.Logf("Dynamic collection test result: %s", relationType)
 		})
 
-		// 设置集合名称
+		// Set the set name
 		metaData := types.NewMetadata()
 		metaData.PutValue("collection_name", "dynamic_users")
 

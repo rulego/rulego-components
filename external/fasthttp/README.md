@@ -1,48 +1,48 @@
 # FastHTTP API Call Node
 
-基于 FastHTTP 的高性能 HTTP 客户端组件，支持代理配置和流式响应。可以无感替换标准 `restApiCall` 客户端组件，提供更高效的 HTTP 请求处理能力。
+High-performance HTTP client components based on FastHTTP, supporting proxy configuration and streaming responses. Standard `restApiCall` client components can be seamlessly replaced, providing more efficient HTTP request processing.
 
-## 功能特性
+## Functional Features
 
-- 🚀 **高性能**: 基于 FastHTTP 库，性能优于标准 HTTP 库
-- 🔗 **代理支持**: 支持 HTTP/HTTPS 和 SOCKS5 代理
-- 🔐 **认证支持**: 支持代理用户名密码认证
-- 🌐 **系统代理**: 支持使用系统代理配置
-- 📡 **流式响应**: 支持 Server-Sent Events (SSE) 流式数据处理
-- 🔒 **TLS 配置**: 支持 TLS 证书验证配置
-- ⚡ **连接池**: 支持连接池配置，提高并发性能
-- 📝 **模板支持**: URL、Headers、Body 支持模板变量替换
+- 🚀 **High-performance**: Based on FastHTTP libraries, outperforming standard HTTP libraries
+- 🔗 **Proxy Support**: Supports HTTP/HTTPS and SOCKS5 proxies
+- 🔐 **Authentication Support**: Supports proxy username and password authentication
+- 🌐 **System Proxy**: Supports configuration using system proxies
+- 📡 **Stream Response**: Supports Server-Sent Events (SSE) streaming data processing
+- 🔒 **TLS Configuration**: Supports TLS certificate authentication configuration
+- ⚡ **Connection Pool**: Supports connection pool configuration to improve concurrency performance
+- 📝 **Template supports**: URL, Headers, Body supports template variable replacement
 
-## 配置参数
+## Configure parameters
 
-### 基础配置
+### Basic Configuration
 
-| 参数                         | 类型                | 默认值                                  | 说明                         |
+| Parameter                         | Type                | Default value                                  | Note                         |
 |----------------------------|-------------------|--------------------------------------|----------------------------|
-| `restEndpointUrlPattern`   | string            | -                                    | HTTP URL地址，支持模板变量          |
-| `requestMethod`            | string            | POST                                 | 请求方法 (GET/POST/PUT/DELETE) |
-| `withoutRequestBody`       | bool              | false                                | 是否不发送请求体                   |
-| `headers`                  | map[string]string | {"Content-Type": "application/json"} | 请求头，支持模板变量                 |
-| `body`                     | string            | -                                    | 请求体，支持模板变量                 |
-| `readTimeoutMs`            | int               | 2000                                 | 读取超时时间（毫秒）                 |
-| `insecureSkipVerify`       | bool              | false                                | 是否跳过 TLS 证书验证              |
-| `maxParallelRequestsCount` | int               | 200                                  | 最大并发连接数                    |
+| `restEndpointUrlPattern`   | string            | -                                    | HTTP URL address, supports template variable          |
+| `requestMethod`            | string            | POST                                 | Request method (GET/POST/PUT/DELETE) |
+| `withoutRequestBody`       | bool              | false                                | Whether to avoid sending the request body                   |
+| `headers`                  | map[string]string | { "Content-Type": "application/json" } | Request header, supports template variable                 |
+| `body`                     | string            | -                                    | Request body, supports template variable                 |
+| `readTimeoutMs`            | int               | 2000                                 | Read timeout (milliseconds)                 |
+| `insecureSkipVerify`       | bool              | false                                | Whether to skip TLS certificate validation              |
+| `maxParallelRequestsCount` | int               | 200                                  | Maximum number of concurrent connections                    |
 
-### 代理配置
+### Proxy configuration
 
-| 参数                         | 类型     | 默认值   | 说明                       |
+| Parameter                         | Type     | Default value   | Note                       |
 |----------------------------|--------|-------|--------------------------|
-| `enableProxy`              | bool   | false | 是否启用代理                   |
-| `useSystemProxyProperties` | bool   | false | 是否使用系统代理配置               |
-| `proxyScheme`              | string | -     | 代理协议 (http/https/socks5) |
-| `proxyHost`                | string | -     | 代理服务器地址                  |
-| `proxyPort`                | int    | -     | 代理服务器端口                  |
-| `proxyUser`                | string | -     | 代理用户名                    |
-| `proxyPassword`            | string | -     | 代理密码                     |
+| `enableProxy`              | bool   | false | Whether to enable proxy                   |
+| `useSystemProxyProperties` | bool   | false | Whether to use a system proxy to configure               |
+| `proxyScheme`              | string | -     | Agency Agreement (http/https/socks5) |
+| `proxyHost`                | string | -     | Proxy server address                  |
+| `proxyPort`                | int    | -     | Proxy server port                  |
+| `proxyUser`                | string | -     | Proxy username                    |
+| `proxyPassword`            | string | -     | Proxy password                     |
 
-## 使用示例
+## Usage Examples
 
-### 基础 HTTP 请求
+### Fundamentals HTTP Request
 
 ```json
 {
@@ -62,7 +62,7 @@
 }
 ```
 
-### HTTP 代理配置
+### HTTP Proxy configuration
 
 ```json
 {
@@ -82,7 +82,7 @@
 }
 ```
 
-### SOCKS5 代理配置
+### SOCKS5 Proxy configuration
 
 ```json
 {
@@ -100,7 +100,7 @@
 }
 ```
 
-### 系统代理配置
+### System Proxy Configuration
 
 ```json
 {
@@ -116,7 +116,7 @@
 }
 ```
 
-### Server-Sent Events (SSE) 流式响应
+### Server-Sent Events (SSE) Stream response
 
 ```json
 {
@@ -134,20 +134,20 @@
 }
 ```
 
-## 模板变量
+## Template variables
 
-支持在以下字段中使用模板变量：
+Template variables are supported in the following fields:
 
-- `restEndpointUrlPattern`: URL 地址
-- `headers`: 请求头的键和值
-- `body`: 请求体内容
+- `restEndpointUrlPattern`: URL address
+- `headers`: The key and value of the request header
+- `body`: Content of the request body
 
-### 变量格式
+### Variable format
 
-- `${metadata.key}`: 从消息元数据中获取值
-- `${msg.key}`: 从消息负载中获取值
+- `${metadata.key}`: Retrieves values from message metadata
+- `${msg.key}`: Retrieves values from the message payload
 
-### 示例
+### Example
 
 ```json
 {
@@ -160,61 +160,61 @@
 }
 ```
 
-## 响应处理
+## Response Handling
 
-### 成功响应
+### Successful response
 
-- HTTP 状态码为 200 时，消息发送到 `Success` 链
-- 响应内容设置为消息数据
-- 元数据中包含：
-  - `status`: HTTP 状态文本
-  - `statusCode`: HTTP 状态码
+- HTTP When the status code is 200, the message is sent to chain `Success`
+- Set the response content to message data
+- Metadata includes:
+  - `status`: HTTP State text
+  - `statusCode`: HTTP status code
 
-### 失败响应
+### Failure response
 
-- HTTP 状态码非 200 时，消息发送到 `Failure` 链
-- 元数据中包含：
-  - `status`: HTTP 状态文本
-  - `statusCode`: HTTP 状态码
-  - `errorBody`: 错误响应内容
+- HTTP When the status code is not 200, the message is sent to chain `Failure`
+- Metadata includes:
+  - `status`: HTTP State text
+  - `statusCode`: HTTP status code
+  - `errorBody`: Error response content
 
-### SSE 流式响应
+### SSE Stream response
 
-对于 SSE 流式响应，每个事件都会触发一次消息处理：
+For SSE stream responses, each event triggers a message processing:
 
-- 元数据中包含 `eventType`: 事件类型
-- 消息数据为事件内容
+- The metadata contains `eventType`: event type
+- Message data is the event content
 
-## 代理配置说明
+## Proxy Configuration Description
 
-### 系统代理
+### System Proxy
 
-当启用 `useSystemProxyProperties` 时，组件会自动读取以下环境变量：
+When `useSystemProxyProperties` is enabled, components automatically read the following environment variables:
 
-- `HTTP_PROXY` 或 `http_proxy`
-- `HTTPS_PROXY` 或 `https_proxy`
+- `HTTP_PROXY` or `http_proxy`
+- `HTTPS_PROXY` or `https_proxy`
 
-### 代理协议支持
+### Agency protocol support
 
-- **HTTP/HTTPS**: 使用 HTTP CONNECT 方法建立隧道
-- **SOCKS5**: 使用 SOCKS5 协议进行连接
+- **HTTP/HTTPS**: Use the HTTP CONNECT method to create a tunnel
+- **SOCKS5**: Connect using the SOCKS5 protocol
 
-### 代理认证
+### Proxy Authentication
 
-支持用户名密码认证，适用于 HTTP 和 SOCKS5 代理。
+Supports username and password authentication, suitable for HTTP and SOCKS5 proxies.
 
-### TLS 配置
+### TLS configuration
 
-可以设置 `insecureSkipVerify: true` 跳过证书验证。
+You can set `insecureSkipVerify: true` to skip certificate verification.
 
-## 错误处理
+## Error Handling
 
-组件会处理以下类型的错误：
+Components handle the following types of errors:
 
-1. **网络连接错误**: 无法连接到目标服务器
-2. **代理连接错误**: 无法连接到代理服务器
-3. **HTTP 错误**: 服务器返回错误状态码
-4. **超时错误**: 请求超时
-5. **模板解析错误**: 模板变量解析失败
+1. **Network Connection Error**: Unable to connect to the target server
+2. **Proxy connection error**: Unable to connect to the proxy server
+3. **HTTP Error**: The server returns an error status code
+4. **Timeout error**: Request timeout
+5. **Template parsing error**: Template variable parsing failed
 
-所有错误都会将消息发送到 `Failure` 链，并在元数据中记录错误信息。
+All errors send messages to the `Failure` chain and record the error information in the metadata.

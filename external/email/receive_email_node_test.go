@@ -31,7 +31,7 @@ import (
 )
 
 // ============================================================
-// 节点生命周期测试
+// Node lifecycle testing
 // ============================================================
 
 func TestReceiveEmailNodeNew(t *testing.T) {
@@ -91,7 +91,7 @@ func TestReceiveEmailNodeInit(t *testing.T) {
 
 func TestReceiveEmailNodeInitDefaults(t *testing.T) {
 	var node ReceiveEmailNode
-	// 只提供必填字段，其他用默认值
+	// Only required fields are provided; others use default values
 	err := node.Init(types.NewConfig(), types.Configuration{
 		"server":   "imap.example.com",
 		"username": "user@example.com",
@@ -168,7 +168,7 @@ func TestReceiveEmailNodeInitPostActionConfig(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, "markRead", node.Config.PostAction.Action)
 
-	// move 配置
+	// move
 	var node2 ReceiveEmailNode
 	err = node2.Init(types.NewConfig(), types.Configuration{
 		"server":   "imap.example.com",
@@ -201,7 +201,7 @@ func TestReceiveEmailNodeInitTemplate(t *testing.T) {
 }
 
 // ============================================================
-// OnMsg 验证测试（不连接真实服务器）
+// OnMsg Validation Test (Not Connecting to Real Servers)
 // ============================================================
 
 func TestOnMsgMissingServer(t *testing.T) {
@@ -256,7 +256,7 @@ func TestOnMsgMissingPassword(t *testing.T) {
 }
 
 func TestOnMsgConnectFailed(t *testing.T) {
-	// 连接不存在的服务器，应返回 Failure
+	// Connecting to a non-existent server should return Failure
 	var node ReceiveEmailNode
 	_ = node.Init(types.NewConfig(), types.Configuration{
 		"server":         "127.0.0.1",
@@ -278,7 +278,7 @@ func TestOnMsgConnectFailed(t *testing.T) {
 }
 
 // ============================================================
-// buildSearchCriteria 测试
+// buildSearchCriteria test
 // ============================================================
 
 func TestBuildSearchCriteriaByDate(t *testing.T) {
@@ -306,7 +306,7 @@ func TestBuildSearchCriteriaLastDays(t *testing.T) {
 	})
 
 	criteria := node.buildSearchCriteria("2024-01-01", "", "", "", "")
-	// LastDays 优先于 Since
+	// LastDays takes precedence over Since
 	expectedSince := time.Now().AddDate(0, 0, -7)
 	assert.True(t, criteria.Since.Sub(expectedSince) < time.Second)
 }
@@ -357,7 +357,7 @@ func TestBuildSearchCriteriaEmpty(t *testing.T) {
 }
 
 // ============================================================
-// buildFetchItems 测试
+// buildFetchItems test
 // ============================================================
 
 func TestBuildFetchItemsHeaders(t *testing.T) {
@@ -408,12 +408,12 @@ func TestBuildFetchItemsFull(t *testing.T) {
 	})
 
 	items := node.buildFetchItems()
-	// full 应包含 ENVELOPE 和 BODY
+	// Full should include ENVELOPE and BODY
 	assert.True(t, len(items) >= 5) // UID + Flags + Date + Envelope + Body
 }
 
 // ============================================================
-// 解码函数测试
+// Decode function testing
 // ============================================================
 
 func TestDecodeMimeHeader(t *testing.T) {
@@ -437,60 +437,60 @@ func TestDecodeMimeHeader(t *testing.T) {
 }
 
 func TestDecodeCharset(t *testing.T) {
-	// UTF-8 不转换
+	// UTF-8 does not convert
 	assert.Equal(t, "hello", decodeCharset([]byte("hello"), "utf-8"))
 	assert.Equal(t, "hello", decodeCharset([]byte("hello"), ""))
 	assert.Equal(t, "hello", decodeCharset([]byte("hello"), "utf8"))
 	assert.Equal(t, "hello", decodeCharset([]byte("hello"), "us-ascii"))
 
-	// GBK 转 UTF-8
-	gbkData := []byte{0xc4, 0xe3, 0xba, 0xc3} // "你好" in GBK
+	// GBK to UTF-8
+	gbkData := []byte{0xc4, 0xe3, 0xba, 0xc3} // "Hello" in GBK
 	assert.Equal(t, "你好", decodeCharset(gbkData, "gbk"))
 	assert.Equal(t, "你好", decodeCharset(gbkData, "GBK"))
 
-	// ISO-8859-1 特殊字符
+	// ISO-8859-1 Special Characters
 	latin1Data := []byte{0xe9} // é in ISO-8859-1
 	result := decodeCharset(latin1Data, "iso-8859-1")
 	assert.Equal(t, "é", result)
 
-	// 不支持的 charset 回退到原始字符串
+	// Unsupported charsets are reverted to the original string
 	assert.Equal(t, "test", decodeCharset([]byte("test"), "unknown-charset"))
 }
 
 func TestDecodeBody(t *testing.T) {
-	// 无编码
+	// No code
 	assert.Equal(t, "plain text", string(decodeBody([]byte("plain text"), "")))
 	assert.Equal(t, "plain text", string(decodeBody([]byte("plain text"), "7bit")))
 
-	// base64 无换行
+	// base64 No line breaks
 	b64 := base64.StdEncoding.EncodeToString([]byte("Hello World"))
 	result := decodeBody([]byte(b64), "base64")
 	assert.Equal(t, "Hello World", string(result))
 
-	// base64 带换行（邮件中常见格式）
+	// base64 with line break (common format in emails)
 	b64WithLineBreaks := "SGVsbG8g\r\nV29ybGQ="
 	result = decodeBody([]byte(b64WithLineBreaks), "base64")
 	assert.Equal(t, "Hello World", string(result))
 
-	// base64 大小写不敏感
+	// base64 is case-insensitive
 	result = decodeBody([]byte(b64WithLineBreaks), "Base64")
 	assert.Equal(t, "Hello World", string(result))
 
-	// base64 无效数据回退
+	// base64 Reverts invalid data
 	result = decodeBody([]byte("not-valid-base64!!!"), "base64")
 	assert.Equal(t, "not-valid-base64!!!", string(result))
 }
 
 func TestDecodeBodyQuotedPrintable(t *testing.T) {
-	// 简单 QP 编码
+	// Simple QP encoding
 	result := decodeBody([]byte("Hello=20World"), "quoted-printable")
 	assert.Equal(t, "Hello World", string(result))
 
-	// QP 中文编码
+	// QP Chinese encoding
 	result = decodeBody([]byte("=E4=BD=A0=E5=A5=BD"), "quoted-printable")
 	assert.Equal(t, "你好", string(result))
 
-	// QP 软换行
+	// QP soft line break
 	result = decodeBody([]byte("Line1=\r\nLine2"), "quoted-printable")
 	assert.Equal(t, "Line1Line2", string(result))
 
@@ -512,18 +512,18 @@ func TestFormatFlags(t *testing.T) {
 	assert.Equal(t, "Flagged", result[1])
 	assert.Equal(t, "Answered", result[2])
 
-	// 无反斜杠的 flag
+	// Flags without backslashes
 	result = formatFlags([]string{"custom"})
 	assert.Equal(t, 1, len(result))
 	assert.Equal(t, "custom", result[0])
 
-	// 空 flags
+	// Empty flags
 	result = formatFlags([]string{})
 	assert.Equal(t, 0, len(result))
 }
 
 // ============================================================
-// 数据结构序列化测试
+// Data structure serialization testing
 // ============================================================
 
 func TestReceiveEmailResultJSON(t *testing.T) {
@@ -548,7 +548,7 @@ func TestReceiveEmailResultJSON(t *testing.T) {
 	assert.True(t, len(data) > 0)
 	t.Logf("JSON: %s", data)
 
-	// 反序列化验证
+	// Deserialization verification
 	var parsed ReceiveEmailResult
 	err = json.Unmarshal(data, &parsed)
 	assert.Nil(t, err)
@@ -558,7 +558,7 @@ func TestReceiveEmailResultJSON(t *testing.T) {
 }
 
 func TestEmailAttachmentJSON(t *testing.T) {
-	// 嵌入 Base64
+	// Embedding Base64
 	att := EmailAttachment{
 		Filename:      "test.txt",
 		ContentType:   "text/plain",
@@ -569,7 +569,7 @@ func TestEmailAttachmentJSON(t *testing.T) {
 	assert.Nil(t, err)
 	assert.True(t, strings.Contains(string(data), "test.txt"))
 
-	// 文件路径
+	// File path
 	att2 := EmailAttachment{
 		Filename:    "doc.pdf",
 		ContentType: "application/pdf",
@@ -582,7 +582,7 @@ func TestEmailAttachmentJSON(t *testing.T) {
 }
 
 // ============================================================
-// 模板变量测试（不连网，只验证模板解析）
+// Template variable testing (not connected to the internet, only verifying template parsing)
 // ============================================================
 
 func TestTemplateResolution(t *testing.T) {
@@ -600,7 +600,7 @@ func TestTemplateResolution(t *testing.T) {
 	assert.Nil(t, err)
 	assert.True(t, node.hasVar)
 
-	// 验证模板可以正确执行
+	// Verify that the template can be executed correctly
 	evn := map[string]interface{}{
 		"metadata": map[string]string{
 			"host":      "imap.test.com",
@@ -623,7 +623,7 @@ func TestTemplateResolution(t *testing.T) {
 }
 
 // ============================================================
-// 真实 IMAP 服务器集成测试（需要环境变量）
+// Real IMAP Server Integration Test (requires environment variables)
 // ============================================================
 
 func TestReceiveEmailNodeWithRealServer(t *testing.T) {
@@ -675,7 +675,7 @@ func TestReceiveEmailNodeWithRealServer(t *testing.T) {
 		assert.True(t, len(data) > 0)
 		t.Logf("Received data: %s", data)
 
-		// 验证 JSON 结构
+		// Verify the JSON structure
 		var result ReceiveEmailResult
 		err = json.Unmarshal([]byte(data), &result)
 		assert.Nil(t, err)

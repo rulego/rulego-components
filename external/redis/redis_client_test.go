@@ -36,12 +36,12 @@ func TestRedisClientNodeOnMsg(t *testing.T) {
 	testRedisClientHMSetFromExpr(t)
 	testRedisClientHMGetFromExpr(t)
 	testRedisClientFlushDB(t)
-	// 新的el.Template功能测试
+	// The new el.Template function test
 	testRedisClientTemplateSetWithCombinedCmd(t)
 	testRedisClientTemplateWithParams(t)
 	testRedisClientTemplateComplexCmd(t)
 	testRedisClientBackwardCompatibility(t)
-	// 完善的表达式测试
+	// Comprehensive expression testing
 	testRedisClientCmdExpression(t)
 	testRedisClientCmdWithParamsExpression(t)
 	testRedisClientParamsMixedExpression(t)
@@ -49,7 +49,7 @@ func TestRedisClientNodeOnMsg(t *testing.T) {
 	testRedisClientEdgeCases(t)
 }
 
-// 测试添加key/value
+// Test adding key/value
 func testRedisClientSetFromMetadata(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
@@ -64,11 +64,11 @@ func testRedisClientSetFromMetadata(t *testing.T) {
 	}
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
-		// 检查结果是否正确 - HMSET命令返回OK表示成功
+		// Check if the result is correct - HMSET command returns OK, indicating success
 		assert.Equal(t, "OK", msg.GetData())
 	})
 	metaData := types.NewMetadata()
-	// 在元数据中添加参数
+	// Add parameters to the metadata
 	metaData.PutValue("key", "test")
 	metaData.PutValue("value", `{"aa":"lala"}`)
 	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, "")
@@ -78,7 +78,7 @@ func testRedisClientSetFromMetadata(t *testing.T) {
 
 }
 
-// 测试添加key/value ,value使用msg payload
+// Test adds key/value, and the value uses msg payload
 func testRedisClientSetFromData(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
@@ -93,11 +93,11 @@ func testRedisClientSetFromData(t *testing.T) {
 	}
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
-		// 检查结果是否正确 - HMSET命令返回OK表示成功
+		// Check if the result is correct - HMSET command returns OK, indicating success
 		assert.Equal(t, "OK", msg.GetData())
 	})
 	metaData := types.NewMetadata()
-	// 在元数据中添加参数
+	// Add parameters to the metadata
 	metaData.PutValue("key", "test")
 	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, `{"aa":"lala"}`)
 	node.OnMsg(ctx, msg)
@@ -106,7 +106,7 @@ func testRedisClientSetFromData(t *testing.T) {
 
 }
 
-// 测试获取key
+// Test to obtain keys
 func testRedisClientGetOnMsg(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
@@ -121,11 +121,11 @@ func testRedisClientGetOnMsg(t *testing.T) {
 	}
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
-		// 检查结果是否正确
+		// Check if the results are correct
 		assert.Equal(t, `{"aa":"lala"}`, msg.GetData())
 	})
 	metaData := types.NewMetadata()
-	// 在元数据中添加参数
+	// Add parameters to the metadata
 	metaData.PutValue("key", "test")
 	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, "")
 	node.OnMsg(ctx, msg)
@@ -134,7 +134,7 @@ func testRedisClientGetOnMsg(t *testing.T) {
 
 }
 
-// 测试删除key
+// Test to delete key
 func testRedisClientDelOnMsg(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
@@ -149,11 +149,11 @@ func testRedisClientDelOnMsg(t *testing.T) {
 	}
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
-		// 检查结果是否正确 - DEL命令返回删除的键数量
+		// Check if the result is correct - DEL commands return the number of keys deleted
 		assert.Equal(t, "1", msg.GetData())
 	})
 	metaData := types.NewMetadata()
-	// 在元数据中添加参数
+	// Add parameters to the metadata
 	metaData.PutValue("key", "test")
 	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, "")
 	node.OnMsg(ctx, msg)
@@ -176,11 +176,11 @@ func testRedisClientHMSet(t *testing.T) {
 	}
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
-		// 检查结果是否正确 - HMSET命令返回OK表示成功
+		// Check if the result is correct - HMSET command returns OK, indicating success
 		assert.Equal(t, "OK", msg.GetData())
 	})
 	metaData := types.NewMetadata()
-	// 在元数据中添加参数
+	// Add parameters to the metadata
 	metaData.PutValue("key", "test")
 	metaData.PutValue("value", `{"aa":"lala"}`)
 	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, "")
@@ -189,11 +189,11 @@ func testRedisClientHMSet(t *testing.T) {
 	time.Sleep(time.Second * 1)
 }
 
-// testRedisClientParamsMixedExpression 测试params数组中同时包含静态参数和表达式参数
+// testRedisClientParamsMixedExpression: The test params array contains both static parameters and expression parameters
 func testRedisClientParamsMixedExpression(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
-	// 使用混合参数：静态参数和表达式参数
+	// Use mixed parameters: static parameters and expression parameters
 	configuration["Cmd"] = "HMSET"
 	configuration["Params"] = []interface{}{"static_hash_key", "field1", "${metadata.value1}", "field2", "static_value", "field3", "${msg}"}
 	configuration["PoolSize"] = 10
@@ -205,11 +205,11 @@ func testRedisClientParamsMixedExpression(t *testing.T) {
 	}
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
-		// 检查结果是否正确 - HMSET命令返回OK表示成功
+		// Check if the result is correct - HMSET command returns OK, indicating success
 		assert.Equal(t, "OK", msg.GetData())
 	})
 	metaData := types.NewMetadata()
-	// 在元数据中添加动态参数
+	// Add dynamic parameters to the metadata
 	metaData.PutValue("value1", "dynamic_value_from_metadata")
 	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, "dynamic_value_from_msg")
 	node.OnMsg(ctx, msg)
@@ -217,11 +217,11 @@ func testRedisClientParamsMixedExpression(t *testing.T) {
 	time.Sleep(time.Second * 1)
 }
 
-// testRedisClientCmdParamsCombo 测试cmd表达式与params表达式的组合使用
+// testRedisClientCmdParamsCombo tests the combination of cmd and params expressions
 func testRedisClientCmdParamsCombo(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
-	// cmd使用表达式，params也使用表达式
+	// cmd uses expressions, and params also uses expressions
 	configuration["Cmd"] = "${metadata.cmd_type}"
 	configuration["Params"] = []interface{}{"${metadata.hash_name}", "${metadata.field_name}", "${msg}"}
 	configuration["PoolSize"] = 10
@@ -233,11 +233,11 @@ func testRedisClientCmdParamsCombo(t *testing.T) {
 	}
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
-		// 检查结果是否正确
+		// Check if the results are correct
 		assert.Equal(t, "1", msg.GetData())
 	})
 	metaData := types.NewMetadata()
-	// 在元数据中添加cmd和params的动态参数
+	// Add dynamic parameters for cmd and params to the metadata
 	metaData.PutValue("cmd_type", "HSET")
 	metaData.PutValue("hash_name", "combo_test_hash")
 	metaData.PutValue("field_name", "combo_field")
@@ -247,19 +247,19 @@ func testRedisClientCmdParamsCombo(t *testing.T) {
 	time.Sleep(time.Second * 1)
 }
 
-// testRedisClientEdgeCases 测试边界情况 - 初始化失败和边界行为
+// testRedisClientEdgeCases tests boundary conditions - initialization failures and boundary behavior
 func testRedisClientEdgeCases(t *testing.T) {
-	// 测试1: 初始化失败 - 空Cmd
+	// Test 1: Initialization failure - empty cmd
 	t.Run("InitFailureEmptyCmd", func(t *testing.T) {
 		var node ClientNode
 		var configuration = make(types.Configuration)
-		configuration["Cmd"] = "" // 空命令应该导致初始化失败
+		configuration["Cmd"] = "" // An empty command should cause initialization failure
 		configuration["Params"] = []interface{}{"test_key", "test_value"}
 		configuration["PoolSize"] = 10
 		configuration["Server"] = "127.0.0.1:6379"
 		config := types.NewConfig()
 		err := node.Init(config, configuration)
-		// 应该初始化失败
+		// Initialization should fail
 		if err == nil {
 			t.Errorf("expected initialization to fail for empty cmd")
 		}
@@ -268,17 +268,17 @@ func testRedisClientEdgeCases(t *testing.T) {
 		}
 	})
 
-	// 测试2: 初始化失败 - nil参数
+	// Test 2: Initialization failed - nil parameters
 	t.Run("InitFailureNilParam", func(t *testing.T) {
 		var node ClientNode
 		var configuration = make(types.Configuration)
 		configuration["Cmd"] = "SET"
-		configuration["Params"] = []interface{}{"test_key", nil} // nil参数应该导致初始化失败
+		configuration["Params"] = []interface{}{"test_key", nil} // The nil parameter should cause initialization failure
 		configuration["PoolSize"] = 10
 		configuration["Server"] = "127.0.0.1:6379"
 		config := types.NewConfig()
 		err := node.Init(config, configuration)
-		// 应该初始化失败
+		// Initialization should fail
 		if err == nil {
 			t.Errorf("expected initialization to fail for nil param")
 		}
@@ -287,7 +287,7 @@ func testRedisClientEdgeCases(t *testing.T) {
 		}
 	})
 
-	// 测试3: 成功初始化但测试不存在的元数据字段
+	// Test 3: Successfully initialized but tested for metadata fields that do not exist
 	t.Run("NonExistentMetadata", func(t *testing.T) {
 		var node ClientNode
 		var configuration = make(types.Configuration)
@@ -301,7 +301,7 @@ func testRedisClientEdgeCases(t *testing.T) {
 			t.Errorf("err=%s", err)
 		}
 		ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
-			// 不存在的字段应该被替换为空字符串或保持原样
+			// Fields that don't exist should be replaced with empty strings or left as is
 			assert.Equal(t, types.Success, relationType)
 		})
 		metaData := types.NewMetadata()
@@ -310,7 +310,7 @@ func testRedisClientEdgeCases(t *testing.T) {
 		time.Sleep(time.Millisecond * 500)
 	})
 
-	// 测试3: 复杂嵌套表达式
+	// Test 3: Complex nested expressions
 	t.Run("ComplexNestedExpression", func(t *testing.T) {
 		var node ClientNode
 		var configuration = make(types.Configuration)
@@ -324,12 +324,12 @@ func testRedisClientEdgeCases(t *testing.T) {
 			t.Errorf("err=%s", err)
 		}
 		ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
-			// 输出详细信息用于调试
+			// Detailed output information is used for debugging
 			t.Logf("RelationType: %s, Data: %s", relationType, msg.GetData())
 			if err2 != nil {
 				t.Logf("Error: %s", err2.Error())
 			}
-			// 严格断言：Redis服务器可用，命令应该成功执行
+			// Strict assertion: Redis servers are available, and commands should be executed successfully
 			if err2 != nil {
 				t.Errorf("Unexpected error: %s", err2.Error())
 			}
@@ -346,11 +346,11 @@ func testRedisClientEdgeCases(t *testing.T) {
 	})
 }
 
-// testRedisClientCmdExpression 测试cmd字段使用表达式动态生成Redis命令
+// testRedisClientCmdExpression The test cmd field uses expressions to dynamically generate Redis commands
 func testRedisClientCmdExpression(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
-	// 使用表达式动态生成cmd命令
+	// Use expressions to dynamically generate cmd commands
 	configuration["Cmd"] = "${metadata.operation}"
 	configuration["Params"] = []interface{}{"${metadata.key}", "${metadata.value}"}
 	configuration["PoolSize"] = 10
@@ -362,11 +362,11 @@ func testRedisClientCmdExpression(t *testing.T) {
 	}
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
-		// 检查结果是否正确
+		// Check if the results are correct
 		assert.Equal(t, "OK", msg.GetData())
 	})
 	metaData := types.NewMetadata()
-	// 在元数据中添加动态命令参数
+	// Add dynamic command parameters to the metadata
 	metaData.PutValue("operation", "SET")
 	metaData.PutValue("key", "test_cmd_expr_key")
 	metaData.PutValue("value", "test_cmd_expr_value")
@@ -376,11 +376,11 @@ func testRedisClientCmdExpression(t *testing.T) {
 	time.Sleep(time.Second * 1)
 }
 
-// testRedisClientCmdWithParamsExpression 测试cmd字段包含命令和参数的复杂表达式
+// testRedisClientCmdWithParamsExpression The test cmd field contains complex expressions for commands and parameters
 func testRedisClientCmdWithParamsExpression(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
-	// 使用表达式在cmd中包含命令和参数
+	// Use expressions to include commands and parameters in cmd
 	configuration["Cmd"] = "SETEX"
 	configuration["Params"] = []interface{}{"${metadata.key}", "${metadata.ttl}", "${metadata.value}"}
 	configuration["PoolSize"] = 10
@@ -392,11 +392,11 @@ func testRedisClientCmdWithParamsExpression(t *testing.T) {
 	}
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
-		// 检查结果是否正确
+		// Check if the results are correct
 		assert.Equal(t, "OK", msg.GetData())
 	})
 	metaData := types.NewMetadata()
-	// 在元数据中添加参数
+	// Add parameters to the metadata
 	metaData.PutValue("key", "test_cmd_with_params_key")
 	metaData.PutValue("value", "test_cmd_with_params_value")
 	metaData.PutValue("ttl", "300")
@@ -420,11 +420,11 @@ func testRedisClientHMGet(t *testing.T) {
 	}
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
-		// 检查结果是否正确
+		// Check if the results are correct
 		assert.Equal(t, "[\"value1\"]", msg.GetData())
 	})
 	metaData := types.NewMetadata()
-	// 在元数据中添加参数
+	// Add parameters to the metadata
 	metaData.PutValue("key", "test")
 	metaData.PutValue("value", `{"aa":"lala"}`)
 	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, "")
@@ -447,7 +447,7 @@ func testRedisClientHMSetFromExpr(t *testing.T) {
 	}
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
-		// 检查结果是否正确
+		// Check if the results are correct
 		assert.Equal(t, "OK", msg.GetData())
 	})
 	metaData := types.NewMetadata()
@@ -470,7 +470,7 @@ func testRedisClientHMGetFromExpr(t *testing.T) {
 	}
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
-		// 检查结果是否正确
+		// Check if the results are correct
 		assert.Equal(t, "[\"value1\"]", msg.GetData())
 	})
 	metaData := types.NewMetadata()
@@ -492,7 +492,7 @@ func testRedisClientFlushDB(t *testing.T) {
 	}
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
-		// 检查结果是否正确
+		// Check if the results are correct
 		assert.Equal(t, "OK", msg.GetData())
 	})
 	metaData := types.NewMetadata()
@@ -502,11 +502,11 @@ func testRedisClientFlushDB(t *testing.T) {
 	time.Sleep(time.Second * 1)
 }
 
-// 测试新的el.Template功能 - 命令和参数一起提供
+// Test the new el.Template function - Provides commands and parameters together
 func testRedisClientTemplateSetWithCombinedCmd(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
-	// 使用新的模板功能，命令和参数一起提供
+	// Using new template features, commands and parameters are provided together
 	configuration["Cmd"] = "SET ${metadata.key} ${metadata.value}"
 	configuration["PoolSize"] = 10
 	configuration["Server"] = "127.0.0.1:6379"
@@ -517,11 +517,11 @@ func testRedisClientTemplateSetWithCombinedCmd(t *testing.T) {
 	}
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
-		// 检查结果是否正确
+		// Check if the results are correct
 		assert.Equal(t, "OK", msg.GetData())
 	})
 	metaData := types.NewMetadata()
-	// 在元数据中添加参数
+	// Add parameters to the metadata
 	metaData.PutValue("key", "test_template_key")
 	metaData.PutValue("value", "test_template_value")
 	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, "")
@@ -530,7 +530,7 @@ func testRedisClientTemplateSetWithCombinedCmd(t *testing.T) {
 	time.Sleep(time.Second * 1)
 }
 
-// 测试新的el.Template功能 - 使用Params模板
+// Test the new el.Template feature - Use Params templates
 func testRedisClientTemplateWithParams(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
@@ -545,11 +545,11 @@ func testRedisClientTemplateWithParams(t *testing.T) {
 	}
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
-		// 检查结果是否正确
+		// Check if the results are correct
 		assert.Equal(t, "OK", msg.GetData())
 	})
 	metaData := types.NewMetadata()
-	// 在元数据中添加参数
+	// Add parameters to the metadata
 	metaData.PutValue("key", "test_params_template")
 	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, "template_message_data")
 	node.OnMsg(ctx, msg)
@@ -557,11 +557,11 @@ func testRedisClientTemplateWithParams(t *testing.T) {
 	time.Sleep(time.Second * 1)
 }
 
-// 测试复杂的Redis命令模板
+// Test complex Redis command templates
 func testRedisClientTemplateComplexCmd(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
-	// 测试复杂的Redis命令，包含多个参数
+	// Testing complex Redis commands containing multiple parameters
 	configuration["Cmd"] = "SETEX ${metadata.key} ${metadata.ttl} ${msg}"
 	configuration["PoolSize"] = 10
 	configuration["Server"] = "127.0.0.1:6379"
@@ -572,11 +572,11 @@ func testRedisClientTemplateComplexCmd(t *testing.T) {
 	}
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
-		// 检查结果是否正确
+		// Check if the results are correct
 		assert.Equal(t, "OK", msg.GetData())
 	})
 	metaData := types.NewMetadata()
-	// 在元数据中添加参数
+	// Add parameters to the metadata
 	metaData.PutValue("key", "test_complex_key")
 	metaData.PutValue("ttl", "60")
 	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, "complex_value_with_expiry")
@@ -585,12 +585,12 @@ func testRedisClientTemplateComplexCmd(t *testing.T) {
 	time.Sleep(time.Second * 1)
 }
 
-// 测试向后兼容性 - ParamsExpr仍然工作
+// Testing backward compatibility – ParamsExpr is still working
 func testRedisClientBackwardCompatibility(t *testing.T) {
 	var node ClientNode
 	var configuration = make(types.Configuration)
 	configuration["cmd"] = "HMSET"
-	configuration["paramsExpr"] = "msg" // 使用旧的ParamsExpr
+	configuration["paramsExpr"] = "msg" // Use the old ParamsExpr
 	configuration["poolSize"] = 10
 	configuration["server"] = "127.0.0.1:6379"
 	config := types.NewConfig()
@@ -600,7 +600,7 @@ func testRedisClientBackwardCompatibility(t *testing.T) {
 	}
 	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
 		assert.Equal(t, types.Success, relationType)
-		// 检查结果是否正确
+		// Check if the results are correct
 		assert.Equal(t, "OK", msg.GetData())
 	})
 	metaData := types.NewMetadata()

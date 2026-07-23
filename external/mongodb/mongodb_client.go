@@ -50,51 +50,51 @@ const (
 	KeyId         = "_id"
 )
 
-// 注册节点
+// Register the node
 func init() {
 	_ = rulego.Registry.Register(&ClientNode{})
 }
 
-// ClientNodeConfiguration 节点配置
-// ClientNodeConfiguration MongoDB客户端节点配置结构体
+// ClientNodeConfiguration node configuration
+// ClientNodeConfiguration MongoDB client node configuration structure
 type ClientNodeConfiguration struct {
-	// Server MongoDB服务器连接地址
+	// Server MongoDB server connection address
 	Server string `json:"server" label:"Server" desc:"MongoDB connection string, e.g. mongodb://user:pass@localhost:27017" required:"true" ref:"primary"`
-	// Database 数据库名称
+	// Database name
 	Database string `json:"database" label:"Database" desc:"Database name. Supports ${metadata.key} and ${msg.key} substitution" required:"true"`
-	// Collection 集合名称
+	// Collection name
 	Collection string `json:"collection" label:"Collection" desc:"Collection name. Supports ${metadata.key} and ${msg.key} substitution" required:"true"`
-	// OpType 操作类型
+	// OpType operation type
 	OpType string `json:"opType" label:"Op Type" desc:"Operation type: INSERT, UPDATE, DELETE, QUERY" required:"true"`
-	// Filter 过滤条件
+	// Filter: Filter conditions
 	Filter string `json:"filter" label:"Filter" desc:"MongoDB filter query. Supports ${metadata.key} and ${msg.key} substitution"`
-	// Doc 更新或插入的文档内容
+	// Doc: Updated or inserted document content
 	Doc string `json:"doc" label:"Document" desc:"Document for insert/update. Supports ${metadata.key} and ${msg.key} substitution"`
-	// One 是否只操作单条数据
+	// One: Whether to operate only single data entries
 	One bool `json:"one" label:"One" desc:"true=operate single document, false=operate multiple"`
 }
 
-// ClientNode mongodb客户端组件，可以对mongodb进行增删改查操作
+// ClientNode mongodb client component, which can perform add, delete, modify, and query operations on mongodb
 type ClientNode struct {
 	base.SharedNode[*mongo.Client]
-	// 节点配置
+	// Node configuration
 	Config ClientNodeConfiguration
-	// DatabaseNameTemplate 数据库名称模板，用于解析动态数据库名称
+	// DatabaseNameTemplate: A database name template used to parse dynamic database names
 	// DatabaseNameTemplate template for resolving dynamic database names
 	DatabaseNameTemplate el.Template
-	// CollectionNameTemplate 集合名称模板，用于解析动态集合名称
+	// CollectionNameTemplate: A collection name template used to resolve dynamic collection names
 	// CollectionNameTemplate template for resolving dynamic collection names
 	CollectionNameTemplate el.Template
-	// 过滤
+	// Filter
 	FilterTemplate *el.ExprTemplate
-	// 文档
+	// Documentation
 	DocTemplate *el.ExprTemplate
-	// hasVar 标识模板是否包含变量
+	// hasVar identifies whether the template contains variables
 	// hasVar indicates whether the template contains variables
 	hasVar bool
 }
 
-// Type 返回组件类型
+// Type returns the component type
 func (x *ClientNode) Type() string {
 	return "x/mongodbClient"
 }
@@ -109,7 +109,7 @@ func (x *ClientNode) New() types.Node {
 	}}
 }
 
-// Init 初始化组件
+// Init initializes the component
 func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err != nil {
@@ -165,17 +165,17 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 			}
 		}
 	}
-	// 初始化客户端
+	// Initialize the client
 	_ = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*mongo.Client, error) {
 		return x.initClient()
 	}, func(client *mongo.Client) error {
-		// 清理回调函数
+		// Cleanup callback function
 		return client.Disconnect(context.TODO())
 	})
 	return nil
 }
 
-// OnMsg 处理消息
+// OnMsg processes a message
 func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	if client, err := x.SharedNode.GetSafely(); err != nil {
 		ctx.TellFailure(msg, err)
@@ -189,12 +189,12 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	}
 }
 
-// ProcessMessage 处理消息，执行查询、更新或删除操作
+// ProcessMessage handles messages and performs queries, updates, or deletion operations
 func (x *ClientNode) processMessage(ctx types.RuleContext, evn map[string]interface{}, collection *mongo.Collection, msg types.RuleMsg, opType string) {
-	// 转换为大写以支持大小写不敏感
+	// Convert to uppercase to support case-insensitivity
 	opTypeUpper := strings.ToUpper(opType)
 
-	// 根据操作类型执行不同的操作
+	// Different operations are performed depending on the type of operation
 	switch opTypeUpper {
 	case INSERT:
 		x.insert(ctx, evn, collection, msg)
@@ -229,7 +229,7 @@ func (x *ClientNode) toBsonM(evn map[string]interface{}, template *el.ExprTempla
 	}
 }
 
-// tryConvertId 尝试将_id转换为ObjectID
+// tryConvertId attempts to convert _id to ObjectID
 func (x *ClientNode) tryConvertId(m map[string]interface{}) {
 	if id, ok := m[KeyId]; ok {
 		if idStr, ok := id.(string); ok {
@@ -237,7 +237,7 @@ func (x *ClientNode) tryConvertId(m map[string]interface{}) {
 				m[KeyId] = oid
 			}
 		} else if idMap, ok := id.(map[string]interface{}); ok {
-			// 处理嵌套的 map，例如 {"$in": ["id1", "id2"]}
+			// Handling nested maps, for example {"$in": ["id1", "id2"]}
 			x.convertNestedId(idMap)
 		} else if idMap, ok := id.(bson.M); ok {
 			x.convertNestedId(map[string]interface{}(idMap))
@@ -245,10 +245,10 @@ func (x *ClientNode) tryConvertId(m map[string]interface{}) {
 	}
 }
 
-// convertNestedId 递归处理嵌套的 _id 查询条件
+// convertNestedId recursively handles nested _id query conditions
 func (x *ClientNode) convertNestedId(m map[string]interface{}) {
 	for k, v := range m {
-		// 处理数组类型的值，例如 $in, $nin
+		// Handles array type values, such as $in, $nin
 		if k == "$in" || k == "$nin" {
 			if vList, ok := v.([]interface{}); ok {
 				for i, item := range vList {
@@ -268,7 +268,7 @@ func (x *ClientNode) convertNestedId(m map[string]interface{}) {
 				}
 			}
 		} else if k == "$eq" || k == "$ne" || k == "$gt" || k == "$gte" || k == "$lt" || k == "$lte" {
-			// 处理单个值类型，例如 $eq, $ne
+			// Handles single value types, such as $eq, $ne
 			if itemStr, ok := v.(string); ok {
 				if oid, err := primitive.ObjectIDFromHex(itemStr); err == nil {
 					m[k] = oid
@@ -310,7 +310,7 @@ func (x *ClientNode) processBsonList(out interface{}) ([]interface{}, error) {
 		}
 		return interfaceList, nil
 	} else if s, ok := out.(string); ok {
-		// 尝试解析为JSON数组
+		// Try parsing it as a JSON array
 		var r []bson.M
 		if err := bson.UnmarshalExtJSON([]byte(s), true, &r); err == nil {
 			var interfaceList []interface{}
@@ -320,7 +320,7 @@ func (x *ClientNode) processBsonList(out interface{}) ([]interface{}, error) {
 			}
 			return interfaceList, nil
 		}
-		// 尝试解析为单个JSON对象
+		// Try parsing it as a single JSON object
 		var single bson.M
 		if err := bson.UnmarshalExtJSON([]byte(s), true, &single); err == nil {
 			x.tryConvertId(single)
@@ -333,7 +333,7 @@ func (x *ClientNode) processBsonList(out interface{}) ([]interface{}, error) {
 }
 
 func (x *ClientNode) insert(ctx types.RuleContext, evn map[string]interface{}, collection *mongo.Collection, msg types.RuleMsg) {
-	// 检查DocTemplate是否为空
+	// Check whether the DocTemplate is empty
 	if x.DocTemplate == nil {
 		ctx.TellFailure(msg, errors.New("doc template is required for INSERT operation"))
 		return
@@ -343,7 +343,7 @@ func (x *ClientNode) insert(ctx types.RuleContext, evn map[string]interface{}, c
 		if doc, err := x.toBsonM(evn, x.DocTemplate); err != nil {
 			ctx.TellFailure(msg, err)
 		} else {
-			// 插入文档
+			// Insert document
 			_, err = collection.InsertOne(ctx.GetContext(), doc)
 			if err != nil {
 				ctx.TellFailure(msg, err)
@@ -355,7 +355,7 @@ func (x *ClientNode) insert(ctx types.RuleContext, evn map[string]interface{}, c
 		if docs, err := x.toBsonMList(evn, x.DocTemplate); err != nil {
 			ctx.TellFailure(msg, err)
 		} else {
-			// 插入多个文档
+			// Insert multiple documents
 			_, err = collection.InsertMany(ctx.GetContext(), docs)
 			if err != nil {
 				ctx.TellFailure(msg, err)
@@ -367,7 +367,7 @@ func (x *ClientNode) insert(ctx types.RuleContext, evn map[string]interface{}, c
 }
 
 func (x *ClientNode) query(ctx types.RuleContext, evn map[string]interface{}, collection *mongo.Collection, msg types.RuleMsg) {
-	// 检查FilterTemplate是否为空
+	// Check if FilterTemplate is empty
 	if x.FilterTemplate == nil {
 		ctx.TellFailure(msg, errors.New("filter template is required for QUERY operation"))
 		return
@@ -377,7 +377,7 @@ func (x *ClientNode) query(ctx types.RuleContext, evn map[string]interface{}, co
 		ctx.TellFailure(msg, err)
 	} else {
 		if x.Config.One {
-			// 查询单个文档
+			// Query individual documents
 			var result bson.M
 			if err := collection.FindOne(ctx.GetContext(), filter).Decode(&result); err != nil {
 				ctx.TellFailure(msg, err)
@@ -386,7 +386,7 @@ func (x *ClientNode) query(ctx types.RuleContext, evn map[string]interface{}, co
 				ctx.TellSuccess(msg)
 			}
 		} else {
-			// 查询文档列表
+			// Query the list of documents
 			cursor, err := collection.Find(ctx.GetContext(), filter)
 			if err != nil {
 				ctx.TellFailure(msg, err)
@@ -404,7 +404,7 @@ func (x *ClientNode) query(ctx types.RuleContext, evn map[string]interface{}, co
 	}
 }
 func (x *ClientNode) update(ctx types.RuleContext, evn map[string]interface{}, collection *mongo.Collection, msg types.RuleMsg) {
-	// 检查DocTemplate和FilterTemplate是否为空
+	// Check whether DocTemplate and FilterTemplate are empty
 	if x.DocTemplate == nil {
 		ctx.TellFailure(msg, errors.New("doc template is required for UPDATE operation"))
 		return
@@ -427,7 +427,7 @@ func (x *ClientNode) update(ctx types.RuleContext, evn map[string]interface{}, c
 		return
 	}
 	if x.Config.One {
-		// 更新单个文档
+		// Update individual documents
 		if updateResult, err := collection.UpdateOne(ctx.GetContext(), filter, bson.M{"$set": doc}); err != nil {
 			ctx.TellFailure(msg, err)
 		} else {
@@ -447,7 +447,7 @@ func (x *ClientNode) update(ctx types.RuleContext, evn map[string]interface{}, c
 
 }
 func (x *ClientNode) delete(ctx types.RuleContext, evn map[string]interface{}, collection *mongo.Collection, msg types.RuleMsg) {
-	// 检查FilterTemplate是否为空
+	// Check if FilterTemplate is empty
 	if x.FilterTemplate == nil {
 		ctx.TellFailure(msg, errors.New("filter template is required for DELETE operation"))
 		return
@@ -457,7 +457,7 @@ func (x *ClientNode) delete(ctx types.RuleContext, evn map[string]interface{}, c
 		ctx.TellFailure(msg, err)
 	} else {
 		if x.Config.One {
-			// 删除文档
+			// Delete the document
 			if deleteResult, err := collection.DeleteOne(ctx.GetContext(), filter); err != nil {
 				ctx.TellFailure(msg, err)
 				return
@@ -486,12 +486,12 @@ func (x *ClientNode) Desc() string {
 	return "MongoDB client for CRUD operations. OpType: INSERT, UPDATE, DELETE, QUERY. All fields support ${metadata.key} and ${msg.key} substitution. Routes to Success/Failure"
 }
 
-// initClient 初始化客户端
+// initClient initializes the client
 func (x *ClientNode) initClient() (*mongo.Client, error) {
 	var err error
 	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(x.Config.Server))
 	if err == nil {
-		// 测试连接
+		// Test the connection
 		err = client.Ping(context.TODO(), nil)
 	}
 	return client, err

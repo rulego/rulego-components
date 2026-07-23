@@ -29,7 +29,7 @@ const (
 	ListTubes  = "ListTubes"
 )
 
-// 注册节点
+// Register the node
 func init() {
 	_ = rulego.Registry.Register(&WorkerNode{})
 }
@@ -44,7 +44,7 @@ type WorkerMsgParams struct {
 	Bound int
 }
 
-// WorkerConfiguration 节点配置
+// WorkerConfiguration node configuration
 type WorkerConfiguration struct {
 	Server string `json:"server" label:"Server" desc:"Beanstalkd server address, format: host:port" required:"true" ref:"primary"`
 	Tube   string `json:"tube" label:"Tube" desc:"Tube name" required:"true"`
@@ -54,36 +54,36 @@ type WorkerConfiguration struct {
 	Delay  string `json:"delay" label:"Delay (s)" desc:"Delay for release command, in seconds"`
 }
 
-// WorkerNode 客户端节点，
-// 成功：转向Success链，发送消息执行结果存放在msg.Data
-// 失败：转向Failure链
+// WorkerNode client node,
+// Success: Switch to the Success chain, send the message execution result, and store it in msg.Data
+// Failure: Switch to the Failure chain
 type WorkerNode struct {
 	base.SharedNode[*beanstalk.Conn]
-	//节点配置
+	//Node configuration
 	Config WorkerConfiguration
-	// tubeTemplate Tube名称模板，用于解析动态Tube名称
+	// tubeTemplate Tube name template, used to parse dynamic tube names
 	// tubeTemplate template for resolving dynamic tube names
 	tubeTemplate el.Template
-	// jobIdTemplate 作业ID模板，用于解析动态作业ID
+	// jobIdTemplate: A job ID template used to parse dynamic job IDs
 	// jobIdTemplate template for resolving dynamic job IDs
 	jobIdTemplate el.Template
-	// putPriTemplate 优先级模板，用于解析动态优先级
+	// putPriTemplate priority template, used to resolve dynamic priorities
 	// putPriTemplate template for resolving dynamic priority
 	putPriTemplate el.Template
-	// putDelayTemplate 延迟时间模板，用于解析动态延迟时间
+	// putDelayTemplate is used to resolve dynamic delay times
 	// putDelayTemplate template for resolving dynamic delay time
 	putDelayTemplate el.Template
-	// hasVar 标识模板是否包含变量，用于优化性能
+	// hasVar identifies whether the template contains variables used to optimize performance
 	// hasVar indicates whether the template contains variables for performance optimization
 	hasVar bool
 }
 
-// Type 返回组件类型
+// Type returns the component type
 func (x *WorkerNode) Type() string {
 	return "x/beanstalkdWorker"
 }
 
-// New 默认参数
+// New default parameters
 func (x *WorkerNode) New() types.Node {
 	return &WorkerNode{Config: WorkerConfiguration{
 		Server: "127.0.0.1:11300",
@@ -92,18 +92,18 @@ func (x *WorkerNode) New() types.Node {
 	}}
 }
 
-// Init 初始化组件
+// Init initializes the component
 func (x *WorkerNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err == nil {
-		//初始化客户端
+		//Initialize the client
 		err = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, false, func() (*beanstalk.Conn, error) {
 			return x.initClient()
 		}, func(conn *beanstalk.Conn) error {
 			return conn.Close()
 		})
 	}
-	//初始化模板
+	//Initialize the template
 	x.tubeTemplate, err = el.NewTemplate(x.Config.Tube)
 	if err != nil {
 		return err
@@ -120,12 +120,12 @@ func (x *WorkerNode) Init(ruleConfig types.Config, configuration types.Configura
 	if err != nil {
 		return err
 	}
-	// 检查是否有任何模板包含变量
+	// Check if any templates contain variables
 	x.hasVar = x.tubeTemplate.HasVar() || x.putPriTemplate.HasVar() || x.putDelayTemplate.HasVar() || x.jobIdTemplate.HasVar()
 	return err
 }
 
-// OnMsg 处理消息
+// OnMsg processes a message
 func (x *WorkerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	x.Locker.Lock()
 	defer x.Locker.Unlock()
@@ -235,7 +235,7 @@ func (x *WorkerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	}
 }
 
-// getParams 获取参数
+// getParams to get the parameters
 func (x *WorkerNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*WorkerMsgParams, error) {
 	var (
 		err    error
@@ -254,18 +254,18 @@ func (x *WorkerNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*Worke
 	if x.hasVar {
 		evn = base.NodeUtils.GetEvnAndMetadata(ctx, msg)
 	}
-	// 获取tube参数
+	// Get the tube parameters
 	if !x.tubeTemplate.IsNotVar() {
 		tube = x.tubeTemplate.ExecuteAsString(evn)
 	} else if len(x.Config.Tube) > 0 {
 		tube = x.Config.Tube
 	}
-	// 获取jobId参数
+	// Get the jobId parameter
 	if !x.jobIdTemplate.IsNotVar() {
 		tmp := x.jobIdTemplate.ExecuteAsString(evn)
 		id, err = strconv.ParseUint(tmp, 10, 64)
 	}
-	// 获取优先级参数
+	// Obtain priority parameters
 	var ti int
 	if !x.putPriTemplate.IsNotVar() {
 		tmp := x.putPriTemplate.ExecuteAsString(evn)
@@ -278,7 +278,7 @@ func (x *WorkerNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*Worke
 	if err != nil {
 		return nil, err
 	}
-	// 获取延迟参数
+	// Obtain delay parameters
 	if !x.putDelayTemplate.IsNotVar() {
 		tmp := x.putDelayTemplate.ExecuteAsString(evn)
 		delay, err = time.ParseDuration(tmp)
@@ -288,7 +288,7 @@ func (x *WorkerNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*Worke
 	if err != nil {
 		return nil, err
 	}
-	// 更新参数
+	// Update parameters
 	params.Id = id
 	params.Tube = tube
 	params.Pri = pri
@@ -296,14 +296,14 @@ func (x *WorkerNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*Worke
 	return &params, nil
 }
 
-// Printf 打印日志
+// Printf prints logs
 func (x *WorkerNode) Printf(format string, v ...interface{}) {
 	if x.RuleConfig.Logger != nil {
 		x.RuleConfig.Logger.Printf(format, v...)
 	}
 }
 
-// 初始化连接
+// Initialize the connection
 func (x *WorkerNode) initClient() (*beanstalk.Conn, error) {
 	conn, err := beanstalk.Dial("tcp", x.Config.Server)
 	if err != nil {

@@ -58,12 +58,12 @@ func TestQueryNode(t *testing.T) {
 		assert.Equal(t, "select * from cpu_load", node.(*QueryNode).Config.Command)
 	})
 	t.Run("OnMsg", func(t *testing.T) {
-		// 如果设置了跳过 OpenGemini 测试，则跳过
+		// If you set to skip OpenGemini tests, you will skip them
 		if os.Getenv("SKIP_OPENGEMINI_TESTS") == "true" {
 			t.Skip("Skipping OpenGemini tests")
 		}
 
-		// 检查是否有可用的 OpenGemini 服务器
+		// Check if there are available OpenGemini servers
 		server := os.Getenv("OPENGEMINI_SERVER")
 		if server == "" {
 			server = "127.0.0.1:8086"
@@ -100,37 +100,37 @@ func TestQueryNode(t *testing.T) {
 				Node:    node1,
 				MsgList: msgList,
 				Callback: func(msg types.RuleMsg, relationType string, err error) {
-					// 允许连接失败，因为可能没有可用的服务器
+					// Allow connection failures because there may be no available servers
 					if err != nil {
 						t.Skipf("OpenGemini server not available: %v", err)
 						return
 					}
-					// 查询可能成功也可能失败（如果表不存在），都是正常情况
+					// Queries may succeed or fail (if the table does not exist), which is normal
 					assert.True(t, relationType == types.Success || relationType == types.Failure)
 				},
 			}, {
 				Node:    node2,
 				MsgList: msgList,
 				Callback: func(msg types.RuleMsg, relationType string, err error) {
-					// 允许连接失败，因为可能没有可用的服务器
+					// Allow connection failures because there may be no available servers
 					if err != nil {
 						t.Skipf("OpenGemini server not available: %v", err)
 						return
 					}
-					// 查询可能成功也可能失败（如果表不存在），都是正常情况
+					// Queries may succeed or fail (if the table does not exist), which is normal
 					assert.True(t, relationType == types.Success || relationType == types.Failure)
 				},
 			}, {
 				Node:    node3,
 				MsgList: msgList,
 				Callback: func(msg types.RuleMsg, relationType string, err error) {
-					// 允许连接失败，因为可能没有可用的服务器
+					// Allow connection failures because there may be no available servers
 					if err != nil {
 						t.Skipf("OpenGemini server not available: %v", err)
 						return
 					}
 					assert.Equal(t, types.Failure, relationType)
-					// 检查错误信息而不是消息数据，因为TellFailure将错误信息作为err参数传递
+					// Checking error messages instead of message data because TellFailure passes error messages as err parameters
 					assert.NotNil(t, err)
 					assert.True(t, strings.Contains(err.Error(), "measurement") || strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "xx"))
 				},

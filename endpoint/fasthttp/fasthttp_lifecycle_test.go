@@ -31,17 +31,17 @@ import (
 	"github.com/rulego/rulego/test/assert"
 )
 
-// getAvailablePort 获取可用端口
+// getAvailablePort Gets the available port
 var portCounter int32 = 19080
 
 func getAvailablePort() int {
-	// 使用原子操作递增端口号，确保每个测试使用不同端口
+	// Use atomic operations to increase port numbers to ensure each test uses a different port
 	port := int(atomic.AddInt32(&portCounter, 1))
 	return port
 }
 
 func checkPortAvailable(port int) bool {
-	// 尝试监听端口来检查是否可用
+	// Try listening on ports to check availability
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		return false
@@ -72,46 +72,46 @@ func TestFastHttpSharedNodeLifecycleManagement(t *testing.T) {
 	t.Run("RestartFunctionality", func(t *testing.T) {
 		port := getAvailablePort()
 
-		// 创建端点
+		// Create endpoints
 		ep, err := createTestEndpoint(port)
 		assert.Nil(t, err)
 		defer ep.Destroy()
 
-		// 添加路由
+		// Add routes
 		router := createTestRouter("/test")
 		_, err = ep.AddRouter(router, "GET")
 		assert.Nil(t, err)
 
-		// 启动服务
+		// Start the server
 		err = ep.Start()
 		assert.Nil(t, err)
 
-		// 验证服务正在运行
+		// The verification service is running
 		assert.True(t, ep.Started())
 		assert.NotNil(t, ep.GetServer())
 
-		// 等待服务完全启动
+		// Waiting for the service to fully launch
 		time.Sleep(200 * time.Millisecond)
 
-		// 测试HTTP请求
+		// Test HTTP requests
 		client := &http.Client{Timeout: 5 * time.Second}
 		resp, err := client.Get(fmt.Sprintf("http://localhost:%d/test", port))
 		if err == nil {
 			resp.Body.Close()
 		}
 
-		// 重启服务
+		// Restarting services
 		err = ep.Restart()
 		assert.Nil(t, err)
 
-		// 验证重启后服务仍在运行
+		// After the verification restart, the service is still running
 		assert.True(t, ep.Started())
 		assert.NotNil(t, ep.GetServer())
 
-		// 等待重启完成
+		// Wait for the restart to complete
 		time.Sleep(200 * time.Millisecond)
 
-		// 再次测试HTTP请求
+		// Test the HTTP request again
 		resp, err = client.Get(fmt.Sprintf("http://localhost:%d/test", port))
 		if err == nil {
 			resp.Body.Close()
@@ -131,11 +131,11 @@ func TestFastHttpSharedNodeLifecycleManagement(t *testing.T) {
 		err = ep.Start()
 		assert.Nil(t, err)
 
-		// 等待服务启动
+		// Waiting for the service to start
 		time.Sleep(100 * time.Millisecond)
 		assert.True(t, ep.Started())
 
-		// 优雅关闭
+		// Close gracefully
 		err = ep.Close()
 		assert.Nil(t, err)
 		assert.False(t, ep.Started())
@@ -144,7 +144,7 @@ func TestFastHttpSharedNodeLifecycleManagement(t *testing.T) {
 	t.Run("PortReuseAfterClose", func(t *testing.T) {
 		port := getAvailablePort()
 
-		// 第一个端点
+		// The first endpoint
 		ep1, err := createTestEndpoint(port)
 		assert.Nil(t, err)
 
@@ -156,14 +156,14 @@ func TestFastHttpSharedNodeLifecycleManagement(t *testing.T) {
 		assert.Nil(t, err)
 		time.Sleep(100 * time.Millisecond)
 
-		// 关闭第一个端点
+		// Close the first endpoint
 		err = ep1.Close()
 		assert.Nil(t, err)
 
-		// 等待端口释放
+		// Wait for the port to be released
 		time.Sleep(200 * time.Millisecond)
 
-		// 第二个端点使用同一端口
+		// The second endpoint uses the same port
 		ep2, err := createTestEndpoint(port)
 		assert.Nil(t, err)
 		defer ep2.Destroy()
@@ -193,7 +193,7 @@ func TestFastHttpSharedNodeAdvancedFeatures(t *testing.T) {
 		assert.Nil(t, err)
 		time.Sleep(100 * time.Millisecond)
 
-		// 并发访问测试
+		// Concurrent access testing
 		const numGoroutines = 10
 		var wg sync.WaitGroup
 		successCount := int64(0)
@@ -217,7 +217,7 @@ func TestFastHttpSharedNodeAdvancedFeatures(t *testing.T) {
 		}
 
 		wg.Wait()
-		t.Logf("并发访问测试 - 成功请求数: %d/%d", successCount, numGoroutines)
+		t.Logf("Concurrent Access Test - Number of successful requests: %d/%d", successCount, numGoroutines)
 	})
 
 	t.Run("MultipleRoutes", func(t *testing.T) {
@@ -227,7 +227,7 @@ func TestFastHttpSharedNodeAdvancedFeatures(t *testing.T) {
 		assert.Nil(t, err)
 		defer ep.Destroy()
 
-		// 添加多个路由
+		// Add multiple routes
 		routes := []string{"/api/users", "/api/orders", "/api/products"}
 		for i, route := range routes {
 			router := createTestRouter(route)
@@ -239,7 +239,7 @@ func TestFastHttpSharedNodeAdvancedFeatures(t *testing.T) {
 		assert.Nil(t, err)
 		time.Sleep(100 * time.Millisecond)
 
-		// 测试所有路由
+		// Test all routes
 		client := &http.Client{Timeout: 2 * time.Second}
 		for _, route := range routes {
 			resp, err := client.Get(fmt.Sprintf("http://localhost:%d%s", port, route))
@@ -258,7 +258,7 @@ func TestFastHttpSharedNodeBasicOperations(t *testing.T) {
 		assert.Nil(t, err)
 		defer ep.Destroy()
 
-		// 验证SharedNode初始化
+		// Verify SharedNode initialization
 		assert.True(t, ep.SharedNode.IsInit())
 		assert.NotEqual(t, "", ep.Id())
 		assert.Equal(t, Type, ep.Type())
@@ -276,7 +276,7 @@ func TestFastHttpSharedNodeBasicOperations(t *testing.T) {
 		port := getAvailablePort()
 		serverAddr := fmt.Sprintf(":%d", port)
 
-		// 创建两个使用相同服务器地址的端点实例
+		// Create two endpoint instances using the same server address
 		config := types.Configuration{"server": serverAddr}
 		ruleConfig := types.NewConfig()
 
@@ -290,7 +290,7 @@ func TestFastHttpSharedNodeBasicOperations(t *testing.T) {
 		assert.Nil(t, err)
 		defer ep2.Destroy()
 
-		// 验证它们共享相同的实例ID
+		// Verify that they share the same instance ID
 		assert.Equal(t, ep1.Id(), ep2.Id())
 
 		router1 := createTestRouter("/shared1")
@@ -357,7 +357,7 @@ func TestFastHttpConfigurationVariations(t *testing.T) {
 		assert.Nil(t, err)
 		time.Sleep(100 * time.Millisecond)
 
-		// 测试OPTIONS请求（CORS预检）
+		// Test OPTIONS Request (CORS Pre-Release)
 		client := &http.Client{Timeout: 2 * time.Second}
 		req, _ := http.NewRequest("OPTIONS", fmt.Sprintf("http://localhost:%d/cors-test", port), nil)
 		resp, err := client.Do(req)
@@ -376,10 +376,10 @@ func TestFastHttpErrorHandling(t *testing.T) {
 		ruleConfig := types.NewConfig()
 		ep := &FastHttp{}
 		err := ep.Init(ruleConfig, config)
-		// 初始化可能成功，但启动会失败
+		// Initialization may succeed, but startup will fail
 		if err == nil {
 			err = ep.Start()
-			// 启动可能会失败，这是预期的
+			// The launch might fail, and that's expected
 		}
 		if ep.Started() {
 			ep.Destroy()
@@ -396,11 +396,11 @@ func TestFastHttpErrorHandling(t *testing.T) {
 		assert.Nil(t, err)
 		time.Sleep(100 * time.Millisecond)
 
-		// 第一次关闭
+		// The first time it was closed
 		err = ep.Close()
 		assert.Nil(t, err)
 
-		// 第二次关闭应该也能正常处理
+		// The second shutdown should also handle normally
 		err = ep.Close()
 		assert.Nil(t, err)
 	})
@@ -454,23 +454,23 @@ func TestFastHttpIdempotencyAndSafety(t *testing.T) {
 		assert.Nil(t, err)
 		time.Sleep(100 * time.Millisecond)
 
-		// 验证服务器正在运行
+		// The verification server is running
 		assert.True(t, ep.Started())
 		assert.NotNil(t, ep.GetServer())
 
-		// 第一次关闭
+		// The first time it was closed
 		err = ep.Close()
 		assert.Nil(t, err)
 		assert.False(t, ep.Started())
 		assert.Nil(t, ep.GetServer())
 
-		// 重复关闭应该安全且无错误
+		// Repeated shutdowns should be safe and error-free
 		err = ep.Close()
 		assert.Nil(t, err)
 		assert.False(t, ep.Started())
 		assert.Nil(t, ep.GetServer())
 
-		// 再次重复关闭
+		// Repeat the closing again
 		err = ep.Close()
 		assert.Nil(t, err)
 	})
@@ -489,7 +489,7 @@ func TestFastHttpIdempotencyAndSafety(t *testing.T) {
 		assert.Nil(t, err)
 		time.Sleep(100 * time.Millisecond)
 
-		// 并发调用Close()
+		// Concurrent call Close()
 		const numGoroutines = 5
 		var wg sync.WaitGroup
 		errors := make(chan error, numGoroutines)
@@ -506,7 +506,7 @@ func TestFastHttpIdempotencyAndSafety(t *testing.T) {
 		wg.Wait()
 		close(errors)
 
-		// 检查所有关闭调用都成功
+		// Check that all close calls are successful
 		errorCount := 0
 		for err := range errors {
 			if err != nil {
@@ -515,7 +515,7 @@ func TestFastHttpIdempotencyAndSafety(t *testing.T) {
 			}
 		}
 
-		// 应该没有错误，或者最多只有少数几个由于并发竞争产生的错误
+		// There should be no errors, or at most only a few errors caused by concurrent contention
 		assert.True(t, errorCount <= 1, "Too many errors from concurrent close calls: %d", errorCount)
 		assert.False(t, ep.Started())
 		assert.Nil(t, ep.GetServer())
@@ -532,22 +532,22 @@ func TestFastHttpIdempotencyAndSafety(t *testing.T) {
 		_, err = ep.AddRouter(router, "GET")
 		assert.Nil(t, err)
 
-		// 启动服务
+		// Start the server
 		err = ep.Start()
 		assert.Nil(t, err)
 		time.Sleep(100 * time.Millisecond)
 
-		// 重启服务
+		// Restarting services
 		err = ep.Restart()
 		assert.Nil(t, err)
 		time.Sleep(100 * time.Millisecond)
 
-		// 重启后再关闭
+		// Restart and then close again
 		err = ep.Close()
 		assert.Nil(t, err)
 		assert.False(t, ep.Started())
 
-		// 再次关闭应该安全
+		// Closing again should be safe
 		err = ep.Close()
 		assert.Nil(t, err)
 	})
@@ -563,12 +563,12 @@ func TestFastHttpIdempotencyAndSafety(t *testing.T) {
 		_, err = ep.AddRouter(router, "GET")
 		assert.Nil(t, err)
 
-		// 启动服务
+		// Start the server
 		err = ep.Start()
 		assert.Nil(t, err)
 		time.Sleep(100 * time.Millisecond)
 
-		// 多次重启
+		// Multiple reboots
 		for i := 0; i < 3; i++ {
 			err = ep.Restart()
 			assert.Nil(t, err, "Restart %d failed", i+1)
@@ -587,24 +587,24 @@ func TestFastHttpIdempotencyAndSafety(t *testing.T) {
 		_, err = ep.AddRouter(router, "GET")
 		assert.Nil(t, err)
 
-		// 启动服务
+		// Start the server
 		err = ep.Start()
 		assert.Nil(t, err)
 		time.Sleep(100 * time.Millisecond)
 
-		// 验证服务器引用存在
+		// Verifying that the server reference exists
 		assert.NotNil(t, ep.GetServer())
 		assert.True(t, ep.Started())
 
-		// 关闭服务
+		// Service shutdown
 		err = ep.Close()
 		assert.Nil(t, err)
 
-		// 验证服务器引用被清理
+		// Verify that server references are cleaned up
 		assert.Nil(t, ep.GetServer())
 		assert.False(t, ep.Started())
 
-		// 验证重复关闭不会panic或产生错误
+		// Repeated closures do not cause panic or errors
 		err = ep.Close()
 		assert.Nil(t, err)
 	})

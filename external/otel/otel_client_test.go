@@ -27,12 +27,12 @@ import (
 )
 
 func TestOtelNode(t *testing.T) {
-	// 如果设置了跳过 OTel 测试，则跳过
+	// If OTel testing is set to skip, skip it
 	if os.Getenv("SKIP_OTEL_TESTS") == "true" {
 		t.Skip("Skipping OTel tests")
 	}
 
-	// 获取 OTel Collector 端点
+	// Get the OTel Collector endpoint
 	otlpEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	if otlpEndpoint == "" {
 		otlpEndpoint = "localhost:4318"
@@ -103,7 +103,7 @@ func TestOtelNode(t *testing.T) {
 		otelNode := node.(*OtelNode)
 		otelNode.OnMsg(ctx, msg)
 
-		// 等待消息处理
+		// Waiting for the message to be processed
 		time.Sleep(time.Millisecond * 200)
 
 		otelNode.Destroy()
@@ -145,7 +145,7 @@ func TestOtelNode(t *testing.T) {
 		otelNode := node.(*OtelNode)
 		otelNode.OnMsg(ctx, msg)
 
-		// 等待消息处理
+		// Waiting for the message to be processed
 		time.Sleep(time.Millisecond * 200)
 
 		otelNode.Destroy()
@@ -187,7 +187,7 @@ func TestOtelNode(t *testing.T) {
 		otelNode := node.(*OtelNode)
 		otelNode.OnMsg(ctx, msg)
 
-		// 等待消息处理
+		// Waiting for the message to be processed
 		time.Sleep(time.Millisecond * 200)
 
 		otelNode.Destroy()
@@ -215,13 +215,13 @@ func TestOtelNode(t *testing.T) {
 		metaData := types.NewMetadata()
 		metaData.PutValue("operation", "dynamic")
 
-		// 测试单个指标对象
+		// Test individual metrics
 		msg := ctx.NewMsg("TEST_MSG_TYPE", metaData, `{"metrics":{"metricName":"dynamic_counter","description":"Dynamic counter","unit":"1","opType":"COUNTER","value":5.0,"labels":{"source":"test"}}}`)
 
 		otelNode := node.(*OtelNode)
 		otelNode.OnMsg(ctx, msg)
 
-		// 等待消息处理
+		// Waiting for the message to be processed
 		time.Sleep(time.Millisecond * 200)
 
 		otelNode.Destroy()
@@ -249,20 +249,20 @@ func TestOtelNode(t *testing.T) {
 		metaData := types.NewMetadata()
 		metaData.PutValue("operation", "dynamic_array")
 
-		// 测试指标对象数组
+		// Test indicator array of objects
 		msg := ctx.NewMsg("TEST_MSG_TYPE", metaData, `{"metrics":[{"metricName":"batch_counter1","description":"Batch counter 1","unit":"1","opType":"COUNTER","value":3.0,"labels":{"batch":"1"}},{"metricName":"batch_counter2","description":"Batch counter 2","unit":"1","opType":"COUNTER","value":7.0,"labels":{"batch":"2"}}]}`)
 
 		otelNode := node.(*OtelNode)
 		otelNode.OnMsg(ctx, msg)
 
-		// 等待消息处理
+		// Waiting for the message to be processed
 		time.Sleep(time.Millisecond * 200)
 
 		otelNode.Destroy()
 	})
 
 	t.Run("GRPCProtocol", func(t *testing.T) {
-		// 获取 gRPC 端点
+		// Obtain the gRPC endpoint
 		grpcEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_GRPC_ENDPOINT")
 		if grpcEndpoint == "" {
 			grpcEndpoint = "localhost:4317"
@@ -303,7 +303,7 @@ func TestOtelNode(t *testing.T) {
 		otelNode := node.(*OtelNode)
 		otelNode.OnMsg(ctx, msg)
 
-		// 等待消息处理
+		// Waiting for the message to be processed
 		time.Sleep(time.Millisecond * 200)
 
 		otelNode.Destroy()
@@ -311,7 +311,7 @@ func TestOtelNode(t *testing.T) {
 }
 
 func TestOtelNodeConfig(t *testing.T) {
-	// 如果设置了跳过 OTel 测试，则跳过
+	// If OTel testing is set to skip, skip it
 	if os.Getenv("SKIP_OTEL_TESTS") == "true" {
 		t.Skip("Skipping OTel tests")
 	}
@@ -331,9 +331,9 @@ func TestOtelNodeConfig(t *testing.T) {
 	t.Run("InvalidMetricExpr", func(t *testing.T) {
 		_, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 			"server":      "localhost:4318",
-			"metricsExpr": "${invalid.expr}", // 无效的表达式，缺少闭合括号
+			"metricsExpr": "${invalid.expr}", // Invalid expressions lack closed parentheses
 		}, Registry)
-		// 这个测试可能不会在初始化时失败，因为表达式可能在运行时才验证
+		// This test may not fail at initialization, since the expression may only be validated at runtime
 		if err != nil {
 			t.Logf("Expected error for invalid expression: %v", err)
 		}
@@ -346,11 +346,11 @@ func TestOtelNodeConfig(t *testing.T) {
 				{
 					"metricName": "test_metric",
 					"opType":     "COUNTER",
-					"value":      "${invalid.expr}", // 无效的表达式
+					"value":      "${invalid.expr}", // Invalid expressions
 				},
 			},
 		}, Registry)
-		// 这个测试可能不会在初始化时失败，因为表达式可能在运行时才验证
+		// This test may not fail at initialization, since the expression may only be validated at runtime
 		if err != nil {
 			t.Logf("Expected error for invalid value expression: %v", err)
 		}
@@ -364,11 +364,11 @@ func TestOtelNodeConfig(t *testing.T) {
 					"metricName": "test_metric",
 					"opType":     "COUNTER",
 					"value":      "1.0",
-					"labels":     "${invalid.expr}", // 无效的表达式
+					"labels":     "${invalid.expr}", // Invalid expressions
 				},
 			},
 		}, Registry)
-		// 这个测试可能不会在初始化时失败，因为表达式可能在运行时才验证
+		// This test may not fail at initialization, since the expression may only be validated at runtime
 		if err != nil {
 			t.Logf("Expected error for invalid labels expression: %v", err)
 		}
@@ -385,16 +385,16 @@ func TestOtelNodeConfig(t *testing.T) {
 				},
 			},
 		}, Registry)
-		// 不支持的操作类型会在初始化时失败
+		// Unsupported operation types will fail during initialization
 		if err != nil {
 			t.Logf("Expected error for unsupported operation type: %v", err)
 			return
 		}
 
-		// 如果初始化成功，测试运行时错误
+		// If initialization succeeds, the test runtime error
 		config := types.NewConfig()
 		ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err error) {
-			// 应该失败
+			// It should fail
 			assert.Equal(t, types.Failure, relationType)
 			assert.NotNil(t, err)
 		})
@@ -404,7 +404,7 @@ func TestOtelNodeConfig(t *testing.T) {
 		otelNode := node.(*OtelNode)
 		otelNode.OnMsg(ctx, msg)
 
-		// 等待消息处理
+		// Waiting for the message to be processed
 		time.Sleep(time.Millisecond * 200)
 
 		otelNode.Destroy()

@@ -33,27 +33,27 @@ import (
 	"github.com/rulego/rulego/utils/runtime"
 )
 
-// Type 组件类型
+// Type returns the component type
 const Type = types.EndpointTypePrefix + "redis"
 
 const (
-	// KeyResponseTopic 响应主题metadataKey
+	// KeyResponseTopic: Response topic metadataKey
 	KeyResponseTopic = "responseTopic"
-	// KeyResponseChannel 响应主题metadataKey
+	// KeyResponseChannel: Response topic: metadataKey
 	KeyResponseChannel = "responseChannel"
 )
 
-// Endpoint 别名
+// Endpoint alias
 type Endpoint = Redis
 
 var _ endpointApi.Endpoint = (*Endpoint)(nil)
 
-// 注册组件
+// Register the component
 func init() {
 	_ = endpoint.Registry.Register(&Endpoint{})
 }
 
-// RequestMessage 请求消息
+// RequestMessage
 type RequestMessage struct {
 	redisClient *redis.Client
 	topic       string
@@ -87,7 +87,7 @@ func (r *RequestMessage) SetMsg(msg *types.RuleMsg) {
 
 func (r *RequestMessage) GetMsg() *types.RuleMsg {
 	if r.msg == nil {
-		//默认指定是JSON格式，如果不是该类型，请在process函数中修改
+		//The default specification is JSON format. If it is not this type, please modify it in the process function
 		ruleMsg := types.NewMsg(0, r.From(), types.JSON, types.NewMetadata(), string(r.Body()))
 
 		ruleMsg.Metadata.PutValue("topic", r.From())
@@ -113,7 +113,7 @@ func (r *RequestMessage) GetError() error {
 	return r.err
 }
 
-// ResponseMessage http响应消息
+// ResponseMessage http Response message
 type ResponseMessage struct {
 	redisClient *redis.Client
 	topic       string
@@ -153,7 +153,7 @@ func (r *ResponseMessage) GetMsg() *types.RuleMsg {
 func (r *ResponseMessage) SetStatusCode(statusCode int) {
 }
 
-// 从msg.Metadata或者响应头获取
+// From msg.Metadata or response header access
 func (r *ResponseMessage) getMetadataValue(metadataName, headerName string) string {
 	var v string
 	if r.GetMsg() != nil {
@@ -194,21 +194,21 @@ type Config struct {
 	Db       int    `json:"db" label:"DB Index" desc:"Redis database index, default is 0"`
 }
 
-// Redis Redis接收端端点
+// Redis Redis receiver endpoint
 type Redis struct {
 	impl.BaseEndpoint
 	base.SharedNode[*redis.Client]
 	// GracefulShutdown provides graceful shutdown capabilities
-	// GracefulShutdown 提供优雅停机功能
+	// GracefulShutdown offers an elegant shutdown function
 	base.GracefulShutdown
 	RuleConfig types.Config
-	//Config 配置
+	//Config configuration
 	Config           Config
 	pubSub           *redis.PubSub
 	channelRouterMap map[string][]endpointApi.Router
 }
 
-// Type 组件类型
+// Type returns the component type
 func (x *Redis) Type() string {
 	return Type
 }
@@ -243,12 +243,12 @@ func (x *Redis) Def() types.ComponentForm {
 	}
 }
 
-// Init 初始化
+// Init initializes the component
 func (x *Redis) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	x.RuleConfig = ruleConfig
 
-	// 初始化优雅停机功能
+	// Initialize the elegant shutdown function
 	x.GracefulShutdown.InitGracefulShutdown(x.RuleConfig.Logger, 0)
 
 	_ = x.SharedNode.InitWithClose(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*redis.Client, error) {
@@ -262,7 +262,7 @@ func (x *Redis) Init(ruleConfig types.Config, configuration types.Configuration)
 	return err
 }
 
-// Destroy 销毁
+// Destroy releases resources
 func (x *Redis) Destroy() {
 	x.GracefulShutdown.GracefulStop(func() {
 		_ = x.Close()
@@ -270,7 +270,7 @@ func (x *Redis) Destroy() {
 }
 
 // GracefulStop provides graceful shutdown for the Redis endpoint
-// GracefulStop 为 Redis 端点提供优雅停机
+// GracefulStop provides elegant downtime for Redis endpoints
 func (x *Redis) GracefulStop() {
 	x.GracefulShutdown.GracefulStop(func() {
 		_ = x.Close()
@@ -278,9 +278,9 @@ func (x *Redis) GracefulStop() {
 }
 
 func (x *Redis) Close() error {
-	// 先销毁父组件，它会清理自己的资源，例如通过CheckAndSetRouterId注册的路由
+	// First, destroy the parent component; it cleans up its own resources, such as routes registered via CheckAndSetRouterId
 	x.BaseEndpoint.Destroy()
-	// SharedNode 会通过 InitWithClose 中的清理函数来管理客户端的关闭
+	// SharedNode manages client shutdowns through the cleanup function in InitWithClose
 	// SharedNode manages client closure through the cleanup function in InitWithClose
 	_ = x.SharedNode.Close()
 	x.Lock()
@@ -290,7 +290,7 @@ func (x *Redis) Close() error {
 		_ = x.pubSub.Close()
 		x.pubSub = nil
 	}
-	// 清理channel-router的映射关系
+	// Clean up the channel-router mapping relationship
 	x.channelRouterMap = nil
 	return nil
 }
@@ -299,7 +299,7 @@ func (x *Redis) AddRouter(router endpointApi.Router, params ...interface{}) (str
 	if router == nil {
 		return "", errors.New("router cannot be nil")
 	}
-	// 获取或者初始化客户端
+	// Obtain or initialize the client
 	client, err := x.SharedNode.GetSafely()
 	if err != nil {
 		return "", err
@@ -324,13 +324,13 @@ func (x *Redis) pSubscribe(client *redis.Client, channels ...string) {
 	if len(channels) == 0 {
 		return
 	}
-	// 使用本地变量，避免数据竞争
+	// Use local variables to avoid data contention
 	pubSub := client.PSubscribe(context.Background(), channels...)
 	x.pubSub = pubSub
 	go func() {
-		// 遍历接收消息
+		// Traverse the received messages
 		for msg := range pubSub.Channel() {
-			// 处理消息逻辑
+			// Handling message logic
 			if x.RuleConfig.Pool != nil {
 				err := x.RuleConfig.Pool.Submit(func() {
 					x.handlerMsg(client, msg)
@@ -397,7 +397,7 @@ func (x *Redis) addRouter(router endpointApi.Router, channels ...string) []strin
 		x.channelRouterMap[channel] = append(x.channelRouterMap[channel], router)
 	}
 
-	//获取所有的channels
+	//Obtain all channels
 	var newChannels []string
 	for channel := range x.channelRouterMap {
 		newChannels = append(newChannels, channel)
@@ -405,7 +405,7 @@ func (x *Redis) addRouter(router endpointApi.Router, channels ...string) []strin
 	return newChannels
 }
 
-// 删除指定routerId，返回新的订阅的channels
+// Delete the specified routerId, returning the new subscription channels
 func (x *Redis) removeSubByRouterId(routerId string) []string {
 	x.Lock()
 	defer x.Unlock()
@@ -414,7 +414,7 @@ func (x *Redis) removeSubByRouterId(routerId string) []string {
 	}
 	var newChannels []string
 	for channel, routers := range x.channelRouterMap {
-		// 创建一个新的切片来存储结果
+		// Create a new slice to store the results
 		var newRouters []endpointApi.Router
 		for _, router := range routers {
 			if router.GetId() != routerId {

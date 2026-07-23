@@ -30,7 +30,7 @@ import (
 )
 
 func TestClientNode(t *testing.T) {
-	// 如果设置了跳过 NSQ 测试，则跳过
+	// If NSQ testing is set to skip, skip it
 	if os.Getenv("SKIP_NSQ_TESTS") == "true" {
 		t.Skip("Skipping NSQ tests")
 	}
@@ -107,7 +107,7 @@ func TestClientNode(t *testing.T) {
 }
 
 func TestClientNodeWithTemplate(t *testing.T) {
-	// 如果设置了跳过 NSQ 测试，则跳过
+	// If NSQ testing is set to skip, skip it
 	if os.Getenv("SKIP_NSQ_TESTS") == "true" {
 		t.Skip("Skipping NSQ tests")
 	}
@@ -161,9 +161,9 @@ func TestClientNodeWithTemplate(t *testing.T) {
 	})
 }
 
-// TestClientNodeWithLookupd 测试NSQ客户端节点通过lookupd发现nsqd服务器的功能
+// TestClientNodeWithLookupd Test the NSQ client node by discovering the NSQD server's functionality through lookupd
 func TestClientNodeWithLookupd(t *testing.T) {
-	// 如果设置了跳过 NSQ 测试，则跳过
+	// If NSQ testing is set to skip, skip it
 	if os.Getenv("SKIP_NSQ_TESTS") == "true" {
 		t.Skip("Skipping NSQ tests")
 	}
@@ -172,24 +172,24 @@ func TestClientNodeWithLookupd(t *testing.T) {
 	Registry.Add(&ClientNode{})
 	var targetNodeType = "x/nsqClient"
 
-	// 从环境变量获取lookupd地址
+	// Retrieves the lookupd address from the environment variable
 	lookupdAddress := os.Getenv("LOOKUPD_ADDRESS")
 	if lookupdAddress == "" {
 		lookupdAddress = "127.0.0.1:4161"
 	}
 
 	t.Run("DiscoverNsqdFromLookupd", func(t *testing.T) {
-		// 使用lookupd地址创建NSQ客户端节点
+		// Create NSQ client nodes using lookupd addresses
 		node, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 			"topic":  "test_lookupd_discovery",
-			"server": "http://" + lookupdAddress, // 使用lookupd地址
+			"server": "http://" + lookupdAddress, // Use lookupd addresses
 		}, Registry)
 		if err != nil {
 			t.Skipf("Failed to create NSQ client node with lookupd (NSQ may not be available): %v", err)
 			return
 		}
 
-		// 发布测试消息
+		// Release test information
 		metaData := types.BuildMetadata(make(map[string]string))
 		msgList := []test.Msg{
 			{
@@ -220,13 +220,13 @@ func TestClientNodeWithLookupd(t *testing.T) {
 	})
 
 	t.Run("MixedAddressConfiguration", func(t *testing.T) {
-		// 测试混合地址配置（同时包含nsqd和lookupd地址）
+		// Test hybrid address configuration (including both nsqd and lookupd addresses)
 		nsqdAddress := os.Getenv("NSQD_ADDRESS")
 		if nsqdAddress == "" {
 			nsqdAddress = "127.0.0.1:4150"
 		}
 
-		// 配置包含多个地址的服务器字符串
+		// Configure server strings containing multiple addresses
 		mixedServer := fmt.Sprintf("%s,http://%s", nsqdAddress, lookupdAddress)
 
 		node, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
@@ -238,7 +238,7 @@ func TestClientNodeWithLookupd(t *testing.T) {
 			return
 		}
 
-		// 发布测试消息
+		// Release test information
 		metaData := types.BuildMetadata(make(map[string]string))
 		msgList := []test.Msg{
 			{
@@ -269,9 +269,9 @@ func TestClientNodeWithLookupd(t *testing.T) {
 	})
 }
 
-// TestNsqdDiscoveryAPI 测试NSQ服务器发现API功能
+// TestNsqdDiscoveryAPI tests NSQ server discovery API functionality
 func TestNsqdDiscoveryAPI(t *testing.T) {
-	// 如果设置了跳过 NSQ 测试，则跳过
+	// If NSQ testing is set to skip, skip it
 	if os.Getenv("SKIP_NSQ_TESTS") == "true" {
 		t.Skip("Skipping NSQ tests")
 	}
@@ -279,51 +279,51 @@ func TestNsqdDiscoveryAPI(t *testing.T) {
 	Registry := &types.SafeComponentSlice{}
 	Registry.Add(&ClientNode{})
 
-	// 从环境变量获取lookupd地址
+	// Retrieves the lookupd address from the environment variable
 	lookupdAddress := os.Getenv("LOOKUPD_ADDRESS")
 	if lookupdAddress == "" {
 		lookupdAddress = "127.0.0.1:4161"
 	}
 
 	t.Run("DirectLookupAPICall", func(t *testing.T) {
-		// 创建NSQ客户端节点实例来测试内部方法
+		// Create NSQ client node instances to test internal methods
 		clientNode := &ClientNode{}
 		clientNode.Config = ClientNodeConfiguration{
 			Server: "http://" + lookupdAddress,
 			Topic:  "test_api_discovery",
 		}
 
-		// 直接调用服务器发现方法
+		// Directly call the server discovery method
 		nsqdAddr, err := clientNode.discoverNsqdFromLookupd("http://" + lookupdAddress)
 		if err != nil {
 			t.Skipf("Failed to discover nsqd from lookupd (NSQ may not be available): %v", err)
 			return
 		}
 
-		// 验证返回的地址格式
+		// Verify the format of the returned address
 		if nsqdAddr == "" {
 			t.Error("nsqdAddr should not be empty")
 		}
 		t.Logf("Discovered nsqd address: %s", nsqdAddr)
 
-		// 验证地址格式是否正确（应该包含IP和端口）
+		// Verify the address format is correct (it should include IP and port)
 		if !strings.Contains(nsqdAddr, ":") {
 			t.Errorf("nsqdAddr should contain ':' but got: %s", nsqdAddr)
 		}
 	})
 
 	t.Run("ParseAddressesWithLookupd", func(t *testing.T) {
-		// 测试地址解析功能
+		// Test address resolution function
 		clientNode := &ClientNode{}
 		clientNode.Config = ClientNodeConfiguration{
 			Server: "http://" + lookupdAddress,
 			Topic:  "test_parse_addresses",
 		}
 
-		// 调用地址解析方法
+		// Call address resolution methods
 		nsqdAddrs, lookupdAddrs := clientNode.parseAddresses()
 
-		// 验证解析结果
+		// Verify the parsing results
 		if len(nsqdAddrs) != 0 {
 			t.Error("Should not have nsqd addresses when using lookupd")
 		}
@@ -335,7 +335,7 @@ func TestNsqdDiscoveryAPI(t *testing.T) {
 	})
 
 	t.Run("ParseMixedAddresses", func(t *testing.T) {
-		// 测试混合地址解析
+		// Test mixed address resolution
 		nsqdAddress := os.Getenv("NSQD_ADDRESS")
 		if nsqdAddress == "" {
 			nsqdAddress = "127.0.0.1:4150"
@@ -347,10 +347,10 @@ func TestNsqdDiscoveryAPI(t *testing.T) {
 			Topic:  "test_mixed_parse",
 		}
 
-		// 调用地址解析方法
+		// Call address resolution methods
 		nsqdAddrs, lookupdAddrs := clientNode.parseAddresses()
 
-		// 验证解析结果
+		// Verify the parsing results
 		if len(nsqdAddrs) == 0 {
 			t.Error("Should have nsqd addresses")
 		}
@@ -364,10 +364,10 @@ func TestNsqdDiscoveryAPI(t *testing.T) {
 	})
 }
 
-// TestClientNodeWithSubscription 测试NSQ客户端节点的发布和订阅功能
-// 通过创建消费者订阅主题，验证发布的数据是否正确接收
+// TestClientNodeWithSubscription: Tests the publishing and subscription functions of NSQ client nodes
+// By creating consumer subscription topics, verify whether the published data is correctly received
 func TestClientNodeWithSubscription(t *testing.T) {
-	// 如果设置了跳过 NSQ 测试，则跳过
+	// If NSQ testing is set to skip, skip it
 	if os.Getenv("SKIP_NSQ_TESTS") == "true" {
 		t.Skip("Skipping NSQ tests")
 	}
@@ -386,7 +386,7 @@ func TestClientNodeWithSubscription(t *testing.T) {
 		testChannel := "test_channel"
 		testData := "{\"temperature\":30.5,\"humidity\":65}"
 
-		// 创建NSQ客户端节点
+		// Create an NSQ client node
 		node, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 			"topic":  testTopic,
 			"server": nsqdAddress,
@@ -396,7 +396,7 @@ func TestClientNodeWithSubscription(t *testing.T) {
 			return
 		}
 
-		// 创建消费者来订阅消息
+		// Create consumers to subscribe to messages
 		config := nsq.NewConfig()
 		consumer, err := nsq.NewConsumer(testTopic, testChannel, config)
 		if err != nil {
@@ -405,35 +405,35 @@ func TestClientNodeWithSubscription(t *testing.T) {
 		}
 		defer consumer.Stop()
 
-		// 用于存储接收到的消息
+		// Used to store received messages
 		receivedMessages := make(chan string, 1)
 		messageCount := 0
 
-		// 设置消息处理器
+		// Set up the message processor
 		consumer.AddHandler(nsq.HandlerFunc(func(message *nsq.Message) error {
 			messageCount++
 			receivedData := string(message.Body)
 
-			// 发送接收到的数据到通道
+			// Send the received data to the channel
 			select {
 			case receivedMessages <- receivedData:
 			default:
-				// 通道已满，忽略
+				// The channel is full, ignored
 			}
 			return nil
 		}))
 		consumer.SetLoggerLevel(nsq.LogLevelError)
-		// 连接到NSQd
+		// Connect to NSQd
 		err = consumer.ConnectToNSQD(nsqdAddress)
 		if err != nil {
 			t.Skipf("Failed to connect to NSQd (NSQ may not be available): %v", err)
 			return
 		}
 
-		// 等待消费者准备就绪
+		// Wait for consumers to be ready
 		time.Sleep(time.Second * 2)
 
-		// 发布消息
+		// Release the news
 		metaData := types.BuildMetadata(make(map[string]string))
 		msgList := []test.Msg{
 			{
@@ -457,21 +457,21 @@ func TestClientNodeWithSubscription(t *testing.T) {
 			},
 		}
 
-		// 执行发布
+		// Execution release
 		for _, item := range nodeList {
 			test.NodeOnMsgWithChildren(t, item.Node, item.MsgList, item.ChildrenNodes, item.Callback)
 		}
 
-		// 等待消息被接收
+		// Waiting for the message to be received
 		select {
 		case receivedData := <-receivedMessages:
-			// 验证接收到的数据是否与发布的数据一致
+			// Verify whether the received data matches the published data
 			assert.Equal(t, testData, receivedData)
 		case <-time.After(10 * time.Second):
 			t.Logf("Timeout waiting for message, NSQ may not be available")
 		}
 
-		// 等待一段时间确保所有消息都被处理
+		// Wait a while to ensure all messages are handled
 		time.Sleep(time.Second * 2)
 	})
 
@@ -484,7 +484,7 @@ func TestClientNodeWithSubscription(t *testing.T) {
 			"{\"sensor\":\"pressure\",\"value\":1013.25}",
 		}
 
-		// 创建NSQ客户端节点
+		// Create an NSQ client node
 		node, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 			"topic":  testTopic,
 			"server": nsqdAddress,
@@ -494,7 +494,7 @@ func TestClientNodeWithSubscription(t *testing.T) {
 			return
 		}
 
-		// 创建消费者
+		// Create consumers
 		config := nsq.NewConfig()
 		consumer, err := nsq.NewConsumer(testTopic, testChannel, config)
 		if err != nil {
@@ -503,20 +503,20 @@ func TestClientNodeWithSubscription(t *testing.T) {
 		}
 		defer consumer.Stop()
 
-		// 用于存储接收到的消息
+		// Used to store received messages
 		receivedMessages := make([]string, 0)
 		messageCount := 0
 		expectedCount := len(testMessages)
 		done := make(chan bool, 1)
 
-		// 设置消息处理器
+		// Set up the message processor
 		consumer.AddHandler(nsq.HandlerFunc(func(message *nsq.Message) error {
 			messageCount++
 			receivedData := string(message.Body)
 			receivedMessages = append(receivedMessages, receivedData)
 			t.Logf("Received message %d/%d: %s", messageCount, expectedCount, receivedData)
 
-			// 如果接收到所有消息，发送完成信号
+			// If all messages are received, send a completion signal
 			if messageCount >= expectedCount {
 				select {
 				case done <- true:
@@ -526,19 +526,19 @@ func TestClientNodeWithSubscription(t *testing.T) {
 			return nil
 		}))
 
-		// 连接到NSQd
+		// Connect to NSQd
 		err = consumer.ConnectToNSQD(nsqdAddress)
 		if err != nil {
 			t.Skipf("Failed to connect to NSQd (NSQ may not be available): %v", err)
 			return
 		}
 
-		// 等待消费者准备就绪
+		// Wait for consumers to be ready
 		time.Sleep(time.Second * 2)
 
-		// 发布多条消息
+		// Multiple announcements were released
 		for i, testData := range testMessages {
-			msgIndex := i // 创建局部变量避免闭包问题
+			msgIndex := i // Creating local variables to avoid closure issues
 			metaData := types.BuildMetadata(make(map[string]string))
 			metaData.PutValue("messageIndex", fmt.Sprintf("%d", msgIndex))
 			msgList := []test.Msg{
@@ -564,22 +564,22 @@ func TestClientNodeWithSubscription(t *testing.T) {
 				},
 			}
 
-			// 执行发布
+			// Execution release
 			for _, item := range nodeList {
 				test.NodeOnMsgWithChildren(t, item.Node, item.MsgList, item.ChildrenNodes, item.Callback)
 			}
 
-			// 在消息之间稍作延迟
+			// There is a slight delay between messages
 			time.Sleep(time.Millisecond * 500)
 		}
 
-		// 等待所有消息被接收
+		// Wait for all messages to be received
 		select {
 		case <-done:
-			// 验证接收到的消息数量
+			// Verify the number of messages received
 			assert.Equal(t, expectedCount, len(receivedMessages))
 
-			// 验证每条消息的内容
+			// Verify the content of each message
 			for _, expectedMsg := range testMessages {
 				found := false
 				for _, receivedMsg := range receivedMessages {
@@ -595,7 +595,7 @@ func TestClientNodeWithSubscription(t *testing.T) {
 			t.Logf("Timeout waiting for messages, received %d/%d, NSQ may not be available", len(receivedMessages), expectedCount)
 		}
 
-		// 等待一段时间确保所有消息都被处理
+		// Wait a while to ensure all messages are handled
 		time.Sleep(time.Second * 2)
 	})
 }

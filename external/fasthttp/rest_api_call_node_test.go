@@ -33,9 +33,9 @@ import (
 )
 
 const (
-	// 代理测试开关
+	// Agent test switches
 	ENABLE_PROXY_TEST = false
-	// 代理配置
+	// Proxy configuration
 	PROXY_HOST        = "127.0.0.1"
 	HTTP_PROXY_PORT   = 10809
 	SOCKS5_PROXY_PORT = 10808
@@ -88,7 +88,7 @@ func TestRestApiCallNode(t *testing.T) {
 	})
 
 	t.Run("OnMsg", func(t *testing.T) {
-		// 创建测试服务器
+		// Create a test server
 		testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch r.URL.Path {
 			case "/success":
@@ -107,38 +107,38 @@ func TestRestApiCallNode(t *testing.T) {
 		}))
 		defer testServer.Close()
 
-		// 测试成功请求
+		// Test success request
 		node1, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 			"restEndpointUrlPattern": testServer.URL + "/success",
 			"requestMethod":          "POST",
 		}, Registry)
 		assert.Nil(t, err)
-		defer node1.Destroy() // 确保节点被销毁
+		defer node1.Destroy() // Ensure nodes are destroyed
 
-		// 测试404错误
+		// Test 404 error
 		node2, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 			"restEndpointUrlPattern": testServer.URL + "/notfound",
 			"requestMethod":          "POST",
 		}, Registry)
 		assert.Nil(t, err)
-		defer node2.Destroy() // 确保节点被销毁
+		defer node2.Destroy() // Ensure nodes are destroyed
 
-		// 测试方法不允许错误
+		// The testing method does not allow errors
 		node3, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 			"restEndpointUrlPattern": testServer.URL + "/method-not-allowed",
 			"requestMethod":          "POST",
 		}, Registry)
 		assert.Nil(t, err)
-		defer node3.Destroy() // 确保节点被销毁
+		defer node3.Destroy() // Ensure nodes are destroyed
 
-		// 测试无请求体
+		// Testing without request bodies
 		node4, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 			"restEndpointUrlPattern": testServer.URL + "/success",
 			"requestMethod":          "GET",
 			"withoutRequestBody":     true,
 		}, Registry)
 		assert.Nil(t, err)
-		defer node4.Destroy() // 确保节点被销毁
+		defer node4.Destroy() // Ensure nodes are destroyed
 
 		metaData := types.BuildMetadata(make(map[string]string))
 		metaData.PutValue("productType", "test")
@@ -199,22 +199,22 @@ func TestRestApiCallNode(t *testing.T) {
 			test.NodeOnMsgWithChildren(t, item.Node, item.MsgList, item.ChildrenNodes, item.Callback)
 		}
 
-		// 测试代理功能
+		// Test proxy functionality
 		t.Run("ProxyTest", func(t *testing.T) {
-			// 检查是否启用代理测试
+			// Check whether proxy testing is enabled
 			if !ENABLE_PROXY_TEST {
-				t.Skip("跳过代理测试，修改常量 ENABLE_PROXY_TEST 为 true 来启用")
+				t.Skip("Skip proxy testing and change constant ENABLE_PROXY_TEST to true to enable it")
 				return
 			}
 
-			// 创建测试服务器
+			// Create a test server
 			testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte(`{"message":"proxy test success","clientIP":"` + r.RemoteAddr + `"}`))
 			}))
 			defer testServer.Close()
 
-			// 测试HTTP代理
+			// Testing HTTP proxies
 			node1, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 				"restEndpointUrlPattern": testServer.URL + "/proxy-test",
 				"requestMethod":          "GET",
@@ -225,9 +225,9 @@ func TestRestApiCallNode(t *testing.T) {
 				"proxyPort":              HTTP_PROXY_PORT,
 			}, Registry)
 			assert.Nil(t, err)
-			defer node1.Destroy() // 确保节点被销毁
+			defer node1.Destroy() // Ensure nodes are destroyed
 
-			// 测试带认证的HTTP代理
+			// Testing HTTP proxies with authentication
 			node2, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 				"restEndpointUrlPattern": testServer.URL + "/proxy-test",
 				"requestMethod":          "GET",
@@ -240,9 +240,9 @@ func TestRestApiCallNode(t *testing.T) {
 				"proxyPassword":          "testpass",
 			}, Registry)
 			assert.Nil(t, err)
-			defer node2.Destroy() // 确保节点被销毁
+			defer node2.Destroy() // Ensure nodes are destroyed
 
-			// 测试SOCKS5代理
+			// Testing SOCKS5 proxies
 			node3, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 				"restEndpointUrlPattern": testServer.URL + "/proxy-test",
 				"requestMethod":          "GET",
@@ -253,9 +253,9 @@ func TestRestApiCallNode(t *testing.T) {
 				"proxyPort":              SOCKS5_PROXY_PORT,
 			}, Registry)
 			assert.Nil(t, err)
-			defer node3.Destroy() // 确保节点被销毁
+			defer node3.Destroy() // Ensure nodes are destroyed
 
-			// 测试系统代理
+			// Test system proxy
 			node4, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 				"restEndpointUrlPattern":   testServer.URL + "/proxy-test",
 				"requestMethod":            "GET",
@@ -264,7 +264,7 @@ func TestRestApiCallNode(t *testing.T) {
 				"useSystemProxyProperties": true,
 			}, Registry)
 			assert.Nil(t, err)
-			defer node4.Destroy() // 确保节点被销毁
+			defer node4.Destroy() // Ensure nodes are destroyed
 
 			metaData := types.BuildMetadata(make(map[string]string))
 			msgList := []test.Msg{
@@ -286,7 +286,7 @@ func TestRestApiCallNode(t *testing.T) {
 							assert.Equal(t, "200", code)
 							assert.True(t, strings.Contains(msg.GetData(), "proxy test success"))
 						} else {
-							t.Logf("HTTP代理测试失败（可能代理不可用）: %s, 错误: %v", code, err)
+							t.Logf("HTTP Proxy test failed (possibly the proxy is unavailable): %s, Error: %v", code, err)
 						}
 					},
 				},
@@ -298,7 +298,7 @@ func TestRestApiCallNode(t *testing.T) {
 						if relationType == types.Success {
 							assert.Equal(t, "200", code)
 						} else {
-							t.Logf("带认证HTTP代理测试失败（可能代理不可用或认证失败）: %s, 错误: %v", code, err)
+							t.Logf("Proxy test failure with authentication HTTP (possibly proxy unavailable or authentication failure): %s, Error: %v", code, err)
 						}
 					},
 				},
@@ -309,9 +309,9 @@ func TestRestApiCallNode(t *testing.T) {
 						code := msg.Metadata.GetValue(external.StatusCodeMetadataKey)
 						if relationType == types.Success {
 							assert.Equal(t, "200", code)
-							//t.Logf("SOCKS5代理测试成功: %s", msg.GetData())
+							//t.Logf("SOCKS5 agent test successful: %s", msg.GetData())
 						} else {
-							t.Logf("SOCKS5代理测试失败（可能代理不可用）: %s, 错误: %v", code, err)
+							t.Logf("SOCKS5 Proxy test failed (possibly the proxy is unavailable): %s, Error: %v", code, err)
 						}
 					},
 				},
@@ -322,9 +322,9 @@ func TestRestApiCallNode(t *testing.T) {
 						code := msg.Metadata.GetValue(external.StatusCodeMetadataKey)
 						if relationType == types.Success {
 							assert.Equal(t, "200", code)
-							//t.Logf("系统代理测试成功: %s", msg.GetData())
+							//t.Logf("System agent test successful: %s", msg.GetData())
 						} else {
-							t.Logf("系统代理测试失败（可能系统未配置代理）: %s, 错误: %v", code, err)
+							t.Logf("System proxy test failure (possibly the system did not configure the proxy): %s, Error: %v", code, err)
 						}
 					},
 				},
@@ -335,16 +335,16 @@ func TestRestApiCallNode(t *testing.T) {
 			time.Sleep(time.Second * 2)
 		})
 
-		// 测试系统代理配置
+		// Test system proxy configuration
 		t.Run("SystemProxyTest", func(t *testing.T) {
-			// 创建测试服务器
+			// Create a test server
 			testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte(`{"message":"system proxy test success"}`))
 			}))
 			defer testServer.Close()
 
-			// 测试使用系统代理配置
+			// Testing uses system proxy configuration
 			node, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 				"restEndpointUrlPattern":   testServer.URL + "/system-proxy-test",
 				"requestMethod":            "GET",
@@ -353,7 +353,7 @@ func TestRestApiCallNode(t *testing.T) {
 				"useSystemProxyProperties": true,
 			}, Registry)
 			assert.Nil(t, err)
-			defer node.Destroy() // 确保节点被销毁
+			defer node.Destroy() // Ensure nodes are destroyed
 
 			metaData := types.BuildMetadata(make(map[string]string))
 			msgList := []test.Msg{
@@ -370,16 +370,16 @@ func TestRestApiCallNode(t *testing.T) {
 				if relationType == types.Success {
 					assert.Equal(t, "200", code)
 					assert.True(t, strings.Contains(msg.GetData(), "system proxy test success"))
-					//t.Logf("系统代理测试成功: %s", msg.GetData())
+					//t.Logf("System agent test successful: %s", msg.GetData())
 				} else {
-					t.Logf("系统代理测试失败（可能系统未配置代理）: %s, 错误: %v", code, err)
+					t.Logf("System proxy test failure (possibly the system did not configure the proxy): %s, Error: %v", code, err)
 				}
 			})
 			time.Sleep(time.Second * 2)
 		})
 	})
 
-	//SSE(Server-Sent Events)流式请求
+	//SSE (Server-Sent Events) streaming request
 	t.Run("SSEOnMsg", func(t *testing.T) {
 		sseServer := os.Getenv("TEST_SSE_SERVER")
 		if sseServer == "" {
@@ -391,7 +391,7 @@ func TestRestApiCallNode(t *testing.T) {
 			"requestMethod":          "POST",
 		}, Registry)
 		assert.Nil(t, err)
-		defer node1.Destroy() // 确保节点被销毁
+		defer node1.Destroy() // Ensure nodes are destroyed
 
 		//404
 		node2, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
@@ -400,7 +400,7 @@ func TestRestApiCallNode(t *testing.T) {
 			"requestMethod":          "POST",
 		}, Registry)
 		assert.Nil(t, err)
-		defer node2.Destroy() // 确保节点被销毁
+		defer node2.Destroy() // Ensure nodes are destroyed
 
 		done := false
 
@@ -445,7 +445,7 @@ func TestRestApiCallNode(t *testing.T) {
 		assert.True(t, done)
 	})
 
-	// 测试模板变量替换
+	// Test template variable replacement
 	t.Run("TemplateVariables", func(t *testing.T) {
 		testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
@@ -455,7 +455,7 @@ func TestRestApiCallNode(t *testing.T) {
 
 		node, err := test.CreateAndInitNode(targetNodeType, types.Configuration{
 			"restEndpointUrlPattern": testServer.URL + "/api/${metadata.version}/users/${msg.userId}",
-			"requestMethod":          "PUT", // 使用固定的请求方法，不使用模板变量
+			"requestMethod":          "PUT", // Use fixed request methods and avoid template variables
 			"body":                   "{\"name\":\"${msg.name}\",\"age\":${msg.age}}",
 			"headers": map[string]string{
 				"Content-Type":  "application/json",
@@ -463,7 +463,7 @@ func TestRestApiCallNode(t *testing.T) {
 			},
 		}, Registry)
 		assert.Nil(t, err)
-		defer node.Destroy() // 确保节点被销毁
+		defer node.Destroy() // Ensure nodes are destroyed
 
 		metaData := types.BuildMetadata(make(map[string]string))
 		metaData.PutValue("version", "v1")
@@ -478,12 +478,12 @@ func TestRestApiCallNode(t *testing.T) {
 		test.NodeOnMsgWithChildren(t, node, []test.Msg{msg}, nil, func(msg types.RuleMsg, relationType string, err error) {
 			assert.Equal(t, types.Success, relationType)
 			assert.Equal(t, "200", msg.Metadata.GetValue(external.StatusCodeMetadataKey))
-			// 验证URL模板替换是否正确
+			// Verify whether the URL template replacement is correct
 			assert.True(t, strings.Contains(msg.GetData(), "/api/v1/users/123"))
 			assert.True(t, strings.Contains(msg.GetData(), "PUT"))
 		})
 
-		// 等待异步操作完成
+		// Wait for the asynchronous operation to complete
 		time.Sleep(time.Millisecond * 500)
 	})
 }

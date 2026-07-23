@@ -34,13 +34,13 @@ import (
 var testdataFolder = "../../testdata"
 
 func TestNatsEndpoint(t *testing.T) {
-	// 检查是否有可用的 NATS 服务器
+	// Check if there are available NATS servers
 	natsURL := os.Getenv("NATS_URL")
 	if natsURL == "" {
 		natsURL = "nats://localhost:4222"
 	}
 
-	// 如果设置了跳过 NATS 测试，则跳过
+	// If skipping NATS testing is set, skip it
 	if os.Getenv("SKIP_NATS_TESTS") == "true" {
 		t.Skip("Skipping NATS tests")
 	}
@@ -50,10 +50,10 @@ func TestNatsEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	config := rulego.NewConfig(types.WithDefaultPool())
-	// 注册规则链
+	// Register the rule chain
 	_, _ = rulego.New("default", buf, rulego.WithConfig(config))
 
-	// 启动NATS接收服务
+	// Launch the NATS reception service
 	natsEndpoint, err := endpoint.Registry.New(Type, config, Config{
 		Server: natsURL,
 	})
@@ -62,35 +62,35 @@ func TestNatsEndpoint(t *testing.T) {
 		return
 	}
 
-	// 路由1
+	// Route 1
 	router1 := endpoint.NewRouter().From("device.msg.request").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		assert.Equal(t, "test message", exchange.In.GetMsg().GetData())
 		return true
 	}).To("chain:default").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
-		// 往指定主题发送数据，用于响应
+		// Send data to a specified topic for response
 		exchange.Out.Headers().Add(KeyResponseTopic, "device.msg.response")
 		exchange.Out.SetBody([]byte("this is response"))
 		return true
 	}).End()
 
 	count := int32(0)
-	// 模拟获取响应
+	// Simulate to obtain responses
 	router2 := endpoint.NewRouter().SetId("router3").From("device.msg.response").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
-		//fmt.Println("接收到数据：device.msg.response", exchange.In.GetMsg())
+		//fmt.Println("Data received: device.msg.response", exchange.In.GetMsg())
 		assert.Equal(t, "this is response", exchange.In.GetMsg().GetData())
 		atomic.AddInt32(&count, 1)
 		return true
 	}).End()
 
-	// 模拟获取响应,相同主题
+	// Simulate to get responses, same theme
 	router3 := endpoint.NewRouter().SetId("router3").From("device.msg.response").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
-		//fmt.Println("接收到数据：device.msg.response", exchange.In.GetMsg())
+		//fmt.Println("Data received: device.msg.response", exchange.In.GetMsg())
 		assert.Equal(t, "this is response", exchange.In.GetMsg().GetData())
 		atomic.AddInt32(&count, 1)
 		return true
 	}).End()
 
-	// 注册路由
+	// Register the route
 	_, err = natsEndpoint.AddRouter(router1)
 	if err != nil {
 		t.Skipf("Failed to add router1 (NATS server may not be available): %v", err)
@@ -103,14 +103,14 @@ func TestNatsEndpoint(t *testing.T) {
 	}
 	router3Id, err := natsEndpoint.AddRouter(router3)
 	assert.NotNil(t, err)
-	// 启动服务
+	// Start the server
 	err = natsEndpoint.Start()
 	if err != nil {
 		t.Skipf("Failed to start NATS endpoint: %v", err)
 		return
 	}
 
-	// 测试发布和订阅
+	// Test publishing and subscriptions
 	conn, err := nats.Connect(natsURL)
 	if err != nil {
 		t.Skipf("NATS server not available: %v", err)
@@ -118,42 +118,42 @@ func TestNatsEndpoint(t *testing.T) {
 	}
 	defer conn.Close()
 
-	// 发布消息到device.msg.request
+	// Send messages to device.msg.request
 	err = conn.Publish("device.msg.request", []byte("test message"))
 	if err != nil {
 		t.Skipf("Failed to publish message: %v", err)
 		return
 	}
-	// 等待消息处理
+	// Waiting for the message to be processed
 	time.Sleep(time.Second * 1)
 
 	assert.Equal(t, int32(1), atomic.LoadInt32(&count))
 
 	atomic.StoreInt32(&count, 0)
-	//删除一个相同的主题
+	//Delete the same topic
 	_ = natsEndpoint.RemoveRouter(router3Id)
-	// 发布消息到device.msg.request
+	// Send messages to device.msg.request
 	err = conn.Publish("device.msg.request", []byte("test message"))
 	if err != nil {
 		t.Skipf("Failed to publish second message: %v", err)
 		return
 	}
-	// 等待消息处理
+	// Waiting for the message to be processed
 	time.Sleep(time.Second * 1)
 
 	assert.Equal(t, int32(0), atomic.LoadInt32(&count))
 
 }
 
-// TestNatsEndpointWithGroupId 测试NATS endpoint的GroupId功能
+// TestNatsEndpointWithGroupId tests the GroupId functionality of NATS endpoint
 func TestNatsEndpointWithGroupId(t *testing.T) {
-	// 检查是否有可用的 NATS 服务器
+	// Check if there are available NATS servers
 	natsURL := os.Getenv("NATS_URL")
 	if natsURL == "" {
 		natsURL = "nats://localhost:4222"
 	}
 
-	// 如果设置了跳过 NATS 测试，则跳过
+	// If skipping NATS testing is set, skip it
 	if os.Getenv("SKIP_NATS_TESTS") == "true" {
 		t.Skip("Skipping NATS tests")
 	}
@@ -163,10 +163,10 @@ func TestNatsEndpointWithGroupId(t *testing.T) {
 		t.Fatal(err)
 	}
 	config := rulego.NewConfig(types.WithDefaultPool())
-	// 注册规则链
+	// Register the rule chain
 	_, _ = rulego.New("default", buf, rulego.WithConfig(config))
 
-	// 启动NATS接收服务，使用GroupId
+	// Start the NATS receiving service using GroupId
 	natsEndpoint1, err := endpoint.Registry.New(Type, config, Config{
 		Server:  natsURL,
 		GroupId: "test-group",
@@ -176,7 +176,7 @@ func TestNatsEndpointWithGroupId(t *testing.T) {
 		return
 	}
 
-	// 启动第二个NATS接收服务，使用相同的GroupId
+	// Start the second NATS receiving service, using the same GroupId
 	natsEndpoint2, err := endpoint.Registry.New(Type, config, Config{
 		Server:  natsURL,
 		GroupId: "test-group",
@@ -189,21 +189,21 @@ func TestNatsEndpointWithGroupId(t *testing.T) {
 	count1 := int32(0)
 	count2 := int32(0)
 
-	// 路由1 - 第一个endpoint
+	// Route 1 - the first endpoint
 	router1 := endpoint.NewRouter().From("device.group.request").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		assert.Equal(t, "group test message", exchange.In.GetMsg().GetData())
 		atomic.AddInt32(&count1, 1)
 		return true
 	}).End()
 
-	// 路由2 - 第二个endpoint，相同主题
+	// Route 2 - the second endpoint, same topic
 	router2 := endpoint.NewRouter().From("device.group.request").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
 		assert.Equal(t, "group test message", exchange.In.GetMsg().GetData())
 		atomic.AddInt32(&count2, 1)
 		return true
 	}).End()
 
-	// 注册路由
+	// Register the route
 	_, err = natsEndpoint1.AddRouter(router1)
 	if err != nil {
 		t.Skipf("Failed to add router1 (NATS server may not be available): %v", err)
@@ -215,7 +215,7 @@ func TestNatsEndpointWithGroupId(t *testing.T) {
 		return
 	}
 
-	// 启动服务
+	// Start the server
 	err = natsEndpoint1.Start()
 	if err != nil {
 		t.Skipf("Failed to start NATS endpoint1: %v", err)
@@ -227,7 +227,7 @@ func TestNatsEndpointWithGroupId(t *testing.T) {
 		return
 	}
 
-	// 测试发布和订阅
+	// Test publishing and subscriptions
 	conn, err := nats.Connect(natsURL)
 	if err != nil {
 		t.Skipf("NATS server not available: %v", err)
@@ -235,8 +235,8 @@ func TestNatsEndpointWithGroupId(t *testing.T) {
 	}
 	defer conn.Close()
 
-	// 发布多条消息到device.group.request
-	// 由于使用了GroupId，消息应该在两个endpoint之间负载均衡
+	// Publish multiple messages to device.group.request
+	// Because GroupId is used, messages should be load balanced between the two endpoints
 	for i := 0; i < 10; i++ {
 		err = conn.Publish("device.group.request", []byte("group test message"))
 		if err != nil {
@@ -245,21 +245,21 @@ func TestNatsEndpointWithGroupId(t *testing.T) {
 		}
 	}
 
-	// 等待消息处理
+	// Waiting for the message to be processed
 	time.Sleep(time.Second * 2)
 
-	// 验证消息被分发到两个endpoint
+	// Verification messages are distributed to two endpoints
 	totalCount := atomic.LoadInt32(&count1) + atomic.LoadInt32(&count2)
 	assert.Equal(t, int32(10), totalCount)
 
-	// 验证负载均衡：两个endpoint都应该收到消息
-	// 注意：由于负载均衡的随机性，我们只验证总数和至少一个endpoint收到消息
+	// Verify load balancing: Both endpoints should receive messages
+	// Note: Due to the randomness of load balancing, we only verify the total number and at least one endpoint receiving messages
 	assert.True(t, atomic.LoadInt32(&count1) > 0 || atomic.LoadInt32(&count2) > 0)
 
-	t.Logf("Endpoint1 received %d messages, Endpoint2 received %d messages", 
+	t.Logf("Endpoint1 received %d messages, Endpoint2 received %d messages",
 		atomic.LoadInt32(&count1), atomic.LoadInt32(&count2))
 
-	// 清理资源
+	// Release resources
 	natsEndpoint1.Destroy()
 	natsEndpoint2.Destroy()
 }

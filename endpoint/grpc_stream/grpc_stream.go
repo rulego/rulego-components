@@ -36,7 +36,7 @@ func init() {
 	_ = endpoint.Registry.Register(&Endpoint{})
 }
 
-// Config gRPC流配置
+// Config gRPC flow configuration
 type Config struct {
 	Server        string            `json:"server" label:"Server" desc:"gRPC server address, format: host:port" required:"true" ref:"primary"`
 	Service       string            `json:"service" label:"Service" desc:"gRPC service name, e.g. pkg.ServiceName" required:"true"`
@@ -46,16 +46,16 @@ type Config struct {
 	CheckInterval int               `json:"checkInterval" label:"Check Interval (ms)" desc:"Connection health check interval in milliseconds"`
 }
 
-// GrpcStream 提供了基于 gRPC 流式通信的端点实现。
-// 支持与 gRPC 服务端建立长连接，接收服务端推送的消息并通过路由转发处理
+// GrpcStream provides endpoint implementation based on gRPC streaming communication.
+// Supports establishing long connections with gRPC servers, receiving messages pushed from the server and processing them through routing forwarding
 //
-// 特性：
-// - 自动重连：当连接断开时会自动尝试重新建立连接
-// - 单路由模式：每个端点实例只支持配置一个消息处理路由
-// - 共享连接：相同服务器地址(Server)的多个端点实例会复用同一个gRPC连接，避免重复创建连接
-// - 支持配置：可通过 Config 结构体配置服务地址、方法、请求参数、gRPC服务器检查间隔
+// Features:
+// - Automatic reconnection: When a connection is disconnected, it will automatically attempt to reestablish the connection
+// - Single routing mode: Each endpoint instance supports configuring only one message processing route
+// - Shared connections: Multiple endpoint instances with the same server address (Server) reuse the same gRPC connection to avoid creating duplicate connections
+// - Configuration support: Service addresses, methods, request parameters, and gRPC server check intervals can be configured via the Config structure
 //
-// 示例：
+// Example:
 //
 // "endpoints": [
 //
@@ -76,7 +76,7 @@ type Config struct {
 //		  "id": "",
 //		  "params": null,
 //		  "from": {
-//			"path": "*",                      //！！！ 路由只能填写 *，表示所有来源
+//			"path": "*", //！！！ Routes can only be filled with *, indicating all sources
 //			"configuration": null,
 //			"processors": null
 //		  },
@@ -99,14 +99,14 @@ type GrpcStream struct {
 	stopCh chan struct{}
 }
 
-// RequestMessage 请求消息结构
+// RequestMessage Request message structure
 type RequestMessage struct {
 	body []byte
 	msg  *types.RuleMsg
 	err  error
 }
 
-// ResponseMessage 响应消息结构
+// ResponseMessage
 type ResponseMessage struct {
 	body    []byte
 	msg     *types.RuleMsg
@@ -200,17 +200,17 @@ func (r *ResponseMessage) GetError() error {
 	return r.err
 }
 
-// Type 返回组件类型
+// Type returns the component type
 func (x *GrpcStream) Type() string {
 	return Type
 }
 
-// Id 返回组件ID
+// Id returns the component ID
 func (x *GrpcStream) Id() string {
 	return x.Config.Server
 }
 
-// New 创建新的实例
+// New: Create a new instance
 func (x *GrpcStream) New() types.Node {
 	return &GrpcStream{
 		Config: Config{
@@ -231,7 +231,7 @@ func (x *GrpcStream) Def() types.ComponentForm {
 	}
 }
 
-// Init 初始化组件
+// Init initializes the component
 func (x *GrpcStream) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err != nil {
@@ -249,16 +249,16 @@ func (x *GrpcStream) Init(ruleConfig types.Config, configuration types.Configura
 	return nil
 }
 
-// Start 启动组件
+// Start the component
 func (x *GrpcStream) Start() error {
 	x.stopCh = make(chan struct{})
 
-	// 确保重连延迟时间有默认值
+	// Make sure the reconnection delay time has a default value
 	if x.Config.CheckInterval <= 0 {
 		x.Config.CheckInterval = 10 * 1000
 	}
 
-	// 启动流处理和重连
+	// Start stream processing and reconnection
 	go x.streamWithReconnect()
 
 	return nil
@@ -280,14 +280,14 @@ func (x *GrpcStream) streamWithReconnect() {
 	}
 }
 
-// Destroy 销毁组件
+// Destroy releases component resources
 func (x *GrpcStream) Destroy() {
 	if x.stopCh != nil {
 		close(x.stopCh)
 	}
-	//清理实例
+	//Clean up the instance
 	_ = x.SharedNode.Close()
-	//设置为nil，防止goroutine重建
+	//Set to nil to prevent goroutine rebuild
 	x.Locker.Lock()
 	x.InitInstanceFunc = nil
 	x.Locker.Unlock()
@@ -363,7 +363,7 @@ func (x *GrpcStream) handleStream() error {
 		},
 	}
 
-	// 处理headers
+	// Handle headers
 	var headers []string
 	for k, v := range x.Config.Headers {
 		headers = append(headers, fmt.Sprintf("%s:%s", k, v))
@@ -377,10 +377,10 @@ func (x *GrpcStream) handleStream() error {
 			}
 			msg := m.(*dynamic.Message)
 
-			// 根据配置决定请求数据
+			// Data requests are decided based on the configuration
 			var reqData string
 			if trimmed := strings.TrimSpace(x.Config.Request); trimmed != "" {
-				// 验证是否为有效的 JSON
+				// Verify whether the JSON is valid
 				if json.Valid([]byte(trimmed)) {
 					reqData = trimmed
 				} else {
@@ -396,7 +396,7 @@ func (x *GrpcStream) handleStream() error {
 		})
 }
 
-// AddRouter 添加路由
+// AddRouter adds a route
 func (x *GrpcStream) AddRouter(router endpointApi.Router, params ...interface{}) (string, error) {
 	x.Lock()
 	defer x.Unlock()
@@ -411,7 +411,7 @@ func (x *GrpcStream) AddRouter(router endpointApi.Router, params ...interface{})
 	return "", nil
 }
 
-// RemoveRouter 移除路由
+// RemoveRouter removes the route
 func (x *GrpcStream) RemoveRouter(routerId string, params ...interface{}) error {
 	x.Lock()
 	defer x.Unlock()
@@ -419,7 +419,7 @@ func (x *GrpcStream) RemoveRouter(routerId string, params ...interface{}) error 
 	return nil
 }
 
-// Printf 日志输出
+// Printf log output
 func (x *GrpcStream) Printf(format string, v ...interface{}) {
 	if x.RuleConfig.Logger != nil {
 		x.RuleConfig.Logger.Printf(format, v...)

@@ -63,7 +63,7 @@ type LStatePool struct {
 	script  string
 	path    string
 	vars    map[string]interface{}
-	chainId string //规则链ID
+	chainId string //Rule chain ID
 }
 
 func NewStringLStatePool(config types.Config, script string, configuration types.Configuration) *LStatePool {
@@ -303,9 +303,9 @@ func createLuaCacheBinding(L *lua.LState, cacheGoInstance types.Cache) *lua.LTab
 	return cacheTable
 }
 
-// RegisterContextMethods 将全局缓存和链缓存功能注册到 Lua 状态中。
-// GlobalCache: 直接绑定到引擎的全局缓存。
-// ChainCache: 如果 config.Cache 和 chainId 不为空，则会根据 chainId 创建一个命名空间缓存实例，并将其作为 Lua 全局对象 ChainCache。否则 ChainCache 将为 nil。
+// RegisterContextMethods registers global caching and chain caching functions into the Lua state.
+// GlobalCache: Directly bound to the engine's global cache.
+// ChainCache: If config.Cache and chainId are not null, a namespace cache instance is created based on chainId and used as the Lua global object ChainCache. Otherwise, ChainCache will be nil.
 func RegisterContextMethods(L *lua.LState, config types.Config, chainId string) {
 	// Register GlobalCache
 	if config.Cache != nil {

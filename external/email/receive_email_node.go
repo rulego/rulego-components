@@ -71,7 +71,7 @@ func init() {
 	_ = rulego.Registry.Register(&ReceiveEmailNode{})
 }
 
-// SearchConfig 邮件搜索配置
+// SearchConfig Email search configuration
 type SearchConfig struct {
 	Folder   string `json:"folder" label:"Folder" desc:"Mailbox folder name, e.g. INBOX, Sent"`
 	Since    string `json:"since" label:"Since" desc:"Search start date, format: 2006-01-02"`
@@ -84,7 +84,7 @@ type SearchConfig struct {
 	Limit    int    `json:"limit" label:"Limit" desc:"Maximum number of emails to return"`
 }
 
-// FetchConfig 邮件获取选项
+// FetchConfig email acquisition option
 type FetchConfig struct {
 	ContentType         string `json:"contentType" label:"Content Type" desc:"Email content type: text, html, default text"`
 	IncludeAttachments  bool   `json:"includeAttachments" label:"Include Attachments" desc:"Download email attachments"`
@@ -92,101 +92,101 @@ type FetchConfig struct {
 	AttachmentSavePath  string `json:"attachmentSavePath" label:"Attachment Save Path" desc:"Directory path to save attachments"`
 }
 
-// PostActionConfig 执行后操作配置
+// PostActionConfig Operation configuration after execution
 type PostActionConfig struct {
 	Action       string `json:"action" label:"Action" desc:"Post-fetch action: markRead, move, delete"`
 	TargetFolder string `json:"targetFolder" label:"Target Folder" desc:"Target folder for move action"`
 }
 
-// ReceiveEmailConfiguration 接收邮件配置
+// ReceiveEmailConfiguration
 type ReceiveEmailConfiguration struct {
-	Server         string          `json:"server" label:"Server" desc:"IMAP server address" required:"true" ref:"primary"`
-	Port           int             `json:"port" label:"Port" desc:"IMAP server port, default 993"`
-	Username       string          `json:"username" label:"Username" desc:"Email login username" required:"true" ref:"shared"`
-	Password       string          `json:"password" label:"Password" desc:"Email login password" required:"true" ref:"shared"`
-	EnableTLS      bool            `json:"enableTls" label:"Enable TLS" desc:"Enable TLS encryption"`
-	ConnectTimeout int             `json:"connectTimeout" label:"Connect Timeout (s)" desc:"Connection timeout in seconds"`
-	Search         SearchConfig    `json:"search" label:"Search" desc:"Email search criteria configuration"`
-	Fetch          FetchConfig     `json:"fetch" label:"Fetch" desc:"Email content fetch configuration"`
+	Server         string           `json:"server" label:"Server" desc:"IMAP server address" required:"true" ref:"primary"`
+	Port           int              `json:"port" label:"Port" desc:"IMAP server port, default 993"`
+	Username       string           `json:"username" label:"Username" desc:"Email login username" required:"true" ref:"shared"`
+	Password       string           `json:"password" label:"Password" desc:"Email login password" required:"true" ref:"shared"`
+	EnableTLS      bool             `json:"enableTls" label:"Enable TLS" desc:"Enable TLS encryption"`
+	ConnectTimeout int              `json:"connectTimeout" label:"Connect Timeout (s)" desc:"Connection timeout in seconds"`
+	Search         SearchConfig     `json:"search" label:"Search" desc:"Email search criteria configuration"`
+	Fetch          FetchConfig      `json:"fetch" label:"Fetch" desc:"Email content fetch configuration"`
 	PostAction     PostActionConfig `json:"postAction" label:"Post Action" desc:"Post-fetch action configuration"`
 }
 
-// EmailAddress 邮件地址
+// EmailAddress
 type EmailAddress struct {
 	Name    string `json:"name,omitempty"`
 	Address string `json:"address"`
 }
 
-// EmailAttachment 邮件附件
+// EmailAttachment
 type EmailAttachment struct {
 	Filename string `json:"filename"`
-	// ContentType MIME类型
+	// ContentType MIME
 	ContentType string `json:"contentType,omitempty"`
-	// Size 文件大小(字节)
+	// Size (bytes)
 	Size int64 `json:"size"`
-	// ContentBase64 Base64编码内容(未保存到文件时)
+	// ContentBase64 Base64 encoded content (when not saved to file)
 	ContentBase64 string `json:"contentBase64,omitempty"`
-	// Path 保存路径(保存到文件时)
+	// Path (when saving to a file)
 	Path string `json:"path,omitempty"`
 }
 
-// EmailMessage 邮件消息
+// EmailMessage
 type EmailMessage struct {
-	// UID 邮件唯一标识
+	// UID email uniqueness
 	UID uint32 `json:"uid"`
-	// MessageID 消息ID
+	// MessageID
 	MessageID string `json:"messageId,omitempty"`
-	// Subject 主题
+	// Subject
 	Subject string `json:"subject"`
-	// From 发件人
+	// From the sender
 	From EmailAddress `json:"from"`
-	// To 收件人列表
+	// To the recipient list
 	To []EmailAddress `json:"to,omitempty"`
-	// Cc 抄送人列表
+	// CC CC list
 	Cc []EmailAddress `json:"cc,omitempty"`
-	// Date 日期
+	// Date
 	Date time.Time `json:"date"`
-	// Body 正文内容
+	// Body main text content
 	Body string `json:"body"`
-	// HtmlBody HTML正文
+	// HtmlBody HTML body
 	HtmlBody string `json:"htmlBody,omitempty"`
-	// Headers 头部字段
+	// Headers heading fields
 	Headers map[string]string `json:"headers,omitempty"`
-	// Attachments 附件列表
+	// Attachments list
 	Attachments []EmailAttachment `json:"attachments,omitempty"`
-	// Flags 标记
+	// Flags mark
 	Flags []string `json:"flags,omitempty"`
 }
 
-// ReceiveEmailResult 接收邮件结果
+// ReceiveEmailResult: Receive the result of the email
 type ReceiveEmailResult struct {
 	Emails []EmailMessage `json:"emails"`
 	Total  int            `json:"total"`
 }
 
-// MailboxInfo 邮件夹信息
+// MailboxInfo folder information
 type MailboxInfo struct {
-	// Name 邮件夹名称
+	// Name: Mailing folder name
 	Name string `json:"name"`
-	// Delim 层级分隔符
+	// Delim hierarchical separator
 	Delim string `json:"delim,omitempty"`
-	// Attributes 邮件夹属性
+	// Attributes
 	Attributes []string `json:"attributes,omitempty"`
 }
 
-// ListMailboxesResult 获取邮件夹列表结果
+// ListMailboxesResult to get the results of the mailbox list
 type ListMailboxesResult struct {
 	Mailboxes []MailboxInfo `json:"mailboxes"`
 }
 
-// ReceiveEmailNode 通过IMAP协议接收邮件
-// 如果请求成功，发送消息到`Success`链，否则发到`Failure`链
+// ReceiveEmailNode receives emails via the IMAP protocol
+// If the request is `Success`ful, send the message to the 'Success' chain; otherwise, send it to the `Failure` chain
 type ReceiveEmailNode struct {
 	Config                 ReceiveEmailConfiguration
 	ConnectTimeoutDuration time.Duration
 	ruleConfig             types.Config
 
-	// 模板字段
+	// Template field
 	serverTemplate     el.Template
 	usernameTemplate   el.Template
 	passwordTemplate   el.Template
@@ -197,16 +197,16 @@ type ReceiveEmailNode struct {
 	subjectTemplate    el.Template
 	attachmentPathTemp el.Template
 
-	// 是否包含变量
+	// Whether variables are included
 	hasVar bool
 }
 
-// Type 组件类型
+// Type returns the component type
 func (x *ReceiveEmailNode) Type() string {
 	return nodeType
 }
 
-// New 创建新实例
+// New creates an instance
 func (x *ReceiveEmailNode) New() types.Node {
 	return &ReceiveEmailNode{
 		Config: ReceiveEmailConfiguration{
@@ -226,7 +226,7 @@ func (x *ReceiveEmailNode) New() types.Node {
 	}
 }
 
-// Init 初始化
+// Init initializes the component
 func (x *ReceiveEmailNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	x.ruleConfig = ruleConfig
 	err := maps.Map2Struct(configuration, &x.Config)
@@ -234,7 +234,7 @@ func (x *ReceiveEmailNode) Init(ruleConfig types.Config, configuration types.Con
 		return err
 	}
 
-	// 设置默认值
+	// Set the default value
 	if x.Config.Port == 0 {
 		x.Config.Port = defaultIMAPPort
 	}
@@ -253,7 +253,7 @@ func (x *ReceiveEmailNode) Init(ruleConfig types.Config, configuration types.Con
 
 	x.ConnectTimeoutDuration = time.Duration(x.Config.ConnectTimeout) * time.Second
 
-	// 初始化模板
+	// Initialize the template
 	if x.serverTemplate, err = el.NewTemplate(x.Config.Server); err != nil {
 		return err
 	}
@@ -282,7 +282,7 @@ func (x *ReceiveEmailNode) Init(ruleConfig types.Config, configuration types.Con
 		return err
 	}
 
-	// 检查是否包含变量
+	// Check if variables are included
 	x.hasVar = x.serverTemplate.HasVar() || x.usernameTemplate.HasVar() || x.passwordTemplate.HasVar() ||
 		x.sinceTemplate.HasVar() || x.beforeTemplate.HasVar() || x.fromTemplate.HasVar() ||
 		x.toTemplate.HasVar() || x.subjectTemplate.HasVar() || x.attachmentPathTemp.HasVar()
@@ -290,15 +290,15 @@ func (x *ReceiveEmailNode) Init(ruleConfig types.Config, configuration types.Con
 	return nil
 }
 
-// OnMsg 处理消息
+// OnMsg processes a message
 func (x *ReceiveEmailNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
-	// 获取环境变量
+	// Get environment variables
 	var evn map[string]interface{}
 	if x.hasVar {
 		evn = base.NodeUtils.GetEvnAndMetadata(ctx, msg)
 	}
 
-	// 执行模板
+	// Execute the template
 	server := x.serverTemplate.ExecuteAsString(evn)
 	username := x.usernameTemplate.ExecuteAsString(evn)
 	password := x.passwordTemplate.ExecuteAsString(evn)
@@ -309,7 +309,7 @@ func (x *ReceiveEmailNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	subject := x.subjectTemplate.ExecuteAsString(evn)
 	attachmentPath := x.attachmentPathTemp.ExecuteAsString(evn)
 
-	// 验证必填字段
+	// Validate required fields
 	if server == "" {
 		ctx.TellFailure(msg, errors.New("server is required"))
 		return
@@ -323,20 +323,20 @@ func (x *ReceiveEmailNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		return
 	}
 
-	// 执行接收邮件
+	// Perform receiving emails
 	result, err := x.receiveEmails(server, username, password, since, before, from, to, subject, attachmentPath)
 	if err != nil {
 		ctx.TellFailure(msg, err)
 		return
 	}
 
-	// 更新消息
+	// Update the news
 	data := str.ToString(result)
 	msg.SetData(data)
 	ctx.TellSuccess(msg)
 }
 
-// Destroy 销毁
+// Destroy releases resources
 func (x *ReceiveEmailNode) Destroy() {
 }
 
@@ -345,11 +345,11 @@ func (x *ReceiveEmailNode) Desc() string {
 	return "Receive emails via IMAP protocol. Supports SSL/TLS. Routes to Success/Failure"
 }
 
-// receiveEmails 接收邮件
+// receiveEmails Receive emails
 func (x *ReceiveEmailNode) receiveEmails(server, username, password, since, before, from, to, subject, attachmentPath string) (*ReceiveEmailResult, error) {
 	addr := fmt.Sprintf("%s:%d", server, x.Config.Port)
 
-	// 连接IMAP服务器
+	// Connect to the IMAP server
 	var c *client.Client
 	var err error
 
@@ -365,26 +365,26 @@ func (x *ReceiveEmailNode) receiveEmails(server, username, password, since, befo
 	}
 	defer c.Logout()
 
-	// 登录
+	// Log in
 	if err := c.Login(username, password); err != nil {
 		return nil, fmt.Errorf("login failed: %v", err)
 	}
 
-	// 选择邮件夹
+	// Select the mailbox
 	mbox, err := c.Select(x.Config.Search.Folder, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to select folder: %v", err)
 	}
 
-	// 如果邮件夹为空
+	// If the mailbox is empty
 	if mbox.Messages == 0 {
 		return &ReceiveEmailResult{Emails: []EmailMessage{}, Total: 0}, nil
 	}
 
-	// 构建搜索条件
+	// Construct search criteria
 	criteria := x.buildSearchCriteria(since, before, from, to, subject)
 
-	// 搜索邮件
+	// Search emails
 	uids, err := c.Search(criteria)
 	if err != nil {
 		return nil, fmt.Errorf("search failed: %v", err)
@@ -394,19 +394,19 @@ func (x *ReceiveEmailNode) receiveEmails(server, username, password, since, befo
 		return &ReceiveEmailResult{Emails: []EmailMessage{}, Total: 0}, nil
 	}
 
-	// 应用limit限制
+	// Apply limit
 	total := len(uids)
 	limit := x.Config.Search.Limit
 	if limit > 0 && len(uids) > limit {
-		// 取最新的N封邮件(从后往前取)
+		// Retrieve the latest N emails (from back to front)
 		uids = uids[len(uids)-limit:]
 	}
 
-	// 获取邮件
+	// Get the email
 	seqset := new(imap.SeqSet)
 	seqset.AddNum(uids...)
 
-	// 获取邮件内容
+	// Retrieve the email content
 	messages := make(chan *imap.Message, len(uids))
 	fetchItems := x.buildFetchItems()
 
@@ -415,7 +415,7 @@ func (x *ReceiveEmailNode) receiveEmails(server, username, password, since, befo
 		return nil, fmt.Errorf("fetch failed: %v", err)
 	}
 
-	// 解析邮件
+	// Parsing emails
 	var emails []EmailMessage
 	for msg := range messages {
 		if msg == nil {
@@ -429,7 +429,7 @@ func (x *ReceiveEmailNode) receiveEmails(server, username, password, since, befo
 		emails = append(emails, *email)
 	}
 
-	// 执行后置操作
+	// Perform post-processing
 	if x.Config.PostAction.Action != defaultPostAction && len(emails) > 0 {
 		x.executePostAction(c, uids)
 	}
@@ -437,13 +437,13 @@ func (x *ReceiveEmailNode) receiveEmails(server, username, password, since, befo
 	return &ReceiveEmailResult{Emails: emails, Total: total}, nil
 }
 
-// buildSearchCriteria 构建搜索条件
+// buildSearchCriteria Constructs the search criteria
 func (x *ReceiveEmailNode) buildSearchCriteria(since, before, from, to, subject string) *imap.SearchCriteria {
 	criteria := &imap.SearchCriteria{
 		Header: make(textproto.MIMEHeader),
 	}
 
-	// 时间条件
+	// Time conditions
 	if x.Config.Search.LastDays > 0 {
 		criteria.Since = time.Now().AddDate(0, 0, -x.Config.Search.LastDays)
 	} else {
@@ -459,22 +459,22 @@ func (x *ReceiveEmailNode) buildSearchCriteria(since, before, from, to, subject 
 		}
 	}
 
-	// 发件人
+	// Sender
 	if from != "" {
 		criteria.Header.Add("From", from)
 	}
 
-	// 收件人
+	// Recipient
 	if to != "" {
 		criteria.Header.Add("To", to)
 	}
 
-	// 主题
+	// Theme
 	if subject != "" {
 		criteria.Header.Add("Subject", subject)
 	}
 
-	// 未读标记
+	// Unread mark
 	if x.Config.Search.Unread {
 		criteria.WithoutFlags = []string{imap.SeenFlag}
 	}
@@ -482,7 +482,7 @@ func (x *ReceiveEmailNode) buildSearchCriteria(since, before, from, to, subject 
 	return criteria
 }
 
-// buildFetchItems 构建获取项
+// buildFetchItems to construct the getter item
 func (x *ReceiveEmailNode) buildFetchItems() []imap.FetchItem {
 	items := []imap.FetchItem{imap.FetchUid, imap.FetchFlags, imap.FetchInternalDate}
 
@@ -492,14 +492,14 @@ func (x *ReceiveEmailNode) buildFetchItems() []imap.FetchItem {
 	case contentTypeBody:
 		items = append(items, imap.FetchBody)
 	default:
-		// full 或其他值默认获取完整内容
+		// full or other values by default get the full content
 		items = append(items, imap.FetchEnvelope, imap.FetchBody)
 	}
 
 	return items
 }
 
-// parseEmail 解析邮件
+// parseEmail parses emails
 func (x *ReceiveEmailNode) parseEmail(msg *imap.Message, attachmentPath string) (*EmailMessage, error) {
 	email := &EmailMessage{
 		UID:     msg.Uid,
@@ -508,12 +508,12 @@ func (x *ReceiveEmailNode) parseEmail(msg *imap.Message, attachmentPath string) 
 		Headers: make(map[string]string),
 	}
 
-	// 解析信封
+	// Analyze the envelope
 	if msg.Envelope != nil {
 		email.MessageID = msg.Envelope.MessageId
 		email.Subject = decodeMimeHeader(msg.Envelope.Subject)
 
-		// 发件人
+		// Sender
 		if len(msg.Envelope.From) > 0 {
 			email.From = EmailAddress{
 				Name:    decodeMimeHeader(msg.Envelope.From[0].PersonalName),
@@ -521,7 +521,7 @@ func (x *ReceiveEmailNode) parseEmail(msg *imap.Message, attachmentPath string) 
 			}
 		}
 
-		// 收件人
+		// Recipient
 		for _, addr := range msg.Envelope.To {
 			email.To = append(email.To, EmailAddress{
 				Name:    decodeMimeHeader(addr.PersonalName),
@@ -529,7 +529,7 @@ func (x *ReceiveEmailNode) parseEmail(msg *imap.Message, attachmentPath string) 
 			})
 		}
 
-		// 抄送人
+		// Copying people
 		for _, addr := range msg.Envelope.Cc {
 			email.Cc = append(email.Cc, EmailAddress{
 				Name:    decodeMimeHeader(addr.PersonalName),
@@ -538,7 +538,7 @@ func (x *ReceiveEmailNode) parseEmail(msg *imap.Message, attachmentPath string) 
 		}
 	}
 
-	// 解析正文和附件
+	// Analyze the main text and attachments
 	if x.Config.Fetch.ContentType != contentTypeHeaders {
 		if err := x.parseBody(msg, email, attachmentPath); err != nil {
 			x.ruleConfig.Logger.Warnf("parseBody uid=%d failed: %v", msg.Uid, err)
@@ -548,16 +548,16 @@ func (x *ReceiveEmailNode) parseEmail(msg *imap.Message, attachmentPath string) 
 	return email, nil
 }
 
-// parseBody 解析正文和附件
+// parseBody parses the main text and attachments
 func (x *ReceiveEmailNode) parseBody(msg *imap.Message, email *EmailMessage, attachmentPath string) error {
-	// 获取正文
+	// Get the main text
 	section := &imap.BodySectionName{}
 	reader := msg.GetBody(section)
 	if reader == nil {
 		return nil
 	}
 
-	// 读取全部内容
+	// Read the full content
 	bodyBytes, err := io.ReadAll(reader)
 	if err != nil {
 		return err
@@ -566,7 +566,7 @@ func (x *ReceiveEmailNode) parseBody(msg *imap.Message, email *EmailMessage, att
 	contentType := "text/plain"
 	contentTransferEncoding := ""
 
-	// 从原始内容中分离头部和正文
+	// Separate the head from the original content from the main text
 	var sepLen int
 	headerEnd := bytes.Index(bodyBytes, []byte("\r\n\r\n"))
 	if headerEnd != -1 {
@@ -587,7 +587,7 @@ func (x *ReceiveEmailNode) parseBody(msg *imap.Message, email *EmailMessage, att
 		bodyContent = bodyBytes
 	}
 
-	// 解析头部
+	// Analyze the head
 	if len(headerBytes) > 0 {
 		headerReader := textproto.NewReader(bufio.NewReader(bytes.NewReader(headerBytes)))
 		header, err := headerReader.ReadMIMEHeader()
@@ -597,14 +597,14 @@ func (x *ReceiveEmailNode) parseBody(msg *imap.Message, email *EmailMessage, att
 		}
 	}
 
-	// 解析Content-Type
+	// Parse Content-Type
 	mediaType, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
 		email.Body = string(bodyContent)
 		return nil
 	}
 
-	// 处理multipart消息
+	// Handles multipart messages
 	if strings.HasPrefix(mediaType, "multipart/") {
 		boundary := params["boundary"]
 		if boundary == "" {
@@ -623,7 +623,7 @@ func (x *ReceiveEmailNode) parseBody(msg *imap.Message, email *EmailMessage, att
 				continue
 			}
 
-			// 处理附件
+			// Handling attachments
 			filename := part.FileName()
 			if filename != "" || part.Header.Get("Content-Disposition") != "" {
 				if x.Config.Fetch.IncludeAttachments {
@@ -632,7 +632,7 @@ func (x *ReceiveEmailNode) parseBody(msg *imap.Message, email *EmailMessage, att
 				continue
 			}
 
-			// 处理正文
+			// Handle the main text
 			partBytes, err := io.ReadAll(part)
 			if err != nil {
 				continue
@@ -649,7 +649,7 @@ func (x *ReceiveEmailNode) parseBody(msg *imap.Message, email *EmailMessage, att
 			}
 		}
 	} else {
-		// 单部分消息
+		// Single part of the news
 		decoded := decodeBody(bodyContent, contentTransferEncoding)
 		bodyStr := decodeCharset(decoded, params["charset"])
 
@@ -663,22 +663,22 @@ func (x *ReceiveEmailNode) parseBody(msg *imap.Message, email *EmailMessage, att
 	return nil
 }
 
-// processAttachment 处理附件
+// processAttachment handles attachments
 func (x *ReceiveEmailNode) processAttachment(part *multipart.Part, filename, contentType string, email *EmailMessage, savePath string) {
-	// 解码文件名
+	// Decode the file name
 	filename = decodeMimeHeader(filename)
 	if filename == "" {
 		filename = defaultAttachmentFilename
 	}
 
-	// 获取附件内容
+	// Get the attachment content
 	content, err := io.ReadAll(part)
 	if err != nil {
 		x.ruleConfig.Logger.Warnf("read attachment %s failed: %v", filename, err)
 		return
 	}
 
-	// 检查大小限制
+	// Check the size limit
 	maxSize := int64(x.Config.Fetch.MaxAttachmentSizeMB) * 1024 * 1024
 	if maxSize > 0 && int64(len(content)) > maxSize {
 		x.ruleConfig.Logger.Infof("attachment %s size %d exceeds limit %d, skipped", filename, len(content), maxSize)
@@ -691,7 +691,7 @@ func (x *ReceiveEmailNode) processAttachment(part *multipart.Part, filename, con
 		Size:        int64(len(content)),
 	}
 
-	// 保存到文件或嵌入到消息中
+	// Save to a file or embed it in a message
 	if savePath != "" {
 		fullPath := filepath.Join(savePath, filename)
 		if err := os.MkdirAll(savePath, 0755); err != nil {
@@ -702,14 +702,14 @@ func (x *ReceiveEmailNode) processAttachment(part *multipart.Part, filename, con
 			attachment.Path = fullPath
 		}
 	} else {
-		// 未指定保存路径，嵌入到消息中
+		// No save path specified, embedded in the message
 		attachment.ContentBase64 = base64.StdEncoding.EncodeToString(content)
 	}
 
 	email.Attachments = append(email.Attachments, attachment)
 }
 
-// executePostAction 执行后置操作
+// executePostAction executes the post-action action
 func (x *ReceiveEmailNode) executePostAction(c *client.Client, uids []uint32) {
 	seqset := new(imap.SeqSet)
 	seqset.AddNum(uids...)
@@ -737,7 +737,7 @@ func (x *ReceiveEmailNode) executePostAction(c *client.Client, uids []uint32) {
 	}
 }
 
-// decodeMimeHeader 解码MIME头部
+// decodeMimeHeader Decodes the MIME header
 func decodeMimeHeader(header string) string {
 	if header == "" {
 		return ""
@@ -750,12 +750,12 @@ func decodeMimeHeader(header string) string {
 	return decoded
 }
 
-// decodeBody 解码正文传输编码(base64/quoted-printable)，返回解码后的原始字节
+// decodeBody decodes the body transfer encoding (base64/quoted-printable), returning the original byte after decoding
 func decodeBody(body []byte, encoding string) []byte {
 	encoding = strings.ToLower(strings.TrimSpace(encoding))
 	switch encoding {
 	case "base64":
-		// 邮件base64内容每76字符折行，需要去除空白字符
+		// Email base64 content should be folded into lines every 76 characters, with spaces removed
 		cleaned := stripBase64Whitespace(body)
 		decoded, err := base64.StdEncoding.DecodeString(string(cleaned))
 		if err != nil {
@@ -769,7 +769,7 @@ func decodeBody(body []byte, encoding string) []byte {
 	}
 }
 
-// decodeCharset 将字节从指定字符集转换为UTF-8
+// decodeCharset converts bytes from a specified character set to UTF-8
 func decodeCharset(data []byte, charset string) string {
 	charset = strings.ToLower(strings.TrimSpace(charset))
 	if charset == "" || charset == "utf-8" || charset == "utf8" || charset == "us-ascii" {
@@ -786,7 +786,7 @@ func decodeCharset(data []byte, charset string) string {
 	return string(decoded)
 }
 
-// stripBase64Whitespace 去除base64内容中的空白字符
+// stripBase64Whitespace removes the whitespace characters from base64 content
 func stripBase64Whitespace(data []byte) []byte {
 	return bytes.Map(func(r rune) rune {
 		if r == '\r' || r == '\n' || r == ' ' || r == '\t' {
@@ -796,7 +796,7 @@ func stripBase64Whitespace(data []byte) []byte {
 	}, data)
 }
 
-// decodeQuotedPrintable 解码quoted-printable编码
+// decodeQuotedPrintable Decodes quoted-printable encoding
 func decodeQuotedPrintable(data []byte) []byte {
 	var buf bytes.Buffer
 	i := 0
@@ -836,11 +836,11 @@ func hexVal(c byte) byte {
 	}
 }
 
-// formatFlags 格式化标记
+// formatFlags
 func formatFlags(flags []string) []string {
 	var result []string
 	for _, flag := range flags {
-		// 移除标记前的反斜杠
+		// Remove the backslash before the mark
 		flag = strings.TrimPrefix(flag, "\\")
 		result = append(result, flag)
 	}
@@ -848,20 +848,20 @@ func formatFlags(flags []string) []string {
 }
 
 // ============================================================
-// 工具函数 - 获取邮件夹列表
+// Utility function - Get the mailbox list
 // ============================================================
 
-// ListMailboxes 获取IMAP服务器上的所有邮件夹列表
-// server: IMAP服务器地址 (如: imap.gmail.com)
-// port: IMAP端口 (如: 993)
-// username: 用户名
-// password: 密码
-// enableTLS: 是否启用TLS
-// 返回邮件夹列表
+// ListMailboxes retrieves a list of all mailboxes on the IMAP server
+// server: IMAP server address (e.g., imap.gmail.com)
+// port: IMAP port (e.g., 993)
+// username: username
+// password: password
+// enableTLS: Whether TLS is enabled
+// Return to mailbox list
 func ListMailboxes(server string, port int, username, password string, enableTLS bool) (*ListMailboxesResult, error) {
 	addr := fmt.Sprintf("%s:%d", server, port)
 
-	// 连接IMAP服务器
+	// Connect to the IMAP server
 	var c *client.Client
 	var err error
 
@@ -877,12 +877,12 @@ func ListMailboxes(server string, port int, username, password string, enableTLS
 	}
 	defer c.Logout()
 
-	// 登录
+	// Log in
 	if err := c.Login(username, password); err != nil {
 		return nil, fmt.Errorf("login failed: %v", err)
 	}
 
-	// 获取邮件夹列表
+	// Get the mailbox list
 	mailboxes := make(chan *imap.MailboxInfo, 10)
 	done := make(chan error, 1)
 
@@ -906,7 +906,7 @@ func ListMailboxes(server string, port int, username, password string, enableTLS
 	return &ListMailboxesResult{Mailboxes: result}, nil
 }
 
-// ListMailboxesWithConfig 使用配置对象获取邮件夹列表
+// ListMailboxesWithConfig uses a configuration object to get the mailbox list
 func ListMailboxesWithConfig(config ReceiveEmailConfiguration) (*ListMailboxesResult, error) {
 	return ListMailboxes(config.Server, config.Port, config.Username, config.Password, config.EnableTLS)
 }
