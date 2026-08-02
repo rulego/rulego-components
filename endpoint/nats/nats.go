@@ -46,6 +46,8 @@ var _ endpointApi.Endpoint = (*Endpoint)(nil)
 // 注册组件
 func init() {
 	_ = endpoint.Registry.Register(&Endpoint{})
+	// 兼容旧版 DSL 的无前缀类型名（rulego v0.36 起旧名兼容改由别名机制提供）
+	_ = endpoint.Registry.RegisterAlias(Type, "nats")
 }
 
 // RequestMessage 请求消息
