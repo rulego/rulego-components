@@ -58,6 +58,13 @@ func (c *captureRulegoLogger) Errorf(format string, v ...interface{}) {
 	c.mu.Unlock()
 }
 
+// errCount 加锁读取错误日志数，供测试轮询等待后台 goroutine 的异步写入。
+func (c *captureRulegoLogger) errCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.errs)
+}
+
 // TestRulegoLoggerAdapter 验证适配器把 streamsql 的 Debug/Info/Warn/Error 委派给 rulego logger。
 func TestRulegoLoggerAdapter(t *testing.T) {
 	cap := &captureRulegoLogger{}
@@ -96,7 +103,7 @@ func TestNodeLoggerWiring_RoutesViaWithLogger(t *testing.T) {
 	ssql.Emit(map[string]interface{}{"id": 1}) // 异步 → enrichJoin 报错 → s.log.Error
 
 	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && len(cap.errs) == 0 {
+	for time.Now().Before(deadline) && cap.errCount() == 0 {
 		time.Sleep(20 * time.Millisecond)
 	}
 
