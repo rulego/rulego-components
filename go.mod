@@ -19,7 +19,6 @@ require (
 	github.com/jhump/protoreflect v1.17.0
 	github.com/nats-io/nats.go v1.47.0
 	github.com/nsqio/go-nsq v1.1.1-0.20250723164658-7188fbbac4d5
-	github.com/openGemini/opengemini-client-go v0.9.1
 	github.com/rabbitmq/amqp091-go v1.10.1-0.20240821123418-dc67c21576c2
 	github.com/redis/go-redis/v9 v9.17.2
 	github.com/rulego/rulego v0.35.3-0.20260527090622-d8b29d722bac
@@ -133,8 +132,6 @@ require (
 	github.com/spiffe/go-spiffe/v2 v2.5.0 // indirect
 	github.com/technoweenie/multipartstreamer v1.0.1 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
-	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
-	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/scram v1.1.2 // indirect
