@@ -37,6 +37,12 @@ type StreamTransformNodeConfiguration struct {
 	// SQL is the non-aggregation query statement (filter, transform, field selection).
 	// Example: SELECT temperature, humidity FROM stream WHERE temperature > 20
 	SQL string `json:"sql" label:"SQL" desc:"Non-aggregation SQL for filtering/transforming. Example: SELECT temperature FROM stream WHERE temperature > 20" required:"true"`
+
+	// Tables is the optional list of metadata tables for stream-table JOIN.
+	// Each table is loaded at Init from inline rows / a file / an HTTP endpoint;
+	// the index key is auto-derived from the JOIN ON clause. Tables may declare
+	// a Refresh interval to reload periodically. See TableConfig.
+	Tables []TableConfig `json:"tables"`
 }
 
 // StreamTransformNode 流转换器节点
@@ -63,6 +69,8 @@ type StreamTransformNode struct {
 	Config StreamTransformNodeConfiguration
 	// StreamSQL实例，用于执行SQL转换查询
 	streamsql *streamsql.Streamsql
+	// tables 管理流-表 JOIN 的元数据表（加载/注册/刷新），Destroy 时关闭
+	tables *tableManager
 }
 
 // Type 返回组件类型标识
@@ -81,8 +89,8 @@ func (x *StreamTransformNode) New() types.Node {
 var (
 	ErrTransformSQLEmpty      = errors.New("transform SQL query is required")
 	ErrNotTransformQuery      = errors.New("SQL contains aggregation functions, use x/streamAggregator instead")
+	ErrTransformNotSupportCEP = errors.New("SQL contains MATCH_RECOGNIZE (CEP), use x/streamAggregator instead")
 	ErrTransformSQLExecution  = errors.New("failed to execute transform SQL")
-	ErrNotMatchWhereCondition = errors.New("not match WHERE condition")
 	ErrStreamsqlInstanceNil   = errors.New("streamsql instance is nil")
 	ErrArrayProcessingFailed  = errors.New("failed to process array data")
 	ErrUnsupportedDataType    = errors.New("only JSON data type is supported")
@@ -96,8 +104,8 @@ var (
 
 // Init 初始化节点
 // 该方法在节点被加载时调用，用于验证配置和初始化StreamSQL实例
-func (x *StreamTransformNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
-	err := maps.Map2Struct(configuration, &x.Config)
+func (x *StreamTransformNode) Init(ruleConfig types.Config, configuration types.Configuration) (err error) {
+	err = maps.Map2Struct(configuration, &x.Config)
 	if err != nil {
 		return err
 	}
@@ -107,18 +115,39 @@ func (x *StreamTransformNode) Init(ruleConfig types.Config, configuration types.
 		return ErrTransformSQLEmpty
 	}
 
-	// 创建StreamSQL实例
-	x.streamsql = streamsql.New()
+	// 创建StreamSQL实例，日志接入 rulego 日志体系
+	x.streamsql = streamsql.New(streamsql.WithLogger(newRulegoLogger(ruleConfig.Logger)))
 
 	// 执行SQL初始化
 	err = x.streamsql.Execute(x.Config.SQL)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrTransformSQLExecution, err)
 	}
+	// Init 失败时停止已启动的 streamsql 实例
+	defer func() {
+		if err != nil {
+			x.streamsql.Stop()
+		}
+	}()
 
-	// 验证是否为非聚合查询
+	// 验证是否为非聚合、非 CEP 查询（聚合/CEP 走 x/streamAggregator 的异步管道）
 	if x.streamsql.IsAggregationQuery() {
 		return fmt.Errorf("%w: SQL='%s'", ErrNotTransformQuery, x.Config.SQL)
+	}
+	if x.streamsql.IsCEPQuery() {
+		return fmt.Errorf("%w: SQL='%s'", ErrTransformNotSupportCEP, x.Config.SQL)
+	}
+
+	// Load metadata tables for stream-table JOIN (must follow Execute). Each table
+	// is loaded from inline rows / file / http, registered (key auto-derived from
+	// the JOIN ON clause), and optionally refreshed on a background goroutine.
+	// 任一表失败则关闭已启动的刷新 goroutine，避免泄漏。
+	x.tables = newTableManager(x.streamsql)
+	for _, tbl := range x.Config.Tables {
+		if err := x.tables.register(tbl); err != nil {
+			x.tables.Close()
+			return err
+		}
 	}
 
 	return nil
@@ -126,9 +155,9 @@ func (x *StreamTransformNode) Init(ruleConfig types.Config, configuration types.
 
 // OnMsg 处理消息
 // 支持单条数据和数组数据：
-//   - 单条数据：直接进行SQL转换，成功则通过Success链输出，失败则通过Failure链输出
+//   - 单条数据：直接进行SQL转换，成功走 Success；被过滤（WHERE 不满足或 changed_cols 无变化）走 False；出错走 Failure
 //   - 数组数据：遍历每个元素进行转换，将所有成功的结果合并成数组输出
-//     如果至少有一个元素转换成功，则通过Success链输出；如果全部失败，则通过Failure链输出
+//     至少一个成功走 Success；全部失败（无成功）且有出错元素走 Failure；全部被过滤（无出错）走 False
 func (x *StreamTransformNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	if x.streamsql == nil {
 		ctx.TellFailure(msg, ErrStreamsqlInstanceNil)
@@ -194,9 +223,9 @@ func (x *StreamTransformNode) processSingleData(ctx types.RuleContext, msg types
 		msg.Metadata.PutValue(Match, MatchTrue)
 		ctx.TellSuccess(msg)
 	} else {
-		// 数据被过滤，不符合WHERE条件，通过Failure输出
+		// 数据被过滤（WHERE 不满足或 changed_cols 无变化），非错误，走 False 链
 		msg.Metadata.PutValue(Match, MatchFalse)
-		ctx.TellFailure(msg, ErrNotMatchWhereCondition)
+		ctx.TellNext(msg, types.False)
 	}
 }
 
@@ -221,22 +250,23 @@ func (x *StreamTransformNode) processArrayData(ctx types.RuleContext, msg types.
 	}
 
 	var transformedResults []interface{}
-	var failedCount int
+	var errorCount int    // 转换/类型出错数
+	var filteredCount int // 被过滤数（WHERE 不满足或 changed_cols 无变化）
 
 	// 遍历数组元素，逐个进行转换
 	for _, item := range inputArray {
 		// 转换为map[string]interface{}类型，支持多种map类型
 		mapItem, err := x.convertToMapStringInterface(item)
 		if err != nil {
-			// 类型转换失败，记录失败次数，继续处理下一个元素
-			failedCount++
+			// 类型转换失败，记录出错数，继续处理下一个元素
+			errorCount++
 			continue
 		}
 
 		result, err := x.streamsql.EmitSync(mapItem)
 		if err != nil {
-			// 转换出错，记录失败次数，继续处理下一个元素
-			failedCount++
+			// 转换出错，记录出错数，继续处理下一个元素
+			errorCount++
 			continue
 		}
 
@@ -244,10 +274,12 @@ func (x *StreamTransformNode) processArrayData(ctx types.RuleContext, msg types.
 			// 转换成功且符合WHERE条件，添加到结果数组
 			transformedResults = append(transformedResults, result)
 		} else {
-			// 不符合WHERE条件，被过滤掉，记录失败次数
-			failedCount++
+			// 不符合WHERE条件或无变化，被过滤掉
+			filteredCount++
 		}
 	}
+
+	failedCount := errorCount + filteredCount
 
 	// 判断处理结果
 	if len(transformedResults) > 0 {
@@ -267,14 +299,22 @@ func (x *StreamTransformNode) processArrayData(ctx types.RuleContext, msg types.
 		msg.Metadata.PutValue("failedCount", str.ToString(failedCount))
 
 		ctx.TellSuccess(msg)
-	} else {
-		// 所有元素都转换失败或被过滤
+	} else if errorCount > 0 {
+		// 无成功结果且有出错元素，走 Failure（真错误）
 		msg.Metadata.PutValue(Match, MatchFalse)
 		msg.Metadata.PutValue("originalCount", str.ToString(len(inputArray)))
 		msg.Metadata.PutValue("transformedCount", "0")
 		msg.Metadata.PutValue("failedCount", str.ToString(failedCount))
 
-		ctx.TellFailure(msg, fmt.Errorf("all array elements failed transformation or were filtered out"))
+		ctx.TellFailure(msg, fmt.Errorf("%w: %d failed, %d filtered", ErrArrayProcessingFailed, errorCount, filteredCount))
+	} else {
+		// 全部被过滤、无错误，走 False（非错误）
+		msg.Metadata.PutValue(Match, MatchFalse)
+		msg.Metadata.PutValue("originalCount", str.ToString(len(inputArray)))
+		msg.Metadata.PutValue("transformedCount", "0")
+		msg.Metadata.PutValue("failedCount", str.ToString(failedCount))
+
+		ctx.TellNext(msg, types.False)
 	}
 }
 
@@ -299,6 +339,10 @@ func (x *StreamTransformNode) convertToMapStringInterface(data interface{}) (map
 
 // Destroy 销毁节点，释放资源
 func (x *StreamTransformNode) Destroy() {
+	// 先停止表刷新 goroutine，再停 StreamSQL，避免刷新向已停止实例写表。
+	if x.tables != nil {
+		x.tables.Close()
+	}
 	if x.streamsql != nil {
 		x.streamsql.Stop()
 		x.streamsql = nil
@@ -307,5 +351,13 @@ func (x *StreamTransformNode) Destroy() {
 
 // Desc returns the component description
 func (x *StreamTransformNode) Desc() string {
-	return "Stream transform node. Processes non-aggregation SQL for filtering and field transformation. Supports single and array JSON input. Routes to Success/Failure"
+	return "Stream transform node. Processes non-aggregation SQL for filtering and field transformation. Supports single and array JSON input. Routes to Success/False/Failure"
+}
+
+// Def returns the component form definition
+func (x *StreamTransformNode) Def() types.ComponentForm {
+	return types.ComponentForm{
+		Desc:          "Stream transform node. Processes non-aggregation SQL for filtering and transformation. Success: transformed; False: WHERE not matched or changed_cols no-change; Failure: error",
+		RelationTypes: &[]string{types.Success, types.False, types.Failure},
+	}
 }

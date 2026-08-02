@@ -28,11 +28,11 @@ import (
 	"github.com/rulego/streamsql"
 )
 
-// RelationTypeWindowEvent 表示窗口事件关系类型，用于聚合结果的链路传递
-const RelationTypeWindowEvent = "window_event"
+// RelationTypeStreamEvent 流事件关系类型：聚合窗口触发或 CEP 模式命中的统一结果出口。
+const RelationTypeStreamEvent = "stream_event"
 
-// WindowEventMsgType 表示窗口事件消息类型，用于标识聚合结果消息
-const WindowEventMsgType = "window_event"
+// StreamEventMsgType 流事件消息类型，用于标识聚合/CEP 结果消息。
+const StreamEventMsgType = "stream_event"
 
 func init() {
 	_ = rulego.Registry.Register(&StreamAggregatorNode{})
@@ -43,19 +43,25 @@ type StreamAggregatorNodeConfiguration struct {
 	// SQL is the aggregation query statement (must contain GROUP BY, aggregation or window functions).
 	// Example: SELECT AVG(temperature) as avg_temp FROM stream GROUP BY TumblingWindow('5s')
 	SQL string `json:"sql" label:"SQL" desc:"Aggregation SQL query. Must contain GROUP BY/window functions. Example: SELECT AVG(temperature) FROM stream GROUP BY TumblingWindow('5s')" required:"true"`
+
+	// Tables is the optional list of metadata tables for stream-table JOIN.
+	// Each table is loaded at Init (inline/file/http), registered for JOIN, and
+	// optionally refreshed. JOIN works with both transform and aggregation/window
+	// queries. See TableConfig.
+	Tables []TableConfig `json:"tables"`
 }
 
 // StreamAggregatorNode 流聚合器节点
 //
 // 功能说明：
-// - 专门处理聚合查询，如窗口聚合、分组聚合、统计计算等
-// - 支持单条数据和数组数据输入，数组数据会被逐条添加到聚合流中
-// - 聚合结果通过 `window_event` 关系链传递到下一个节点，而不是通过普通的Success链
+// - 处理聚合查询（窗口聚合、分组聚合、统计计算）或 CEP(MATCH_RECOGNIZE) 模式识别
+// - 支持单条数据和数组数据输入，数组数据会被逐条添加到流中
+// - 结果（聚合窗口触发 / CEP 模式命中）通过 `stream_event` 关系链传递，而不是普通的 Success 链
 // - 原始输入数据（无论单条还是数组）都会通过 `Success` 链继续传递，保持数据流的连续性
 //
 // 数据流向：
-// - 输入数据 -> 添加到聚合流 -> 原始数据通过Success链传递
-// - 聚合触发 -> 聚合结果通过window_event链传递
+// - 输入数据 -> 添加到流 -> 原始数据通过 Success 链传递
+// - 聚合/CEP 触发 -> 结果通过 stream_event 链传递
 //
 // 注意事项：
 // - 聚合结果通过全局`Config.OnEnd`回调返回，而不是通过消息处理上下文的OnEnd回调返回
@@ -66,12 +72,16 @@ type StreamAggregatorNode struct {
 	Config StreamAggregatorNodeConfiguration
 	// StreamSQL实例，用于执行SQL聚合查询
 	streamsql *streamsql.Streamsql
+	// tables 管理流-表 JOIN 的元数据表（加载/注册/刷新），Destroy 时关闭
+	tables *tableManager
 	// 规则链ID，用于聚合结果的回调处理
 	chainId string
 	// 自身节点ID，用于指定聚合结果的传递路径
 	selfNodeId string
 	// 链上下文，用于获取规则引擎实例
 	chainCtx types.ChainCtx
+	// isCEP 标记当前是否为 MATCH_RECOGNIZE(CEP) 查询，决定结果消息的 queryType
+	isCEP bool
 }
 
 // Type 返回组件类型标识
@@ -98,8 +108,8 @@ var (
 
 // Init 初始化节点
 // 该方法在节点被加载时调用，用于验证配置和初始化StreamSQL实例
-func (x *StreamAggregatorNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
-	err := maps.Map2Struct(configuration, &x.Config)
+func (x *StreamAggregatorNode) Init(ruleConfig types.Config, configuration types.Configuration) (err error) {
+	err = maps.Map2Struct(configuration, &x.Config)
 	if err != nil {
 		return err
 	}
@@ -128,17 +138,24 @@ func (x *StreamAggregatorNode) Init(ruleConfig types.Config, configuration types
 	}
 	x.chainId = x.chainCtx.GetNodeId().Id
 
-	// 创建StreamSQL实例
-	x.streamsql = streamsql.New()
+	// 创建StreamSQL实例，日志接入 rulego 日志体系
+	x.streamsql = streamsql.New(streamsql.WithLogger(newRulegoLogger(ruleConfig.Logger)))
 
 	// 执行SQL初始化
 	err = x.streamsql.Execute(x.Config.SQL)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrAggregatorSQLExecution, err)
 	}
+	// Init 失败时停止已启动的 streamsql 实例
+	defer func() {
+		if err != nil {
+			x.streamsql.Stop()
+		}
+	}()
 
-	// 验证是否为聚合查询
-	if !x.streamsql.IsAggregationQuery() {
+	// 验证是否为聚合或 CEP(MATCH_RECOGNIZE) 查询；两者都走异步 Emit+sink 管道
+	x.isCEP = x.streamsql.IsCEPQuery()
+	if !x.streamsql.IsAggregationQuery() && !x.isCEP {
 		return fmt.Errorf("%w: SQL='%s'", ErrNotAggregatorQuery, x.Config.SQL)
 	}
 
@@ -146,6 +163,16 @@ func (x *StreamAggregatorNode) Init(ruleConfig types.Config, configuration types
 	x.streamsql.AddSink(func(results []map[string]interface{}) {
 		x.handleAggregateResult(results)
 	})
+
+	// 加载元数据表（流-表 JOIN，须在 Execute 之后）。任一表失败则关闭已启动的
+	// 刷新 goroutine，避免泄漏。
+	x.tables = newTableManager(x.streamsql)
+	for _, tbl := range x.Config.Tables {
+		if err := x.tables.register(tbl); err != nil {
+			x.tables.Close()
+			return err
+		}
+	}
 
 	return nil
 }
@@ -240,20 +267,25 @@ func (x *StreamAggregatorNode) processArrayData(data interface{}) error {
 	return nil
 }
 
-// handleAggregateResult 处理聚合结果
-// 当窗口触发或聚合条件满足时，该方法会被StreamSQL引擎回调
-// 聚合结果会被包装成特殊的window_event消息，通过window_event关系链传递到下一个节点
+// handleAggregateResult 处理聚合/CEP 结果
+// 当窗口触发、聚合条件满足或 CEP 模式命中时，该方法会被 StreamSQL 引擎回调
+// 结果会被包装成 stream_event 消息，通过 stream_event 关系链传递到下一个节点
 func (x *StreamAggregatorNode) handleAggregateResult(results []map[string]interface{}) {
-	// 创建聚合结果消息的元数据
+	// 创建结果消息的元数据
 	metadata := types.NewMetadata()
-	metadata.PutValue("queryType", "aggregation")
-	metadata.PutValue("resultType", "window_triggered")
+	if x.isCEP {
+		metadata.PutValue("queryType", "cep")
+		metadata.PutValue("resultType", "pattern_matched")
+	} else {
+		metadata.PutValue("queryType", "aggregation")
+		metadata.PutValue("resultType", "window_triggered")
+	}
 
-	// 通过规则引擎发送聚合结果
+	// 通过规则引擎发送结果
 	if e, ok := x.chainCtx.GetRuleEnginePool().Get(x.chainId); ok {
-		msg := types.NewMsg(0, WindowEventMsgType, types.JSON, metadata, str.ToString(results))
-		// 发送聚合结果到下一个节点，使用window_event关系链
-		e.OnMsg(msg, types.WithTellNext(x.selfNodeId, RelationTypeWindowEvent))
+		msg := types.NewMsg(0, StreamEventMsgType, types.JSON, metadata, str.ToString(results))
+		// 结果经 stream_event 关系链传递（聚合窗口触发或 CEP 模式命中）
+		e.OnMsg(msg, types.WithTellNext(x.selfNodeId, RelationTypeStreamEvent))
 	}
 }
 
@@ -278,6 +310,9 @@ func (x *StreamAggregatorNode) convertToMapStringInterface(data interface{}) (ma
 
 // Destroy 销毁节点，释放资源
 func (x *StreamAggregatorNode) Destroy() {
+	if x.tables != nil {
+		x.tables.Close()
+	}
 	if x.streamsql != nil {
 		x.streamsql.Stop()
 		x.streamsql = nil
@@ -287,7 +322,7 @@ func (x *StreamAggregatorNode) Destroy() {
 // Def returns the component form definition
 func (x *StreamAggregatorNode) Def() types.ComponentForm {
 	return types.ComponentForm{
-		Desc:          "Stream aggregation node. Processes aggregation SQL with window functions. Original data passes via Success, aggregation results via window_event",
-		RelationTypes: &[]string{types.Success, types.Failure, RelationTypeWindowEvent},
+		Desc:          "Stream aggregation & CEP node. Runs aggregation (GROUP BY/window) or MATCH_RECOGNIZE. Original data passes via Success, results via stream_event",
+		RelationTypes: &[]string{types.Success, types.Failure, RelationTypeStreamEvent},
 	}
 }

@@ -11,7 +11,7 @@ require (
 	github.com/apache/pulsar-client-go v0.17.0
 	github.com/beanstalkd/go-beanstalk v0.2.0
 	github.com/emersion/go-imap v1.2.1
-	github.com/expr-lang/expr v1.17.7-0.20251210132847-775fc3aca520
+	github.com/expr-lang/expr v1.17.8
 	github.com/fasthttp/router v1.5.4
 	github.com/fasthttp/websocket v1.5.12
 	github.com/fullstorydev/grpcurl v1.9.3
@@ -21,8 +21,8 @@ require (
 	github.com/nsqio/go-nsq v1.1.1-0.20250723164658-7188fbbac4d5
 	github.com/rabbitmq/amqp091-go v1.10.1-0.20240821123418-dc67c21576c2
 	github.com/redis/go-redis/v9 v9.17.2
-	github.com/rulego/rulego v0.35.3-0.20260527090622-d8b29d722bac
-	github.com/rulego/streamsql v0.10.6-0.20251216094023-16778f2ac3bb
+	github.com/rulego/rulego v0.36.1-0.20260802040353-2ec085f29027
+	github.com/rulego/streamsql v1.1.2
 	github.com/stretchr/testify v1.11.1
 	github.com/vadv/gopher-lua-libs v0.5.0
 	github.com/valyala/fasthttp v1.65.0
@@ -167,4 +167,4 @@ require (
 
 // replace github.com/rulego/rulego => ../rulego
 
-//replace github.com/rulego/streamsql => ../streamsql
+// replace github.com/rulego/streamsql => ../../streamsql

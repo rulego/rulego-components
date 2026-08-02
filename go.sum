@@ -127,8 +127,8 @@ github.com/envoyproxy/go-control-plane/envoy v1.32.4 h1:jb83lalDRZSpPWW2Z7Mck/8k
 github.com/envoyproxy/go-control-plane/envoy v1.32.4/go.mod h1:Gzjc5k8JcJswLjAx1Zm+wSYE20UrLtt7JZMWiWQXQEw=
 github.com/envoyproxy/protoc-gen-validate v1.2.1 h1:DEo3O99U8j4hBFwbJfrz9VtgcDfUKS7KJ7spH3d86P8=
 github.com/envoyproxy/protoc-gen-validate v1.2.1/go.mod h1:d/C80l/jxXLdfEIhX1W2TmLfsJ31lvEjwamM4DxlWXU=
-github.com/expr-lang/expr v1.17.7-0.20251210132847-775fc3aca520 h1:6PQAJuf3c4myt0T7K84LhUmuY+Mb1NbpXCLAnENJlYk=
-github.com/expr-lang/expr v1.17.7-0.20251210132847-775fc3aca520/go.mod h1:8/vRC7+7HBzESEqt5kKpYXxrxkr31SaO8r40VO/1IT4=
+github.com/expr-lang/expr v1.17.8 h1:W1loDTT+0PQf5YteHSTpju2qfUfNoBt4yw9+wOEU9VM=
+github.com/expr-lang/expr v1.17.8/go.mod h1:8/vRC7+7HBzESEqt5kKpYXxrxkr31SaO8r40VO/1IT4=
 github.com/fasthttp/router v1.5.4 h1:oxdThbBwQgsDIYZ3wR1IavsNl6ZS9WdjKukeMikOnC8=
 github.com/fasthttp/router v1.5.4/go.mod h1:3/hysWq6cky7dTfzaaEPZGdptwjwx0qzTgFCKEWRjgc=
 github.com/fasthttp/websocket v1.5.12 h1:e4RGPpWW2HTbL3zV0Y/t7g0ub294LkiuXXUuTOUInlE=
@@ -382,10 +382,10 @@ github.com/robfig/cron/v3 v3.0.1/go.mod h1:eQICP3HwyT7UooqI/z+Ov+PtYAWygg1TEWWzG
 github.com/rogpeppe/go-internal v1.6.1/go.mod h1:xXDCJY+GAPziupqXw64V24skbSoqbTEfhy4qGm1nDQc=
 github.com/rogpeppe/go-internal v1.13.1 h1:KvO1DLK/DRN07sQ1LQKScxyZJuNnedQ5/wKSR38lUII=
 github.com/rogpeppe/go-internal v1.13.1/go.mod h1:uMEvuHeurkdAXX61udpOXGD/AzZDWNMNyH2VO9fmH0o=
-github.com/rulego/rulego v0.35.3-0.20260527090622-d8b29d722bac h1:zkSK2klI0fdySacD3+FdOgZ3mmZloylCuBS6vtnG97k=
-github.com/rulego/rulego v0.35.3-0.20260527090622-d8b29d722bac/go.mod h1:AmnMby85wUZjeF8OYCJ8vv/JPll5Kq4XKhr9AvJ2usw=
-github.com/rulego/streamsql v0.10.6-0.20251216094023-16778f2ac3bb h1:VyGlnYe3mOhDM7b/E1RetM1gsAMyE3Z7hL89lmI0trM=
-github.com/rulego/streamsql v0.10.6-0.20251216094023-16778f2ac3bb/go.mod h1:LibML8rzKKHIZXu/ZewILUcWzV0oB/CRSI5vOkMZMA8=
+github.com/rulego/rulego v0.36.1-0.20260802040353-2ec085f29027 h1:iLFpz69DBdSPa43DGEmLXOXCSzqALNE5UZhR5pcbGhU=
+github.com/rulego/rulego v0.36.1-0.20260802040353-2ec085f29027/go.mod h1:C+5ohZtTIBNB4l1UY3aVLX+OKAXOHbryRn0I3+no8cs=
+github.com/rulego/streamsql v1.1.2 h1:hfR0ccpnQJ4HQEYMDkLueh7MxOYpzzdJfJoisGI0tlI=
+github.com/rulego/streamsql v1.1.2/go.mod h1:un/TbbM6ln1FoMPpfV9ktav6PPHV8krA5FUaPPpCfCI=
 github.com/savsgio/gotils v0.0.0-20240704082632-aef3928b8a38 h1:D0vL7YNisV2yqE55+q0lFuGse6U8lxlg7fYTctlT5Gc=
 github.com/savsgio/gotils v0.0.0-20240704082632-aef3928b8a38/go.mod h1:sM7Mt7uEoCeFSCBM+qBrqvEo+/9vdmj19wzp3yzUhmg=
 github.com/shirou/gopsutil/v3 v3.23.12 h1:z90NtUkp3bMtmICZKpC4+WaknU1eXtp5vtbQ11DgpE4=

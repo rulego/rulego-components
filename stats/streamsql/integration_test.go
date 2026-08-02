@@ -74,6 +74,7 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 		config := engine.NewConfig(types.WithDefaultPool())
 		var transformSuccess int32
 		var transformFailure int32
+		var transformFiltered int32
 		var processCompleted int32
 
 		config.OnDebug = func(chainId, flowType string, nodeId string, msg types.RuleMsg, relationType string, err error) {
@@ -82,6 +83,8 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 					atomic.AddInt32(&transformSuccess, 1)
 				} else if relationType == types.Failure {
 					atomic.AddInt32(&transformFailure, 1)
+				} else if relationType == types.False {
+					atomic.AddInt32(&transformFiltered, 1)
 				}
 				atomic.AddInt32(&processCompleted, 1)
 			}
@@ -112,6 +115,7 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				atomic.StoreInt32(&transformSuccess, 0)
 				atomic.StoreInt32(&transformFailure, 0)
+				atomic.StoreInt32(&transformFiltered, 0)
 				atomic.StoreInt32(&processCompleted, 0)
 
 				// 创建测试消息
@@ -141,7 +145,8 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 					assert.Equal(t, int32(0), failureCount, "不应该有失败")
 				} else {
 					assert.Equal(t, int32(0), successCount, "不应该成功转换")
-					assert.Equal(t, int32(1), failureCount, "应该被过滤")
+					assert.Equal(t, int32(0), failureCount, "过滤不是错误，不应走 Failure")
+					assert.Equal(t, int32(1), atomic.LoadInt32(&transformFiltered), "不满足 WHERE 应走 Filtered")
 				}
 			})
 		}
@@ -156,7 +161,7 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 
 		// 设置全局聚合结果处理器
 		config.OnEnd = func(ctx types.RuleContext, msg types.RuleMsg, err error, relationType string) {
-			if err == nil && msg.Type == WindowEventMsgType {
+			if err == nil && msg.Type == StreamEventMsgType {
 				atomic.AddInt32(&successCount, 1)
 
 				var result map[string]interface{}
@@ -255,7 +260,7 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 
 		// 设置全局聚合结果处理器
 		config.OnEnd = func(ctx types.RuleContext, msg types.RuleMsg, err error, relationType string) {
-			if err == nil && msg.Type == WindowEventMsgType {
+			if err == nil && msg.Type == StreamEventMsgType {
 				atomic.AddInt32(&windowCount, 1)
 
 				var result map[string]interface{}
@@ -395,7 +400,7 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 					{
 						"fromId": "aggregator",
 						"toId": "log_aggregate",
-						"type": "window_event"
+						"type": "stream_event"
 					}
 				]
 			}
@@ -410,7 +415,7 @@ func TestSeparatedNodesIntegration(t *testing.T) {
 
 		// 设置全局聚合结果处理器
 		config.OnEnd = func(ctx types.RuleContext, msg types.RuleMsg, err error, relationType string) {
-			if err == nil && msg.Type == WindowEventMsgType {
+			if err == nil && msg.Type == StreamEventMsgType {
 				atomic.AddInt32(&aggregateCount, 1)
 
 				var result map[string]interface{}
