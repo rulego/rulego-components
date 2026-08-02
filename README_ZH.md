@@ -37,8 +37,6 @@
   - [x/grpcClient](/external/grpc/grpc_client.go) gRPC客户端
   - [x/restApiCall](/external/fasthttp/rest_api_call_node.go) HTTP/REST API调用客户端
   - [x/mongodbClient](/external/mongodb/mongodb_client.go) MongoDB客户端
-  - [x/opengeminiQuery](/external/opengemini/query.go) OpenGemini查询客户端
-  - [x/opengeminiWrite](/external/opengemini/write.go) OpenGemini写入客户端
   - [x/beanstalkdTube](/external/beanstalkd/tube_node.go) Beanstalkd管道操作
   - [x/beanstalkdWorker](/external/beanstalkd/worker_node.go) Beanstalkd工作者
   - [x/wukongimSender](/external/wukongim/wukongim_sender.go) 悟空IM消息发送器
@@ -48,7 +46,8 @@
   - 暂无实现组件
 
 * **stats：** 对数据进行统计、分析。
-  - 暂无实现组件
+  - [x/streamTransform](/stats/streamsql/stream_transform_node.go) 流转换器，非聚合 SQL 过滤/转换/流-表 JOIN 富化/分析函数
+  - [x/streamAggregator](/stats/streamsql/stream_aggregator_node.go) 流聚合器，聚合/窗口 SQL 与 CEP（MATCH_RECOGNIZE）模式识别
 
 ## 安装
 
@@ -76,6 +75,9 @@ _ "github.com/rulego/rulego-components/external/rabbitmq"
 // 导入Filter和Transform组件
 _ "github.com/rulego/rulego-components/filter"
 _ "github.com/rulego/rulego-components/transform"
+
+// 导入Stats组件（流式计算）
+_ "github.com/rulego/rulego-components/stats/streamsql"
 ```
 
 然后在规则链JSON文件使用组件指定的type调用扩展组件：
@@ -151,8 +153,6 @@ _ "github.com/rulego/rulego-components/transform"
 | gRPC客户端 | `x/grpcClient` | 调用gRPC服务 |
 | REST API调用 | `x/restApiCall` | 调用HTTP/REST API |
 | MongoDB客户端 | `x/mongodbClient` | MongoDB数据库操作 |
-| OpenGemini查询 | `x/opengeminiQuery` | 查询OpenGemini时序数据库 |
-| OpenGemini写入 | `x/opengeminiWrite` | 写入OpenGemini时序数据库 |
 | Beanstalkd管道 | `x/beanstalkdTube` | Beanstalkd管道操作 |
 | Beanstalkd工作者 | `x/beanstalkdWorker` | Beanstalkd任务处理 |
 | 悟空IM发送器 | `x/wukongimSender` | 发送消息到悟空IM |
@@ -164,6 +164,13 @@ _ "github.com/rulego/rulego-components/transform"
 |------|------|------|
 | Lua过滤器 | `x/luaFilter` | 使用Lua脚本过滤消息 |
 | Lua转换器 | `x/luaTransform` | 使用Lua脚本转换消息 |
+
+### Stats组件类型
+
+| 组件 | 类型 | 描述 |
+|------|------|------|
+| 流转换器 | `x/streamTransform` | 非聚合 SQL 过滤/转换/流-表 JOIN 富化/分析函数（同步逐条处理） |
+| 流聚合器 | `x/streamAggregator` | 聚合/窗口 SQL 与 CEP 模式识别（异步触发，结果走 stream_event 链） |
 
 ## 贡献
 

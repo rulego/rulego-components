@@ -36,8 +36,6 @@ The component library is divided into the following submodules:
   - [x/grpcClient](/external/grpc/grpc_client.go) gRPC client
   - [x/restApiCall](/external/fasthttp/rest_api_call_node.go) HTTP/REST API call client
   - [x/mongodbClient](/external/mongodb/mongodb_client.go) MongoDB client
-  - [x/opengeminiQuery](/external/opengemini/query.go) OpenGemini query client
-  - [x/opengeminiWrite](/external/opengemini/write.go) OpenGemini write client
   - [x/beanstalkdTube](/external/beanstalkd/tube_node.go) Beanstalkd tube operations
   - [x/beanstalkdWorker](/external/beanstalkd/worker_node.go) Beanstalkd worker
   - [x/wukongimSender](/external/wukongim/wukongim_sender.go) WuKongIM message sender
@@ -47,7 +45,8 @@ The component library is divided into the following submodules:
   - No components implemented yet
 
 * **stats:** Perform statistics and analysis on the data.
-  - No components implemented yet
+  - [x/streamTransform](/stats/streamsql/stream_transform_node.go) Stream transformer: non-aggregation SQL filtering/transformation/stream-table JOIN enrichment/analytic functions
+  - [x/streamAggregator](/stats/streamsql/stream_aggregator_node.go) Stream aggregator: aggregation/window SQL and CEP (MATCH_RECOGNIZE) pattern recognition
 
 ## Installation
 
@@ -75,6 +74,9 @@ _ "github.com/rulego/rulego-components/external/rabbitmq"
 // Import Filter and Transform components
 _ "github.com/rulego/rulego-components/filter"
 _ "github.com/rulego/rulego-components/transform"
+
+// Import Stats components (stream processing)
+_ "github.com/rulego/rulego-components/stats/streamsql"
 ```
 
 Then use the type specified by the component in the rule chain JSON file to call the extension component:
@@ -150,8 +152,6 @@ Then use the type specified by the component in the rule chain JSON file to call
 | gRPC Client | `x/grpcClient` | Call gRPC services |
 | REST API Call | `x/restApiCall` | Call HTTP/REST APIs |
 | MongoDB Client | `x/mongodbClient` | MongoDB database operations |
-| OpenGemini Query | `x/opengeminiQuery` | Query OpenGemini time-series database |
-| OpenGemini Write | `x/opengeminiWrite` | Write to OpenGemini time-series database |
 | Beanstalkd Tube | `x/beanstalkdTube` | Beanstalkd tube operations |
 | Beanstalkd Worker | `x/beanstalkdWorker` | Beanstalkd task processing |
 | WuKongIM Sender | `x/wukongimSender` | Send messages to WuKongIM |
@@ -163,6 +163,13 @@ Then use the type specified by the component in the rule chain JSON file to call
 |-----------|------|-------------|
 | Lua Filter | `x/luaFilter` | Filter messages using Lua script |
 | Lua Transform | `x/luaTransform` | Transform messages using Lua script |
+
+### Stats Component Types
+
+| Component | Type | Description |
+|-----------|------|-------------|
+| Stream Transform | `x/streamTransform` | Non-aggregation SQL filtering/transformation/stream-table JOIN enrichment/analytic functions (synchronous per-event processing) |
+| Stream Aggregator | `x/streamAggregator` | Aggregation/window SQL and CEP pattern recognition (asynchronous, results via stream_event chain) |
 
 ## Contributing
 
