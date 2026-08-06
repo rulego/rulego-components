@@ -32,6 +32,7 @@ import (
 	"github.com/rulego/rulego/utils/el"
 	"github.com/rulego/rulego/utils/maps"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -229,7 +230,31 @@ func (x *ClientNode) initClient() (*Client, error) {
 		client: rc,
 		conn:   conn,
 	}
+	// Report connection state from the gRPC channel; exits when the conn is closed.
+	go x.watchConnState(conn)
 	return client, err
+}
+
+// watchConnState maps gRPC channel state transitions to connection status.
+// It returns when the underlying ClientConn enters Shutdown (closed).
+func (x *ClientNode) watchConnState(conn *grpc.ClientConn) {
+	for {
+		state := conn.GetState()
+		switch state {
+		case connectivity.Ready, connectivity.Idle:
+			x.SharedNode.SetStatus(types.StatusConnected, "")
+		case connectivity.Connecting, connectivity.TransientFailure:
+			x.SharedNode.SetStatus(types.StatusReconnecting, state.String())
+		case connectivity.Shutdown:
+			x.SharedNode.SetStatus(types.StatusDisconnected, "")
+			return
+		}
+		// WaitForStateChange blocks until the state differs; with Background it
+		// only returns false if the ctx expired, which never happens here.
+		if !conn.WaitForStateChange(context.Background(), state) {
+			return
+		}
+	}
 }
 
 type Client struct {

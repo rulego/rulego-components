@@ -306,6 +306,21 @@ func (x *Wukongim) initClient() (*wksdk.Client, error) {
 		wksdk.WithPingInterval(time.Duration(x.Config.PingInterval)*time.Second),
 		wksdk.WithReconnect(x.Config.Reconnect),
 	)
+	client.OnConnect(func(status wksdk.ConnectStatus, reasonCode wkproto.ReasonCode) {
+		x.SharedNode.SetStatus(wkStatusToNodeStatus(status), reasonCode.String())
+	})
 	err := client.Connect()
 	return client, err
+}
+
+// wkStatusToNodeStatus maps WuKongIM SDK connect status to rulego connection status.
+func wkStatusToNodeStatus(status wksdk.ConnectStatus) types.NodeStatus {
+	switch status {
+	case wksdk.CONNECTED:
+		return types.StatusConnected
+	case wksdk.CONNECTING, wksdk.RECONNECTING:
+		return types.StatusReconnecting
+	default:
+		return types.StatusDisconnected
+	}
 }

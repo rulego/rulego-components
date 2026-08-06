@@ -366,6 +366,30 @@ func (x *Nats) Printf(format string, v ...interface{}) {
 }
 
 func (x *Nats) initClient() (*nats.Conn, error) {
-	conn, err := nats.Connect(x.Config.Server, nats.UserInfo(x.Config.Username, x.Config.Password))
+	conn, err := nats.Connect(x.Config.Server,
+		nats.UserInfo(x.Config.Username, x.Config.Password),
+		nats.ConnectHandler(func(*nats.Conn) {
+			x.SharedNode.SetStatus(types.StatusConnected, "")
+		}),
+		nats.DisconnectHandler(func(nc *nats.Conn) {
+			x.SharedNode.SetStatus(types.StatusReconnecting, lastErrReason(nc))
+		}),
+		nats.ReconnectHandler(func(*nats.Conn) {
+			x.SharedNode.SetStatus(types.StatusConnected, "")
+		}),
+		nats.ClosedHandler(func(nc *nats.Conn) {
+			x.SharedNode.SetStatus(types.StatusDisconnected, lastErrReason(nc))
+		}),
+	)
 	return conn, err
+}
+
+// lastErrReason reports the conn's last error, falling back to a generic reason.
+func lastErrReason(nc *nats.Conn) string {
+	if nc != nil {
+		if err := nc.LastError(); err != nil {
+			return err.Error()
+		}
+	}
+	return "connection lost"
 }

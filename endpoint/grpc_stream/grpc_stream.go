@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/textproto"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/rulego/rulego/components/base"
@@ -97,6 +98,8 @@ type GrpcStream struct {
 	Router endpointApi.Router
 
 	stopCh chan struct{}
+	// connected tracks whether the stream is live, to avoid repeated SetStatus calls per message.
+	connected int32
 }
 
 // RequestMessage 请求消息结构
@@ -271,6 +274,8 @@ func (x *GrpcStream) streamWithReconnect() {
 			return
 		default:
 			if err := x.handleStream(); err != nil {
+				atomic.StoreInt32(&x.connected, 0)
+				x.SharedNode.SetStatus(types.StatusReconnecting, err.Error())
 				if client, _ := x.SharedNode.GetSafely(); client != nil {
 					x.SharedNode.Close()
 				}
@@ -348,6 +353,10 @@ func (x *GrpcStream) handleStream() error {
 			jsonBytes, err := dmsg.MarshalJSON()
 			if err != nil {
 				return "", err
+			}
+			// First received message proves the stream is live.
+			if atomic.CompareAndSwapInt32(&x.connected, 0, 1) {
+				x.SharedNode.SetStatus(types.StatusConnected, "")
 			}
 			x.Printf("Received message: %s", string(jsonBytes))
 			x.RLock()

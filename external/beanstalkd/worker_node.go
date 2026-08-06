@@ -215,6 +215,13 @@ func (x *WorkerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	default:
 		err = errors.New("Unknown Command")
 	}
+	// Rebuild the connection if the operation failed because the TCP conn died.
+	// Release the SharedNode Locker first: rebuildBeanstalkConn re-acquires it.
+	if err != nil && isBeanstalkConnDead(err) {
+		x.Locker.Unlock()
+		rebuildBeanstalkConn(&x.SharedNode, x.initClient, err.Error())
+		x.Locker.Lock()
+	}
 	if err != nil {
 		ctx.TellFailure(msg, err)
 	} else {

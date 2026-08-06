@@ -247,11 +247,36 @@ func (x *ClientNode) initClient() (*amqp.Connection, error) {
 	return amqp.Dial(x.Config.Server)
 }
 
+// rebuildConnection dials a new amqp connection and updates the SharedNode when the current one is closed.
+func (x *ClientNode) rebuildConnection() error {
+	// ref:// borrowers rely on the source node to reconnect.
+	if x.SharedNode.IsFromPool() {
+		return nil
+	}
+	x.SharedNode.SetStatus(types.StatusReconnecting, "amqp connection closed, rebuilding")
+	conn, err := x.initClient()
+	if err != nil {
+		x.SharedNode.SetStatus(types.StatusReconnecting, err.Error())
+		return err
+	}
+	x.SharedNode.Refresh(conn)
+	return nil
+}
+
 // createChannel 创建新通道并声明交换机
 func (x *ClientNode) createChannel() (*amqp.Channel, error) {
 	conn, err := x.SharedNode.GetSafely()
 	if err != nil {
 		return nil, err
+	}
+	// Rebuild the underlying connection if it has been closed.
+	if conn.IsClosed() {
+		if rebuildErr := x.rebuildConnection(); rebuildErr != nil {
+			return nil, rebuildErr
+		}
+		if conn, err = x.SharedNode.GetSafely(); err != nil {
+			return nil, err
+		}
 	}
 
 	ch, err := conn.Channel()

@@ -3,6 +3,8 @@ package beanstalkd
 import (
 	"encoding/json"
 	"errors"
+	"io"
+	"net"
 	"strconv"
 	"time"
 
@@ -39,6 +41,35 @@ const (
 // 注册节点
 func init() {
 	_ = rulego.Registry.Register(&TubeNode{})
+}
+
+// isBeanstalkConnDead reports whether err indicates the beanstalkd TCP connection is broken.
+func isBeanstalkConnDead(err error) bool {
+	var ce beanstalk.ConnError
+	if !errors.As(err, &ce) {
+		return false
+	}
+	if errors.Is(ce.Err, io.EOF) || errors.Is(ce.Err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	var netErr net.Error
+	return errors.As(ce.Err, &netErr)
+}
+
+// rebuildBeanstalkConn closes the dead conn, dials a new one, and updates the SharedNode.
+// Must be called WITHOUT holding the SharedNode Locker (SetStatus/Refresh acquire it).
+func rebuildBeanstalkConn(sn *base.SharedNode[*beanstalk.Conn], dial func() (*beanstalk.Conn, error), msg string) {
+	// ref:// borrowers rely on the source node to reconnect.
+	if sn.IsFromPool() {
+		return
+	}
+	sn.SetStatus(types.StatusReconnecting, msg)
+	if old, ok := sn.Instance(); ok && old != nil {
+		_ = old.Close()
+	}
+	if nc, err := dial(); err == nil {
+		sn.Refresh(nc)
+	}
 }
 
 type TubeMsgParams struct {
@@ -235,6 +266,13 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		x.Printf("pause with  err: %s", err)
 	default:
 		err = errors.New("Unknown Command")
+	}
+	// Rebuild the connection if the operation failed because the TCP conn died.
+	// Release the SharedNode Locker first: rebuildBeanstalkConn re-acquires it.
+	if err != nil && isBeanstalkConnDead(err) {
+		x.Locker.Unlock()
+		rebuildBeanstalkConn(&x.SharedNode, x.initClient, err.Error())
+		x.Locker.Lock()
 	}
 	if err != nil {
 		ctx.TellFailure(msg, err)

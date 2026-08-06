@@ -21,6 +21,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/IBM/sarama"
 	"github.com/rulego/rulego"
@@ -78,6 +79,8 @@ type ProducerNode struct {
 	// hasVar 标识模板是否包含变量
 	// hasVar indicates whether the template contains variables
 	hasVar bool
+	// connected tracks publish health to avoid repeated SetStatus calls per message.
+	connected int32
 }
 
 // Type 返回组件类型
@@ -152,12 +155,17 @@ func (x *ProducerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	if err != nil {
 		// 检查是否是网络连接错误，如果是则重置客户端连接
 		if x.isNetworkError(err) {
+			atomic.StoreInt32(&x.connected, 0)
+			x.SharedNode.SetStatus(types.StatusReconnecting, err.Error())
 			x.resetClient()
 			// 重试一次
 			client, retryErr := x.SharedNode.GetSafely()
 			if retryErr == nil {
 				partition, offset, err = client.SendMessage(message)
 				if err == nil {
+					if atomic.CompareAndSwapInt32(&x.connected, 0, 1) {
+						x.SharedNode.SetStatus(types.StatusConnected, "")
+					}
 					msg.Metadata.PutValue(KeyPartition, strconv.Itoa(int(partition)))
 					msg.Metadata.PutValue(KeOffset, strconv.Itoa(int(offset)))
 					ctx.TellSuccess(msg)
@@ -167,6 +175,9 @@ func (x *ProducerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		}
 		ctx.TellFailure(msg, err)
 	} else {
+		if atomic.CompareAndSwapInt32(&x.connected, 0, 1) {
+			x.SharedNode.SetStatus(types.StatusConnected, "")
+		}
 		msg.Metadata.PutValue(KeyPartition, strconv.Itoa(int(partition)))
 		msg.Metadata.PutValue(KeOffset, strconv.Itoa(int(offset)))
 		ctx.TellSuccess(msg)

@@ -3,7 +3,9 @@ package beanstalkd
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log"
+	"net"
 	"net/textproto"
 	"sync/atomic"
 	"time"
@@ -173,6 +175,15 @@ func (x *BeanstalkdTubeSet) Start() error {
 				x.Printf("beanstalkd endpoint reserve err :\n%v", runtime.Stack())
 			}
 		}()
+		backoff := time.Second
+		hadErr := false
+		markConnected := func() {
+			if hadErr {
+				x.SharedNode.SetStatus(types.StatusConnected, "")
+				hadErr = false
+				backoff = time.Second
+			}
+		}
 		for {
 			if x.GracefulShutdown.IsShuttingDown() {
 				return
@@ -184,22 +195,44 @@ func (x *BeanstalkdTubeSet) Start() error {
 
 			x.GracefulShutdown.DecrementActiveOperations()
 
-			if reserveErr != nil {
-				if x.GracefulShutdown.IsShuttingDown() {
-					return
-				}
-
-				// Ignore timeout errors, they are expected when no job is available
-				var connErr beanstalk.ConnError
-				if errors.As(reserveErr, &connErr) && connErr.Err == beanstalk.ErrTimeout {
-					continue
-				}
+			if reserveErr == nil {
+				markConnected()
+				continue
+			}
+			if x.GracefulShutdown.IsShuttingDown() {
+				return
+			}
+			// Ignore timeout errors, they are expected when no job is available
+			var connErr beanstalk.ConnError
+			if errors.As(reserveErr, &connErr) && connErr.Err == beanstalk.ErrTimeout {
+				markConnected()
+				continue
+			}
+			if !isBeanstalkConnDead(reserveErr) {
+				// Non-fatal server error (e.g. DEADLINE_SOON): connection is healthy, retry shortly.
+				markConnected()
 				x.Printf("reserve error: %v, retrying after 5 seconds", reserveErr)
 				select {
 				case <-time.After(5 * time.Second):
 				case <-x.GracefulShutdown.GetShutdownContext().Done():
 					return
 				}
+				continue
+			}
+			// Connection lost: report status and rebuild with exponential backoff.
+			if !hadErr {
+				x.SharedNode.SetStatus(types.StatusReconnecting, reserveErr.Error())
+				hadErr = true
+			}
+			x.Printf("reserve connection error: %v, reconnecting in %v", reserveErr, backoff)
+			x.rebuildConnection(reserveErr.Error())
+			select {
+			case <-time.After(backoff):
+			case <-x.GracefulShutdown.GetShutdownContext().Done():
+				return
+			}
+			if backoff < 30*time.Second {
+				backoff *= 2
 			}
 		}
 	}()
@@ -263,6 +296,34 @@ func (x *BeanstalkdTubeSet) Printf(format string, v ...interface{}) {
 func (x *BeanstalkdTubeSet) initClient() (*beanstalk.Conn, error) {
 	conn, err := beanstalk.Dial("tcp", x.Config.Server)
 	return conn, err
+}
+
+// rebuildConnection closes the dead conn, dials a new one, and updates the SharedNode.
+func (x *BeanstalkdTubeSet) rebuildConnection(msg string) {
+	// ref:// borrowers rely on the source node to reconnect.
+	if x.SharedNode.IsFromPool() {
+		return
+	}
+	x.SharedNode.SetStatus(types.StatusReconnecting, msg)
+	if oldConn, ok := x.SharedNode.Instance(); ok && oldConn != nil {
+		_ = oldConn.Close()
+	}
+	if newConn, err := x.initClient(); err == nil {
+		x.SharedNode.Refresh(newConn)
+	}
+}
+
+// isBeanstalkConnDead reports whether err indicates the beanstalkd TCP connection is broken.
+func isBeanstalkConnDead(err error) bool {
+	var ce beanstalk.ConnError
+	if !errors.As(err, &ce) {
+		return false
+	}
+	if errors.Is(ce.Err, io.EOF) || errors.Is(ce.Err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	var netErr net.Error
+	return errors.As(ce.Err, &netErr)
 }
 
 type RequestMessage struct {

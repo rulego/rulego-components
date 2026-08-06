@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"net/textproto"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/rulego/rulego/api/types"
@@ -348,24 +349,95 @@ func (x *RabbitMQ) AddRouter(router endpointApi.Router, params ...interface{}) (
 		if err != nil {
 			return "", err
 		}
-		go func(router endpointApi.Router, ch *amqp.Channel) {
-			for msg := range msgs {
-				// 处理消息逻辑
-				if x.RuleConfig.Pool != nil {
-					submitErr := x.RuleConfig.Pool.Submit(func() {
-						x.handlerMsg(router, ch, msg)
-					})
-					if submitErr != nil {
-						x.Printf("rabbitmq consumer handler err :%v", submitErr)
-					}
-				} else {
-					go x.handlerMsg(router, ch, msg)
-				}
-
-			}
-		}(router, ch)
+		go x.consumeLoop(router, routerId, ch, msgs)
 		return routerId, nil
 	}
+}
+
+// consumeLoop consumes deliveries and rebuilds the connection/channel when the delivery chan closes.
+// amqp091-go has no auto-reconnect, so a closed delivery chan means the connection/channel is lost.
+func (x *RabbitMQ) consumeLoop(router endpointApi.Router, routerId string, ch *amqp.Channel, msgs <-chan amqp.Delivery) {
+	backoff := time.Second
+	hadErr := false
+	for {
+		if x.GracefulShutdown.IsShuttingDown() {
+			return
+		}
+		// Process deliveries until the chan closes (connection or channel lost).
+		for msg := range msgs {
+			// Bind the channel per delivery: ch is reassigned on reconnect, so a
+			// deferred handler must keep the channel the message arrived on.
+			curCh := ch
+			if x.RuleConfig.Pool != nil {
+				submitErr := x.RuleConfig.Pool.Submit(func() {
+					x.handlerMsg(router, curCh, msg)
+				})
+				if submitErr != nil {
+					x.Printf("rabbitmq consumer handler err :%v", submitErr)
+				}
+			} else {
+				go x.handlerMsg(router, curCh, msg)
+			}
+		}
+		if x.GracefulShutdown.IsShuttingDown() {
+			return
+		}
+		// Delivery chan closed: mark reconnecting and rebuild with exponential backoff.
+		if !hadErr {
+			x.SharedNode.SetStatus(types.StatusReconnecting, "delivery channel closed")
+			hadErr = true
+		}
+		x.Printf("rabbitmq delivery channel closed, reconnecting in %v", backoff)
+		select {
+		case <-time.After(backoff):
+		case <-x.GracefulShutdown.GetShutdownContext().Done():
+			return
+		}
+		if backoff < 30*time.Second {
+			backoff *= 2
+		}
+		if err := x.ensureConnection(); err != nil {
+			x.Printf("rabbitmq reconnect err: %v", err)
+			continue
+		}
+		nch, q, err := x.queueBind(router.FromToString())
+		if err != nil {
+			x.Printf("rabbitmq rebind err: %v", err)
+			continue
+		}
+		nmsgs, err := nch.Consume(q.Name, "", true, false, false, false, nil)
+		if err != nil {
+			x.Printf("rabbitmq consume err: %v", err)
+			_ = nch.Close()
+			continue
+		}
+		ch = nch
+		msgs = nmsgs
+		x.Lock()
+		x.channels[routerId] = ch
+		x.Unlock()
+		x.SharedNode.SetStatus(types.StatusConnected, "")
+		hadErr = false
+		backoff = time.Second
+	}
+}
+
+// ensureConnection rebuilds the underlying amqp connection when it has been closed.
+func (x *RabbitMQ) ensureConnection() error {
+	// ref:// borrowers rely on the source node to reconnect.
+	if x.SharedNode.IsFromPool() {
+		return nil
+	}
+	conn, ok := x.SharedNode.Instance()
+	if ok && !conn.IsClosed() {
+		return nil
+	}
+	newConn, err := x.initClient()
+	if err != nil {
+		return err
+	}
+	x.SharedNode.Refresh(newConn)
+	return nil
 }
 
 func (x *RabbitMQ) RemoveRouter(routerId string, params ...interface{}) error {

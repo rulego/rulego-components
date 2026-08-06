@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"net/textproto"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/rulego/rulego/api/types"
@@ -220,6 +222,8 @@ type Redis struct {
 	pubSub                   *redis.PubSub
 	routerIdAndStreamNameMap map[string]string
 	streamNameAndRouterIdMap map[string]string
+	// closed 置位后消费协程退出（atomic，Close 与消费协程并发读写）。
+	closed int32
 }
 
 // Type 组件类型
@@ -285,6 +289,8 @@ func (x *Redis) Destroy() {
 }
 
 func (x *Redis) Close() error {
+	// 先置位让消费协程退出，再关闭客户端
+	atomic.StoreInt32(&x.closed, 1)
 	// SharedNode 会通过 InitWithClose 中的清理函数来管理客户端的关闭
 	// SharedNode manages client closure through the cleanup function in InitWithClose
 	_ = x.SharedNode.Close()
@@ -340,12 +346,33 @@ func (x *Redis) createConsumerGroup(client *redis.Client, router endpointApi.Rou
 		Count:    1, // 一次处理一条消息
 	}
 	go func() {
-		// 消费消息
+		backoff := time.Second
+		hadErr := false
 		for {
+			if atomic.LoadInt32(&x.closed) == 1 {
+				return
+			}
 			messages, err := client.XReadGroup(context.Background(), args).Result()
 			if err != nil {
+				// 端点已关闭或路由已移除：不再重试（关闭后的 client 调用只会持续报错）
+				if atomic.LoadInt32(&x.closed) == 1 || !x.routerExists(router.GetId()) {
+					return
+				}
+				if !hadErr {
+					x.SharedNode.SetStatus(types.StatusReconnecting, err.Error())
+					hadErr = true
+				}
 				x.Printf("XReadGroup err:%v", err)
-				break
+				time.Sleep(backoff)
+				if backoff < 30*time.Second {
+					backoff *= 2
+				}
+				continue
+			}
+			if hadErr {
+				x.SharedNode.SetStatus(types.StatusConnected, "")
+				hadErr = false
+				backoff = time.Second
 			}
 			for _, message := range messages {
 				for _, msg := range message.Messages {
@@ -423,6 +450,14 @@ func (x *Redis) addRouter(router endpointApi.Router) error {
 	x.routerIdAndStreamNameMap[router.GetId()] = router.FromToString()
 	x.streamNameAndRouterIdMap[router.FromToString()] = router.GetId()
 	return nil
+}
+
+// routerExists 查询路由是否仍注册（消费协程据此决定是否继续重试）。
+func (x *Redis) routerExists(id string) bool {
+	x.Lock()
+	defer x.Unlock()
+	_, ok := x.routerIdAndStreamNameMap[id]
+	return ok
 }
 
 // 从存储器中删除路由
