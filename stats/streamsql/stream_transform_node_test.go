@@ -67,7 +67,7 @@ func TestStreamTransformNode_JoinEnrich(t *testing.T) {
 
 	chainId := str.RandomStr(10)
 	ruleEngine, err := engine.New(chainId, chainConfigBytes, engine.WithConfig(config))
-	assert.Nil(t, err, "规则引擎创建应该成功")
+	assert.Nil(t, err, "rule engine creation should succeed")
 	defer engine.Del(chainId)
 
 	var mu sync.Mutex
@@ -103,8 +103,8 @@ func TestStreamTransformNode_JoinEnrich(t *testing.T) {
 		t.Fatalf("results len=%d, want 1", len(results))
 	}
 	assert.Equal(t, "d1", results[0]["deviceId"], "deviceId 正确")
-	assert.Equal(t, "plantA", results[0]["location"], "location 富化正确")
-	assert.Equal(t, "temp", results[0]["type"], "type 富化正确")
+	assert.Equal(t, "plantA", results[0]["location"], "location enrichment is correct")
+	assert.Equal(t, "temp", results[0]["type"], "type enrichment is correct")
 }
 
 // TestStreamTransformNode_BasicTransform 测试基本数据转换功能
@@ -220,7 +220,7 @@ func TestStreamTransformNode_ConcurrentProcessing(t *testing.T) {
 	var mu sync.Mutex
 	var results []map[string]interface{}
 
-	// 创建测试规则链
+	// Create the test rule chain
 	ruleChainConfig := fmt.Sprintf(`{
 		"ruleChain": {
 			"id": "concurrent_transform_test",
@@ -244,7 +244,7 @@ func TestStreamTransformNode_ConcurrentProcessing(t *testing.T) {
 
 	chainId := str.RandomStr(10)
 	ruleEngine, err := engine.New(chainId, []byte(ruleChainConfig), engine.WithConfig(config))
-	assert.Nil(t, err, "规则引擎创建应该成功")
+	assert.Nil(t, err, "rule engine creation should succeed")
 	defer engine.Del(chainId)
 
 	// 并发测试参数
@@ -378,7 +378,7 @@ func TestStreamTransformNode_ArrayInput(t *testing.T) {
 		expectedTemps := []float64{32.0, 212.0, 77.0}
 		for i, result := range results {
 			assert.Equal(t, expectedTemps[i], result["temp_fahrenheit"].(float64),
-				"第%d个结果的华氏温度应该正确", i+1)
+				"Fahrenheit temperature of result %d should be correct", i+1)
 			assert.Equal(t, fmt.Sprintf("sensor%03d", i+1), result["deviceId"],
 				"第%d个结果的设备ID应该正确", i+1)
 		}
@@ -453,7 +453,7 @@ func TestStreamTransformNode_ArrayInput(t *testing.T) {
 			expectedFahrenheit := temp*1.8 + 32
 			actualFahrenheit := result["temp_fahrenheit"].(float64)
 			assert.Equal(t, expectedFahrenheit, actualFahrenheit,
-				"第%d个结果的华氏温度应该正确", i+1)
+				"Fahrenheit temperature of result %d should be correct", i+1)
 		}
 	})
 }
@@ -486,7 +486,7 @@ func TestStreamTransformNode_DataTypeValidation(t *testing.T) {
 
 	chainId := str.RandomStr(10)
 	ruleEngine, err := engine.New(chainId, []byte(ruleChainConfig), engine.WithConfig(config))
-	assert.Nil(t, err, "规则引擎创建应该成功")
+	assert.Nil(t, err, "rule engine creation should succeed")
 	defer engine.Del(chainId)
 
 	testCases := []struct {
@@ -578,7 +578,7 @@ func TestStreamTransformNode_FilteredRelation(t *testing.T) {
 		}`, str.RandomStr(6), sql)
 		id := str.RandomStr(10)
 		eng, err := engine.New(id, []byte(chainConfig), engine.WithConfig(config))
-		assert.Nil(t, err, "规则引擎创建应该成功")
+		assert.Nil(t, err, "rule engine creation should succeed")
 		return eng, func() { engine.Del(id) }
 	}
 
@@ -597,7 +597,7 @@ func TestStreamTransformNode_FilteredRelation(t *testing.T) {
 		case rt := <-out:
 			return rt
 		case <-time.After(2 * time.Second):
-			t.Fatalf("消息处理超时")
+			t.Fatalf("message processing timed out")
 			return ""
 		}
 	}
@@ -626,7 +626,7 @@ func testStreamTransform(t *testing.T, sql string, testData []map[string]interfa
 	var successCount int32
 	var mu sync.Mutex
 
-	// 创建测试规则链
+	// Create the test rule chain
 	ruleChainConfig := fmt.Sprintf(`{
 		"ruleChain": {
 			"id": "transform_test_chain",
@@ -650,7 +650,7 @@ func testStreamTransform(t *testing.T, sql string, testData []map[string]interfa
 
 	chainId := str.RandomStr(10)
 	ruleEngine, err := engine.New(chainId, []byte(ruleChainConfig), engine.WithConfig(config))
-	assert.Nil(t, err, "规则引擎创建应该成功")
+	assert.Nil(t, err, "rule engine creation should succeed")
 	defer engine.Del(chainId)
 
 	// 发送测试数据
@@ -678,7 +678,7 @@ func testStreamTransform(t *testing.T, sql string, testData []map[string]interfa
 	// 等待处理完成
 	time.Sleep(100 * time.Millisecond)
 
-	// 使用互斥锁保护对 results 的读取
+	// Protect reads of results with a mutex
 	mu.Lock()
 	resultsCopy := make([]map[string]interface{}, len(results))
 	copy(resultsCopy, results)
@@ -694,7 +694,7 @@ func testStreamTransformArray(t *testing.T, sql string, testData []map[string]in
 	var successCount int32
 	var mu sync.Mutex
 
-	// 创建测试规则链
+	// Create the test rule chain
 	ruleChainConfig := fmt.Sprintf(`{
 		"ruleChain": {
 			"id": "array_transform_test_chain",
@@ -718,7 +718,7 @@ func testStreamTransformArray(t *testing.T, sql string, testData []map[string]in
 
 	chainId := str.RandomStr(10)
 	ruleEngine, err := engine.New(chainId, []byte(ruleChainConfig), engine.WithConfig(config))
-	assert.Nil(t, err, "规则引擎创建应该成功")
+	assert.Nil(t, err, "rule engine creation should succeed")
 	defer engine.Del(chainId)
 
 	// 发送数组测试数据
@@ -745,7 +745,7 @@ func testStreamTransformArray(t *testing.T, sql string, testData []map[string]in
 
 	assert.Equal(t, int32(1), finalSuccess, "数组应该成功转换")
 
-	// 使用互斥锁保护对 results 的读取
+	// Protect reads of results with a mutex
 	mu.Lock()
 	resultsCopy := make([]map[string]interface{}, len(results))
 	copy(resultsCopy, results)
@@ -759,7 +759,7 @@ func testStreamTransformArrayFiltered(t *testing.T, sql string, testData []map[s
 	config := engine.NewConfig(types.WithDefaultPool())
 	var filteredCount int32
 
-	// 创建测试规则链
+	// Create the test rule chain
 	ruleChainConfig := fmt.Sprintf(`{
 		"ruleChain": {
 			"id": "array_transform_filtered_test",
@@ -783,7 +783,7 @@ func testStreamTransformArrayFiltered(t *testing.T, sql string, testData []map[s
 
 	chainId := str.RandomStr(10)
 	ruleEngine, err := engine.New(chainId, []byte(ruleChainConfig), engine.WithConfig(config))
-	assert.Nil(t, err, "规则引擎创建应该成功")
+	assert.Nil(t, err, "rule engine creation should succeed")
 	defer engine.Del(chainId)
 
 	// 发送数组测试数据
@@ -821,7 +821,7 @@ func newJoinEngine(t *testing.T, sql string, tables []map[string]interface{}) (t
 	b, _ := json.Marshal(chainConfig)
 	chainId := str.RandomStr(10)
 	eng, err := engine.New(chainId, b, engine.WithConfig(config))
-	assert.Nil(t, err, "规则引擎创建应该成功")
+	assert.Nil(t, err, "rule engine creation should succeed")
 	return eng, func() { engine.Del(chainId) }
 }
 
@@ -851,7 +851,7 @@ func sendJoinMsg(t *testing.T, eng types.RuleEngine, data map[string]interface{}
 	case r := <-out:
 		return r
 	case <-time.After(2 * time.Second):
-		t.Fatalf("消息处理超时")
+		t.Fatalf("message processing timed out")
 		return nil
 	}
 }
@@ -869,8 +869,8 @@ func TestStreamTransformNode_FileTableEnrich(t *testing.T) {
 
 	r := sendJoinMsg(t, eng, map[string]interface{}{"deviceId": "d1", "temperature": 35})
 	assert.NotNil(t, r, "d1 命中元数据应返回结果")
-	assert.Equal(t, "plantA", r["location"], "location 富化正确")
-	assert.Equal(t, "temp", r["type"], "type 富化正确")
+	assert.Equal(t, "plantA", r["location"], "location enrichment is correct")
+	assert.Equal(t, "temp", r["type"], "type enrichment is correct")
 
 	// d3 无元数据，INNER JOIN 丢弃 -> 返回 nil（走 Filtered）
 	r2 := sendJoinMsg(t, eng, map[string]interface{}{"deviceId": "d3"})
@@ -995,7 +995,7 @@ func captureNodeEnd(t *testing.T, eng types.RuleEngine, msg types.RuleMsg) (map[
 	case r := <-c:
 		return r.m, r.rt, r.err
 	case <-time.After(2 * time.Second):
-		t.Fatalf("消息处理超时")
+		t.Fatalf("message processing timed out")
 		return nil, "", nil
 	}
 }

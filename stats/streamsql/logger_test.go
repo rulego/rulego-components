@@ -27,7 +27,7 @@ import (
 	"github.com/rulego/streamsql"
 )
 
-// captureRulegoLogger 实现 types.Logger，按级别记录格式化后的消息，便于断言。
+// captureRulegoLogger implements types.Logger, recording formatted messages per level for assertion.
 type captureRulegoLogger struct {
 	mu    sync.Mutex
 	debug []string
@@ -58,14 +58,14 @@ func (c *captureRulegoLogger) Errorf(format string, v ...interface{}) {
 	c.mu.Unlock()
 }
 
-// errCount 加锁读取错误日志数，供测试轮询等待后台 goroutine 的异步写入。
+// errCount reads the error log count under lock, for tests to poll while waiting for async writes from background goroutines.
 func (c *captureRulegoLogger) errCount() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return len(c.errs)
 }
 
-// TestRulegoLoggerAdapter 验证适配器把 streamsql 的 Debug/Info/Warn/Error 委派给 rulego logger。
+// TestRulegoLoggerAdapter verifies the adapter delegates streamsql's Debug/Info/Warn/Error to the rulego logger.
 func TestRulegoLoggerAdapter(t *testing.T) {
 	cap := &captureRulegoLogger{}
 	a := &rulegoLogger{l: cap}
@@ -81,17 +81,18 @@ func TestRulegoLoggerAdapter(t *testing.T) {
 	assert.Equal(t, "e 2", cap.errs[0])
 }
 
-// TestNewRulegoLogger_NilFallback 验证 nil 回退到默认 logger 不 panic。
+// TestNewRulegoLogger_NilFallback verifies that nil falls back to the default logger without panic.
 func TestNewRulegoLogger_NilFallback(t *testing.T) {
 	l := newRulegoLogger(nil)
 	assert.NotNil(t, l)
-	// 调一下不 panic 即可
+	// Just call it once to ensure no panic
 	l.Info("init")
 }
 
-// TestNodeLoggerWiring_RoutesViaWithLogger 验证 WithLogger 按实例注入后，引擎内部
-// 日志会路由到 rulego logger（适配器）。WithLogger 是按实例的，不走包级全局 logger，
-// 故用异步路径触发一条内部日志：JOIN 查询但表未注册 → enrichJoin 报错 → s.log.Error。
+// TestNodeLoggerWiring_RoutesViaWithLogger verifies that after WithLogger is injected per instance,
+// engine internal logs are routed to the rulego logger (adapter). WithLogger is per instance and does not
+// use the package-level global logger, so an async path is used to trigger an internal log:
+// a JOIN query with an unregistered table -> enrichJoin errors -> s.log.Error.
 func TestNodeLoggerWiring_RoutesViaWithLogger(t *testing.T) {
 	cap := &captureRulegoLogger{}
 	ssql := streamsql.New(streamsql.WithLogger(newRulegoLogger(cap)))
@@ -100,7 +101,7 @@ func TestNodeLoggerWiring_RoutesViaWithLogger(t *testing.T) {
 	if err := ssql.Execute("SELECT m.x FROM stream JOIN meta m ON id = m.id"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	ssql.Emit(map[string]interface{}{"id": 1}) // 异步 → enrichJoin 报错 → s.log.Error
+	ssql.Emit(map[string]interface{}{"id": 1}) // async -> enrichJoin errors -> s.log.Error
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) && cap.errCount() == 0 {
@@ -110,7 +111,7 @@ func TestNodeLoggerWiring_RoutesViaWithLogger(t *testing.T) {
 	cap.mu.Lock()
 	defer cap.mu.Unlock()
 	if len(cap.errs) == 0 {
-		t.Fatalf("期望引擎内部错误日志路由到 rulego logger，实际无")
+		t.Fatalf("expected engine internal error logs to be routed to rulego logger, got none")
 	}
-	assert.True(t, strings.Contains(cap.errs[0], "join"), "日志应是 join enrichment error, got %s", cap.errs[0])
+	assert.True(t, strings.Contains(cap.errs[0], "join"), "log should be a join enrichment error, got %s", cap.errs[0])
 }

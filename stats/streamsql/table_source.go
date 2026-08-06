@@ -30,27 +30,27 @@ import (
 	"github.com/rulego/streamsql"
 )
 
-// TableConfig 描述一张流-表 JOIN 的元数据表（来源/格式/刷新见各字段）。
-// file 路径在节点加载时静态解析，无消息上下文。
+// TableConfig describes a metadata table for stream-table JOIN (see each field for source/format/refresh).
+// File paths are resolved statically at node load time, without a message context.
 type TableConfig struct {
 	Name    string                   `json:"name"`
-	Source  string                   `json:"source"`  // inline | file | http，默认 inline
-	Path    string                   `json:"path"`    // file 路径或 http URL
-	Format  string                   `json:"format"`  // json | csv，默认 json
-	Rows    []map[string]interface{} `json:"rows"`    // source=inline 时的数据
-	Refresh string                   `json:"refresh"` // 刷新间隔，如 "30s"；空=file/http 默认 1h、inline 不刷新
+	Source  string                   `json:"source"`  // inline | file | http, defaults to inline
+	Path    string                   `json:"path"`    // file path or http URL
+	Format  string                   `json:"format"`  // json | csv, defaults to json
+	Rows    []map[string]interface{} `json:"rows"`    // data when source=inline
+	Refresh string                   `json:"refresh"` // refresh interval, e.g. "30s"; empty = defaults to 1h for file/http, no refresh for inline
 
-	// HTTP 专用选项
+	// HTTP-only options
 	Headers map[string]string `json:"headers"`
-	Timeout string            `json:"timeout"` // HTTP 超时，默认 10s
+	Timeout string            `json:"timeout"` // HTTP timeout, defaults to 10s
 }
 
 const (
 	defaultHTTPTimeout     = 10 * time.Second
-	defaultRefreshInterval = "1h" // file/http 表未显式配置 Refresh 时的默认刷新间隔
+	defaultRefreshInterval = "1h" // default refresh interval when a file/http table has no explicit Refresh
 )
 
-// loadTableRows 按 Source 加载并解码元数据行。Init 阶段失败会让节点初始化失败。
+// loadTableRows loads and decodes metadata rows by Source. A failure during Init fails node initialization.
 func loadTableRows(tbl TableConfig) ([]map[string]interface{}, error) {
 	switch tbl.Source {
 	case "", "inline":
@@ -72,7 +72,7 @@ func loadTableRows(tbl TableConfig) ([]map[string]interface{}, error) {
 	}
 }
 
-// decodeRows 按格式解码字节流为行集合。
+// decodeRows decodes the byte stream into a row set according to the format.
 func decodeRows(b []byte, format string) ([]map[string]interface{}, error) {
 	switch format {
 	case "", "json":
@@ -88,11 +88,11 @@ func decodeRows(b []byte, format string) ([]map[string]interface{}, error) {
 	}
 }
 
-// decodeCSV 将 CSV 解析为行集合：首行为列名，其余为数据，值均为字符串。
-// 整型流侧 JOIN key 与 CSV 字符串类型不一致会匹配失败，整型键建议用 json。
+// decodeCSV parses CSV into a row set: the first row holds column names, the rest are data, all values are strings.
+// An integer JOIN key on the stream side does not match the CSV string type; prefer json for integer keys.
 func decodeCSV(b []byte) ([]map[string]interface{}, error) {
 	reader := csv.NewReader(bytes.NewReader(b))
-	// 容忍行长不一致：实际 CSV 常有缺列/多列，按表头尽可能取值而非报错。
+	// Tolerate inconsistent record lengths: real CSVs often have missing/extra columns, so take values by header as much as possible instead of erroring.
 	reader.FieldsPerRecord = -1
 	records, err := reader.ReadAll()
 	if err != nil {
@@ -115,7 +115,7 @@ func decodeCSV(b []byte) ([]map[string]interface{}, error) {
 	return rows, nil
 }
 
-// loadHTTP 发起 GET 请求拉取表数据，返回响应体字节。
+// loadHTTP issues a GET request to fetch the table data and returns the response body bytes.
 func loadHTTP(tbl TableConfig) ([]byte, error) {
 	req, err := http.NewRequest(http.MethodGet, tbl.Path, nil)
 	if err != nil {
@@ -136,7 +136,7 @@ func loadHTTP(tbl TableConfig) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
-// httpTimeout 解析 HTTP 超时配置，非法或为空时回退默认值。
+// httpTimeout parses the HTTP timeout configuration, falling back to the default when invalid or empty.
 func httpTimeout(s string) time.Duration {
 	if d, err := time.ParseDuration(s); err == nil && d > 0 {
 		return d
@@ -144,8 +144,8 @@ func httpTimeout(s string) time.Duration {
 	return defaultHTTPTimeout
 }
 
-// tableManager 管理一个节点全部元数据表的生命周期：加载、注册、可选后台刷新。
-// streamTransform 与 streamAggregator 共用，避免重复实现。
+// tableManager manages the lifecycle of all metadata tables of a node: loading, registration, optional background refresh.
+// Shared by streamTransform and streamAggregator to avoid duplicate implementations.
 type tableManager struct {
 	ssql *streamsql.Streamsql
 	stop chan struct{}
@@ -153,12 +153,12 @@ type tableManager struct {
 	once sync.Once
 }
 
-// newTableManager 创建表管理器，绑定一个 StreamSQL 实例（须已 Execute）。
+// newTableManager creates a table manager bound to a StreamSQL instance (which must already be Executed).
 func newTableManager(ssql *streamsql.Streamsql) *tableManager {
 	return &tableManager{ssql: ssql, stop: make(chan struct{})}
 }
 
-// register 加载并注册一张表，并在配置了 Refresh 时启动后台刷新。
+// register loads and registers a table, and starts background refresh when Refresh is configured.
 func (m *tableManager) register(tbl TableConfig) error {
 	if tbl.Name == "" {
 		return fmt.Errorf("join table config requires name")
@@ -173,8 +173,8 @@ func (m *tableManager) register(tbl TableConfig) error {
 	return m.maybeStartRefresh(tbl)
 }
 
-// maybeStartRefresh 按刷新间隔启动后台 goroutine；刷新失败保留旧快照，下周期重试。
-// 间隔由 refreshInterval 决定（file/http 默认 1h，inline 默认不刷新，显式 Refresh 优先）。
+// maybeStartRefresh starts a background goroutine according to the refresh interval; on refresh failure the old snapshot is kept and retried in the next cycle.
+// The interval is decided by refreshInterval (defaults to 1h for file/http, no refresh for inline, explicit Refresh takes precedence).
 func (m *tableManager) maybeStartRefresh(tbl TableConfig) error {
 	interval, err := refreshInterval(tbl)
 	if err != nil {
@@ -188,8 +188,8 @@ func (m *tableManager) maybeStartRefresh(tbl TableConfig) error {
 	return nil
 }
 
-// refreshInterval 解析刷新间隔：file/http 默认 1 小时；inline 等无外部源默认不刷新；
-// 显式 Refresh 优先。返回 0 表示不刷新。
+// refreshInterval parses the refresh interval: defaults to 1 hour for file/http; sources without an external origin (e.g. inline) default to no refresh;
+// explicit Refresh takes precedence. Returning 0 means no refresh.
 func refreshInterval(tbl TableConfig) (time.Duration, error) {
 	spec := tbl.Refresh
 	if spec == "" {
@@ -209,7 +209,7 @@ func refreshInterval(tbl TableConfig) (time.Duration, error) {
 	return d, nil
 }
 
-// refreshLoop 定时重新加载并通过 RegisterTable 替换内存表（按表名覆盖，读侧不撕裂）。
+// refreshLoop periodically reloads and replaces the in-memory table via RegisterTable (overwriting by table name, so readers do not observe torn state).
 func (m *tableManager) refreshLoop(tbl TableConfig, interval time.Duration) {
 	defer m.wg.Done()
 	ticker := time.NewTicker(interval)
@@ -230,7 +230,7 @@ func (m *tableManager) refreshLoop(tbl TableConfig, interval time.Duration) {
 	}
 }
 
-// Close 停止所有刷新 goroutine。幂等：部分初始化失败或 Destroy 重复调用都安全。
+// Close stops all refresh goroutines. Idempotent: safe on partial initialization failure or repeated Destroy calls.
 func (m *tableManager) Close() {
 	m.once.Do(func() {
 		close(m.stop)

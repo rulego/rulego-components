@@ -19,6 +19,8 @@ package streamsql
 import (
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
@@ -28,21 +30,28 @@ import (
 	"github.com/rulego/streamsql"
 )
 
-// RelationTypeStreamEvent 流事件关系类型：聚合窗口触发或 CEP 模式命中的统一结果出口。
+// RelationTypeStreamEvent is the stream event relation type: the unified result
+// outlet for aggregation window triggers and CEP pattern matches.
 const RelationTypeStreamEvent = "stream_event"
 
-// StreamEventMsgType 流事件消息类型，用于标识聚合/CEP 结果消息。
+// StreamEventMsgType is the stream event message type, used to identify aggregation/CEP result messages.
 const StreamEventMsgType = "stream_event"
 
 func init() {
 	_ = rulego.Registry.Register(&StreamAggregatorNode{})
 }
 
-// StreamAggregatorNodeConfiguration 流聚合器节点配置
+// StreamAggregatorNodeConfiguration is the stream aggregator node configuration
 type StreamAggregatorNodeConfiguration struct {
 	// SQL is the aggregation query statement (must contain GROUP BY, aggregation or window functions).
 	// Example: SELECT AVG(temperature) as avg_temp FROM stream GROUP BY TumblingWindow('5s')
 	SQL string `json:"sql" label:"SQL" desc:"Aggregation SQL query. Must contain GROUP BY/window functions. Example: SELECT AVG(temperature) FROM stream GROUP BY TumblingWindow('5s')" required:"true"`
+
+	// InputFormat controls how JSON array input enters the stream.
+	// auto (default): each array element becomes one stream row (long format).
+	// columns: a [{name,value,...}] array is pivoted into one flat row {name:value}
+	// (wide format); elements with a non-empty error are skipped.
+	InputFormat string `json:"inputFormat" label:"Input Format" desc:"Array input mode. auto (default): each element enters the stream as one row (long format); columns: pivot a [{name,value}] array into one flat row {name:value} (wide format, for cross-field SQL)"`
 
 	// Tables is the optional list of metadata tables for stream-table JOIN.
 	// Each table is loaded at Init (inline/file/http), registered for JOIN, and
@@ -51,52 +60,54 @@ type StreamAggregatorNodeConfiguration struct {
 	Tables []TableConfig `json:"tables"`
 }
 
-// StreamAggregatorNode 流聚合器节点
+// StreamAggregatorNode stream aggregator node
 //
-// 功能说明：
-// - 处理聚合查询（窗口聚合、分组聚合、统计计算）或 CEP(MATCH_RECOGNIZE) 模式识别
-// - 支持单条数据和数组数据输入，数组数据会被逐条添加到流中
-// - 结果（聚合窗口触发 / CEP 模式命中）通过 `stream_event` 关系链传递，而不是普通的 Success 链
-// - 原始输入数据（无论单条还是数组）都会通过 `Success` 链继续传递，保持数据流的连续性
+// Features:
+// - Processes aggregation queries (window aggregation, grouped aggregation, statistics) or CEP (MATCH_RECOGNIZE) pattern recognition
+// - Supports single record and array input; array elements are added to the stream one by one
+// - Results (aggregation window trigger / CEP pattern match) are routed through the `stream_event` relation instead of the regular Success chain
+// - The original input data (single or array) continues through the `Success` chain, keeping the data flow continuous
 //
-// 数据流向：
-// - 输入数据 -> 添加到流 -> 原始数据通过 Success 链传递
-// - 聚合/CEP 触发 -> 结果通过 stream_event 链传递
+// Data flow:
+// - Input data -> added to stream -> original data passes through the Success chain
+// - Aggregation/CEP trigger -> results pass through the stream_event chain
 //
-// 注意事项：
-// - 聚合结果通过全局`Config.OnEnd`回调返回，而不是通过消息处理上下文的OnEnd回调返回
-// - 聚合计算是异步进行的，不会阻塞原始数据的流转
-// - 窗口触发时机由StreamSQL引擎根据时间窗口或数据量自动决定
+// Notes:
+// - Aggregation results are returned via the global `Config.OnEnd` callback, not via the message processing context's OnEnd callback
+// - Aggregation runs asynchronously and does not block the flow of original data
+// - Window trigger timing is decided automatically by the StreamSQL engine based on time windows or data volume
 type StreamAggregatorNode struct {
-	// 节点配置
+	// Node configuration
 	Config StreamAggregatorNodeConfiguration
-	// StreamSQL实例，用于执行SQL聚合查询
+	// StreamSQL instance used to execute SQL aggregation queries
 	streamsql *streamsql.Streamsql
-	// tables 管理流-表 JOIN 的元数据表（加载/注册/刷新），Destroy 时关闭
+	// tables manages the metadata tables for stream-table JOIN (load/register/refresh), closed on Destroy
 	tables *tableManager
-	// 规则链ID，用于聚合结果的回调处理
+	// Rule chain ID, used for callback handling of aggregation results
 	chainId string
-	// 自身节点ID，用于指定聚合结果的传递路径
+	// Own node ID, used to specify the delivery path of aggregation results
 	selfNodeId string
-	// 链上下文，用于获取规则引擎实例
+	// Chain context, used to obtain the rule engine instance
 	chainCtx types.ChainCtx
-	// isCEP 标记当前是否为 MATCH_RECOGNIZE(CEP) 查询，决定结果消息的 queryType
+	// isCEP marks whether the current query is a MATCH_RECOGNIZE (CEP) query, determining the queryType of result messages
 	isCEP bool
 }
 
-// Type 返回组件类型标识
+// Type returns the component type identifier
 func (x *StreamAggregatorNode) Type() string {
 	return "x/streamAggregator"
 }
 
-// New 创建流聚合器节点实例
+// New creates a stream aggregator node instance
 func (x *StreamAggregatorNode) New() types.Node {
 	return &StreamAggregatorNode{
-		Config: StreamAggregatorNodeConfiguration{},
+		Config: StreamAggregatorNodeConfiguration{
+			InputFormat: InputFormatAuto,
+		},
 	}
 }
 
-// 错误定义
+// Error definitions
 var (
 	ErrAggregatorSQLEmpty     = errors.New("aggregator SQL query is required")
 	ErrNotAggregatorQuery     = errors.New("SQL does not contain aggregation functions, use x/streamTransform instead")
@@ -106,66 +117,71 @@ var (
 	ErrAggregatorChainIdEmpty = errors.New("chain id is empty")
 )
 
-// Init 初始化节点
-// 该方法在节点被加载时调用，用于验证配置和初始化StreamSQL实例
+// Init initializes the node
+// Called when the node is loaded, to validate the configuration and initialize the StreamSQL instance
 func (x *StreamAggregatorNode) Init(ruleConfig types.Config, configuration types.Configuration) (err error) {
 	err = maps.Map2Struct(configuration, &x.Config)
 	if err != nil {
 		return err
 	}
 
-	// 验证SQL配置
+	// Validate SQL configuration
 	if x.Config.SQL == "" {
 		return ErrAggregatorSQLEmpty
 	}
 
-	// 获取链上下文
+	// Validate input format configuration
+	if err = validateInputFormat(x.Config.InputFormat); err != nil {
+		return err
+	}
+
+	// Get the chain context
 	x.chainCtx = base.NodeUtils.GetChainCtx(configuration)
 	if x.chainCtx == nil {
 		return ErrAggregatorChainCtxNil
 	}
 
-	// 获取自身节点ID
+	// Get the self node ID
 	selfDef := base.NodeUtils.GetSelfDefinition(configuration)
 	if selfDef.Id == "" {
 		return ErrAggregatorNodeIdEmpty
 	}
 	x.selfNodeId = selfDef.Id
 
-	// 获取规则链ID
+	// Get the rule chain ID
 	if x.chainCtx.GetNodeId().Id == "" {
 		return ErrAggregatorChainIdEmpty
 	}
 	x.chainId = x.chainCtx.GetNodeId().Id
 
-	// 创建StreamSQL实例，日志接入 rulego 日志体系
+	// Create the StreamSQL instance, wiring logs into the rulego logging system
 	x.streamsql = streamsql.New(streamsql.WithLogger(newRulegoLogger(ruleConfig.Logger)))
 
-	// 执行SQL初始化
+	// Execute SQL initialization
 	err = x.streamsql.Execute(x.Config.SQL)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrAggregatorSQLExecution, err)
 	}
-	// Init 失败时停止已启动的 streamsql 实例
+	// Stop the started streamsql instance if Init fails
 	defer func() {
 		if err != nil {
 			x.streamsql.Stop()
 		}
 	}()
 
-	// 验证是否为聚合或 CEP(MATCH_RECOGNIZE) 查询；两者都走异步 Emit+sink 管道
+	// Validate that it is an aggregation or CEP (MATCH_RECOGNIZE) query; both use the async Emit+sink pipeline
 	x.isCEP = x.streamsql.IsCEPQuery()
 	if !x.streamsql.IsAggregationQuery() && !x.isCEP {
 		return fmt.Errorf("%w: SQL='%s'", ErrNotAggregatorQuery, x.Config.SQL)
 	}
 
-	// 设置聚合结果处理回调
+	// Set the aggregation result handling callback
 	x.streamsql.AddSink(func(results []map[string]interface{}) {
 		x.handleAggregateResult(results)
 	})
 
-	// 加载元数据表（流-表 JOIN，须在 Execute 之后）。任一表失败则关闭已启动的
-	// 刷新 goroutine，避免泄漏。
+	// Load metadata tables (stream-table JOIN, must follow Execute). If any table
+	// fails, close the already-started refresh goroutines to avoid leaks.
 	x.tables = newTableManager(x.streamsql)
 	for _, tbl := range x.Config.Tables {
 		if err := x.tables.register(tbl); err != nil {
@@ -177,40 +193,54 @@ func (x *StreamAggregatorNode) Init(ruleConfig types.Config, configuration types
 	return nil
 }
 
-// OnMsg 处理消息
-// 支持单条数据和数组数据：
-// - 单条数据：直接添加到聚合流中
-// - 数组数据：遍历每个元素并逐条添加到聚合流中
-// 无论哪种情况，原始消息都会通过Success链继续传递
+// OnMsg handles a message
+// Supports single records and arrays:
+// - Single record: added directly to the aggregation stream
+// - Array (inputFormat=auto, default): each element is added to the aggregation stream one by one
+// - Array (inputFormat=columns): an IoT point array is pivoted into a single wide row before
+//   entering the aggregation stream; non-point arrays fall back to row-by-row processing
+// In all cases, the original message continues through the Success chain
 func (x *StreamAggregatorNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	if x.streamsql == nil {
 		ctx.TellFailure(msg, ErrStreamsqlInstanceNil)
 		return
 	}
 
-	// 验证数据类型，只支持JSON类型
+	// Validate the data type; only JSON is supported
 	if msg.DataType != types.JSON {
 		ctx.TellFailure(msg, fmt.Errorf("%w: current type is %s", ErrUnsupportedDataType, msg.DataType))
 		return
 	}
 
-	// 获取JSON数据，streamsql内部会处理类型转换
+	// Get the JSON data; streamsql handles type conversion internally
 	data, err := msg.GetJsonData()
 	if err != nil {
 		ctx.TellFailure(msg, fmt.Errorf("%w: %v", ErrDataProcessingFailed, err))
 		return
 	}
 
-	// 检查数据是否为数组
+	// Check whether the data is an array
 	if x.isArrayData(data) {
-		// 处理数组数据
+		// columns mode: pivot an IoT point array into a single wide row before entering the stream
+		if x.Config.InputFormat == InputFormatColumns {
+			if row, ok := pivotPointArray(data); ok {
+				if len(row) > 0 {
+					x.streamsql.Emit(row)
+				}
+				// Do not Emit when all points are bad; the original message flows on as usual
+				ctx.TellSuccess(msg)
+				return
+			}
+			// Not a point array; fall back to row-by-row processing
+		}
+		// Process array data
 		err := x.processArrayData(data)
 		if err != nil {
 			ctx.TellFailure(msg, fmt.Errorf("%w: %v", ErrArrayProcessingFailed, err))
 			return
 		}
 	} else {
-		// 处理单条数据：转换为map[string]interface{}类型后添加到StreamSQL流中
+		// Process single data: convert to map[string]interface{} and add to the StreamSQL stream
 		mapData, err := x.convertToMapStringInterface(data)
 		if err != nil {
 			ctx.TellFailure(msg, fmt.Errorf("data type conversion failed: %w", err))
@@ -219,13 +249,13 @@ func (x *StreamAggregatorNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		x.streamsql.Emit(mapData)
 	}
 
-	// 数据成功加入聚合流，原始消息继续流转
+	// Data successfully added to the aggregation stream; the original message flows on
 	ctx.TellSuccess(msg)
 }
 
-// isArrayData 检查数据是否为数组
+// isArrayData checks whether the data is an array
 func (x *StreamAggregatorNode) isArrayData(data interface{}) bool {
-	// 直接检查数据类型是否为slice
+	// Check directly whether the data type is a slice
 	switch data.(type) {
 	case []interface{}:
 		return true
@@ -236,16 +266,16 @@ func (x *StreamAggregatorNode) isArrayData(data interface{}) bool {
 	}
 }
 
-// processArrayData 处理数组数据，将每个元素添加到聚合流中
+// processArrayData processes array data, adding each element to the aggregation stream
 func (x *StreamAggregatorNode) processArrayData(data interface{}) error {
-	// 尝试转换为 []interface{}
+	// Try to convert to []interface{}
 	var arr []interface{}
 
 	switch v := data.(type) {
 	case []interface{}:
 		arr = v
 	case []map[string]interface{}:
-		// 将 []map[string]interface{} 转换为 []interface{}
+		// Convert []map[string]interface{} to []interface{}
 		arr = make([]interface{}, len(v))
 		for i, item := range v {
 			arr[i] = item
@@ -254,8 +284,8 @@ func (x *StreamAggregatorNode) processArrayData(data interface{}) error {
 		return fmt.Errorf("unsupported array data type: %T", data)
 	}
 
-	// 遍历数组，将每个元素添加到聚合流中
-	// 需要将每个元素转换为map[string]interface{}类型
+	// Iterate over the array, adding each element to the aggregation stream.
+	// Each element must be converted to map[string]interface{}
 	for _, item := range arr {
 		mapItem, err := x.convertToMapStringInterface(item)
 		if err != nil {
@@ -267,11 +297,11 @@ func (x *StreamAggregatorNode) processArrayData(data interface{}) error {
 	return nil
 }
 
-// handleAggregateResult 处理聚合/CEP 结果
-// 当窗口触发、聚合条件满足或 CEP 模式命中时，该方法会被 StreamSQL 引擎回调
-// 结果会被包装成 stream_event 消息，通过 stream_event 关系链传递到下一个节点
+// handleAggregateResult handles aggregation/CEP results
+// Called back by the StreamSQL engine when a window fires, an aggregation condition is met, or a CEP pattern matches.
+// Results are wrapped as stream_event messages and passed to the next node through the stream_event relation chain
 func (x *StreamAggregatorNode) handleAggregateResult(results []map[string]interface{}) {
-	// 创建结果消息的元数据
+	// Create metadata for the result message
 	metadata := types.NewMetadata()
 	if x.isCEP {
 		metadata.PutValue("queryType", "cep")
@@ -281,23 +311,53 @@ func (x *StreamAggregatorNode) handleAggregateResult(results []map[string]interf
 		metadata.PutValue("resultType", "window_triggered")
 	}
 
-	// 通过规则引擎发送结果
+	// Inject timestamp (window end time, ns) into each row: parsed from the window_id ("startns_endns")
+	// auto-stamped by streamsql, so downstream (e.g. x/tsdbWrite) can persist data/window time instead of
+	// write time. Existing timestamps on rows are not overwritten.
+	// Note: only time window (tumbling/sliding/session/counting) results carry window_id; global window
+	// and CEP (MATCH_RECOGNIZE) results are not stamped (streamsql's processCEP/TypeGlobal skip stampWindowID),
+	// so they have no timestamp and downstream persistence falls back to write time. ts<=0 is treated as invalid and not injected.
+	for _, r := range results {
+		if _, has := r[pointTimestampKey]; has {
+			continue
+		}
+		if id, ok := r[windowIDKey].(string); ok {
+			if ts, ok := windowIDEndNs(id); ok && ts > 0 {
+				r[pointTimestampKey] = ts
+			}
+		}
+	}
+
+	// Send results through the rule engine
 	if e, ok := x.chainCtx.GetRuleEnginePool().Get(x.chainId); ok {
 		msg := types.NewMsg(0, StreamEventMsgType, types.JSON, metadata, str.ToString(results))
-		// 结果经 stream_event 关系链传递（聚合窗口触发或 CEP 模式命中）
+		// Results pass through the stream_event relation chain (aggregation window trigger or CEP pattern match)
 		e.OnMsg(msg, types.WithTellNext(x.selfNodeId, RelationTypeStreamEvent))
 	}
 }
 
-// convertToMapStringInterface 将不同类型的map转换为map[string]interface{}
-// 支持的类型包括：map[string]interface{}, map[string]string
+// windowIDEndNs parses the window end time (ns) from streamsql's window_id ("startns_endns").
+func windowIDEndNs(id string) (int64, bool) {
+	idx := strings.IndexByte(id, '_')
+	if idx < 0 || idx >= len(id)-1 {
+		return 0, false
+	}
+	n, err := strconv.ParseInt(id[idx+1:], 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// convertToMapStringInterface converts different map types to map[string]interface{}
+// Supported types: map[string]interface{}, map[string]string
 func (x *StreamAggregatorNode) convertToMapStringInterface(data interface{}) (map[string]interface{}, error) {
 	switch v := data.(type) {
 	case map[string]interface{}:
-		// 已经是目标类型，直接返回
+		// Already the target type; return directly
 		return v, nil
 	case map[string]string:
-		// 转换 map[string]string 为 map[string]interface{}
+		// Convert map[string]string to map[string]interface{}
 		result := make(map[string]interface{}, len(v))
 		for key, value := range v {
 			result[key] = value
@@ -308,7 +368,7 @@ func (x *StreamAggregatorNode) convertToMapStringInterface(data interface{}) (ma
 	}
 }
 
-// Destroy 销毁节点，释放资源
+// Destroy destroys the node and releases resources
 func (x *StreamAggregatorNode) Destroy() {
 	if x.tables != nil {
 		x.tables.Close()

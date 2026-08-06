@@ -21,8 +21,8 @@ import (
 	"github.com/rulego/streamsql/logger"
 )
 
-// rulegoLogger 把 rulego 的 types.Logger 适配为 streamsql 的 logger.Logger，
-// 使 streamsql 内部日志统一走 rulego 日志体系（级别、格式、输出目标一致）。
+// rulegoLogger adapts rulego's types.Logger to streamsql's logger.Logger,
+// so that streamsql internal logs go through the rulego logging system (consistent level, format and output target).
 type rulegoLogger struct {
 	l types.Logger
 }
@@ -32,10 +32,10 @@ func (a *rulegoLogger) Info(format string, args ...any)  { a.l.Infof(format, arg
 func (a *rulegoLogger) Warn(format string, args ...any)  { a.l.Warnf(format, args...) }
 func (a *rulegoLogger) Error(format string, args ...any) { a.l.Errorf(format, args...) }
 
-// SetLevel 级别由 rulego 日志器自管，此处空实现。
+// SetLevel is a no-op because the level is managed by the rulego logger itself.
 func (a *rulegoLogger) SetLevel(logger.Level) {}
 
-// newRulegoLogger 用 rulego 日志器构造 streamsql logger.Logger；nil 回退默认。
+// newRulegoLogger builds a streamsql logger.Logger from a rulego logger; nil falls back to the default.
 func newRulegoLogger(l types.Logger) logger.Logger {
 	if l == nil {
 		l = types.DefaultLogger()
