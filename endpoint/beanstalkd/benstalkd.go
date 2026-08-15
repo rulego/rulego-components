@@ -254,6 +254,14 @@ func (x *BeanstalkdTubeSet) reserve() error {
 		return err
 	}
 
+	// 处理结果决定 job 去向：成功删除，失败/panic 释放回队列等 TTR 后重投
+	defer func() {
+		if e := recover(); e != nil {
+			_ = conn.Release(id, 1, 0)
+			panic(e)
+		}
+	}()
+
 	// Lock to get the router, then unlock to avoid holding lock during processing
 	x.RLock()
 	router := x.Router
@@ -267,8 +275,8 @@ func (x *BeanstalkdTubeSet) reserve() error {
 	}
 	stat, err := conn.StatsJob(id)
 	if err != nil {
-		// Also delete job if we can't get its stats
-		_ = conn.Delete(id)
+		// stats 拿不到时释放回队列，避免未处理即丢弃
+		_ = conn.Release(id, 1, 0)
 		return err
 	}
 
@@ -282,6 +290,15 @@ func (x *BeanstalkdTubeSet) reserve() error {
 			stats: stat,
 		}}
 	x.DoProcess(context.Background(), router, exchange)
+	if procErr := exchange.Out.GetError(); procErr != nil {
+		x.Printf("process job %d err: %v, release it for redelivery", id, procErr)
+		_ = conn.Release(id, 1, 0)
+		return nil
+	}
+	// 处理成功，删除 job 防止 TTR 到期后重复投递
+	if err := conn.Delete(id); err != nil {
+		x.Printf("delete job %d err: %v", id, err)
+	}
 	return nil
 }
 
