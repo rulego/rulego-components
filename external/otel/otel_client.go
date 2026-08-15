@@ -111,7 +111,7 @@ type Metric struct {
 	ValueTemplate  el.Template
 	LabelsTemplate el.Template
 	Counter        metric.Float64Counter
-	Gauge          metric.Float64UpDownCounter
+	Gauge          metric.Float64Gauge
 	Histogram      metric.Float64Histogram
 }
 
@@ -167,12 +167,14 @@ func (x *OtelNode) Init(ruleConfig types.Config, configuration types.Configurati
 		x.Config.Protocol = "HTTP"
 	}
 	// 初始化共享MeterProvider
-	err = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*Client, error) {
+	if err := x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*Client, error) {
 		return x.initMeterProvider()
 	}, func(client *Client) error {
 		// 清理回调函数
 		return client.MeterProvider.Shutdown(context.Background())
-	})
+	}); err != nil {
+		return err
+	}
 
 	// 预编译配置的指标模板
 	for _, metricConfig := range x.Config.Metrics {
@@ -381,7 +383,7 @@ func (x *OtelNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		case COUNTER:
 			m.Counter.Add(ctx.GetContext(), value, metric.WithAttributes(attrs...))
 		case GAUGE:
-			m.Gauge.Add(ctx.GetContext(), value, metric.WithAttributes(attrs...))
+			m.Gauge.Record(ctx.GetContext(), value, metric.WithAttributes(attrs...))
 		case HISTOGRAM:
 			m.Histogram.Record(ctx.GetContext(), value, metric.WithAttributes(attrs...))
 		}
@@ -437,7 +439,7 @@ func (x *OtelNode) getOrCreateMetric(cfg MetricConfig) (*Metric, error) {
 			metric.WithUnit(cfg.Unit),
 		)
 	case GAUGE:
-		m.Gauge, err = client.Meter.Float64UpDownCounter(
+		m.Gauge, err = client.Meter.Float64Gauge(
 			cfg.MetricName,
 			metric.WithDescription(cfg.Description),
 			metric.WithUnit(cfg.Unit),
@@ -484,7 +486,7 @@ func (x *OtelNode) getValue(config MetricConfig, valueTemplate el.Template, evn 
 		case int64:
 			return float64(v), nil
 		case string:
-			return strconv.ParseFloat(config.Value, 64)
+			return strconv.ParseFloat(v, 64)
 		default:
 			return 0, fmt.Errorf("invalid value type: %T", out)
 		}
