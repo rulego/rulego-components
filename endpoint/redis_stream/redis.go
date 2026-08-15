@@ -270,6 +270,8 @@ func (x *Redis) Init(ruleConfig types.Config, configuration types.Configuration)
 		if x.Config.GroupId == "" {
 			x.Config.GroupId = "rulego"
 		}
+		// SharedNode 依赖 RuleConfig（ref:// 借用需读 NodePool），必须先赋值再初始化
+		x.RuleConfig = ruleConfig
 		_ = x.SharedNode.InitWithClose(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*redis.Client, error) {
 			return x.initClient()
 		}, func(client *redis.Client) error {
@@ -279,7 +281,6 @@ func (x *Redis) Init(ruleConfig types.Config, configuration types.Configuration)
 			return nil
 		})
 	}
-	x.RuleConfig = ruleConfig
 	return err
 }
 
@@ -311,7 +312,12 @@ func (x *Redis) AddRouter(router endpointApi.Router, params ...interface{}) (str
 	if err := x.addRouter(router); err != nil {
 		return routerId, err
 	}
-	return routerId, x.createConsumerGroup(client, router)
+	if err := x.createConsumerGroup(client, router); err != nil {
+		// 回滚已写入的路由登记，保证失败后可重试
+		x.deleteRouter(routerId)
+		return routerId, err
+	}
+	return routerId, nil
 }
 
 func (x *Redis) parseStreams(streamNames string) []string {
@@ -376,7 +382,15 @@ func (x *Redis) createConsumerGroup(client *redis.Client, router endpointApi.Rou
 			}
 			for _, message := range messages {
 				for _, msg := range message.Messages {
-					go x.handlerMsg(client, message.Stream, msg, router)
+					if x.RuleConfig.Pool != nil {
+						if err := x.RuleConfig.Pool.Submit(func() {
+							x.handlerMsg(client, message.Stream, msg, router)
+						}); err != nil {
+							x.Printf("redis stream consumer handler err :%v", err)
+						}
+					} else {
+						go x.handlerMsg(client, message.Stream, msg, router)
+					}
 				}
 			}
 		}
@@ -495,6 +509,11 @@ func (x *Redis) handlerMsg(client *redis.Client, stream string, msg redis.XMessa
 		},
 	}
 	x.DoProcess(context.Background(), router, exchange)
+	if err := exchange.Out.GetError(); err != nil {
+		// 处理失败不确认不删除，消息留在 PEL，可经 XAutoClaim/XPending 重新处理
+		x.Printf("redis stream process err, keep msg %s in %s: %v", msg.ID, stream, err)
+		return
+	}
 	// 确认消息处理完成
 	_ = client.XAck(context.Background(), stream, x.Config.GroupId, msg.ID).Err()
 	_ = client.XDel(context.Background(), stream, msg.ID).Err()
