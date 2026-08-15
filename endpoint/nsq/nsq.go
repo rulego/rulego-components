@@ -527,6 +527,13 @@ func (x *Nsq) RemoveRouter(routerId string, params ...interface{}) error {
 	return nil
 }
 
+// currentPublisher 快照读取 publisher，避免与 Close 置 nil 竞争
+func (x *Nsq) currentPublisher() nsqPublisher {
+	x.mu.RLock()
+	defer x.mu.RUnlock()
+	return x.publisher
+}
+
 // handleMessage 处理单个消息
 // 处理NSQ消息，创建Exchange并执行指定路由的规则链处理
 func (x *Nsq) handleMessage(message *nsq.Message, router endpointApi.Router, topic string) error {
@@ -543,7 +550,7 @@ func (x *Nsq) handleMessage(message *nsq.Message, router endpointApi.Router, top
 		},
 		Out: &ResponseMessage{
 			message:   message,
-			publisher: x.publisher,
+			publisher: x.currentPublisher(),
 			topic:     topic,
 		},
 	}

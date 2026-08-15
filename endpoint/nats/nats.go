@@ -271,6 +271,10 @@ func (x *Nats) Close() error {
 	// SharedNode manages client closure through the cleanup function in InitWithClose
 	_ = x.SharedNode.Close()
 	x.BaseEndpoint.Destroy()
+	// 清空订阅记录，Close 后同 ID 路由可重新注册
+	x.Lock()
+	x.subscriptions = make(map[string]*nats.Subscription)
+	x.Unlock()
 	return nil
 }
 
@@ -368,6 +372,8 @@ func (x *Nats) Printf(format string, v ...interface{}) {
 func (x *Nats) initClient() (*nats.Conn, error) {
 	conn, err := nats.Connect(x.Config.Server,
 		nats.UserInfo(x.Config.Username, x.Config.Password),
+		// 无限重连：默认 60 次耗尽后订阅永久失效，长时间宕机的 broker 恢复后无法自愈
+		nats.MaxReconnects(-1),
 		nats.ConnectHandler(func(*nats.Conn) {
 			x.SharedNode.SetStatus(types.StatusConnected, "")
 		}),

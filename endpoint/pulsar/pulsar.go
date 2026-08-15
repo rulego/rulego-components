@@ -23,6 +23,7 @@ import (
 	"net/textproto"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
@@ -139,10 +140,12 @@ type ResponseMessage struct {
 	message   pulsar.Message
 	producers *sync.Map
 	client    *base.SharedNode[pulsar.Client]
-	body      []byte
-	msg       *types.RuleMsg
-	headers   textproto.MIMEHeader
-	err       error
+	// ep 用于发布前检查端点是否已关闭
+	ep      *Pulsar
+	body    []byte
+	msg     *types.RuleMsg
+	headers textproto.MIMEHeader
+	err     error
 }
 
 // Body 获取响应体
@@ -200,7 +203,8 @@ func (r *ResponseMessage) getMetadataValue(metadataName, headerName string) stri
 func (r *ResponseMessage) SetBody(body []byte) {
 	r.body = body
 	topic := r.getMetadataValue(KeyResponseTopic, KeyResponseTopic)
-	if topic != "" && r.producers != nil && r.client != nil {
+	if topic != "" && r.producers != nil && r.client != nil &&
+		(r.ep == nil || atomic.LoadInt32(&r.ep.closed) == 0) {
 		// 获取客户端
 		client, err := r.client.GetSafely()
 		if err != nil {
@@ -312,6 +316,8 @@ type Pulsar struct {
 	consumers map[string]pulsar.Consumer
 	// topic+subscription组合映射，用于检查重复订阅
 	subscriptions map[string]string // key: topic+subscription, value: routerId
+	// closed 置位后拒绝响应发布，防止 Close 后在途消息经 GetSafely 重建 client 造成泄漏
+	closed int32
 	// 生产者映射，key为topic，value为对应的生产者
 	producers sync.Map
 	// 互斥锁
@@ -396,6 +402,7 @@ func (x *Pulsar) GracefulStop() {
 
 // Close 关闭连接
 func (x *Pulsar) Close() error {
+	atomic.StoreInt32(&x.closed, 1)
 	x.mu.Lock()
 	defer x.mu.Unlock()
 
@@ -537,6 +544,7 @@ func (x *Pulsar) handleMessage(msg pulsar.ConsumerMessage, router endpointApi.Ro
 			message:   msg.Message,
 			producers: &x.producers,
 			client:    &x.SharedNode,
+			ep:        x,
 		},
 	}
 	x.DoProcess(context.Background(), router, exchange)

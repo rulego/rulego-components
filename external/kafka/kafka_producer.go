@@ -194,9 +194,23 @@ func (x *ProducerNode) Desc() string {
 }
 
 func (x *ProducerNode) getBrokerFromOldVersion(configuration types.Configuration) []string {
-	if v, ok := configuration["brokers"]; ok {
-		return v.([]string)
-	} else {
+	v, ok := configuration["brokers"]
+	if !ok {
+		return nil
+	}
+	// JSON DSL 加载的数组是 []interface{}，直接断言 []string 会 panic
+	switch brokers := v.(type) {
+	case []string:
+		return brokers
+	case []interface{}:
+		result := make([]string, 0, len(brokers))
+		for _, item := range brokers {
+			if s, ok := item.(string); ok {
+				result = append(result, s)
+			}
+		}
+		return result
+	default:
 		return nil
 	}
 }

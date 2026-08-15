@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/textproto"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -94,10 +95,12 @@ type GrpcStream struct {
 	base.SharedNode[*Client]
 	RuleConfig types.Config
 	Config     Config
-	//client     *Client
-	Router endpointApi.Router
+	Router     endpointApi.Router
 
-	stopCh chan struct{}
+	// lifecycleMu 保护 stopCh/started：Start 可重入、Destroy 幂等
+	lifecycleMu sync.Mutex
+	stopCh      chan struct{}
+	started     bool
 	// connected tracks whether the stream is live, to avoid repeated SetStatus calls per message.
 	connected int32
 }
@@ -254,42 +257,59 @@ func (x *GrpcStream) Init(ruleConfig types.Config, configuration types.Configura
 
 // Start 启动组件
 func (x *GrpcStream) Start() error {
-	x.stopCh = make(chan struct{})
+	x.lifecycleMu.Lock()
+	defer x.lifecycleMu.Unlock()
+	if x.started {
+		return nil
+	}
 
 	// 确保重连延迟时间有默认值
 	if x.Config.CheckInterval <= 0 {
 		x.Config.CheckInterval = 10 * 1000
 	}
 
+	x.stopCh = make(chan struct{})
+	x.started = true
+	stopCh := x.stopCh
+
 	// 启动流处理和重连
-	go x.streamWithReconnect()
+	go x.streamWithReconnect(stopCh)
 
 	return nil
 }
 
-func (x *GrpcStream) streamWithReconnect() {
+func (x *GrpcStream) streamWithReconnect(stopCh <-chan struct{}) {
 	for {
 		select {
-		case <-x.stopCh:
+		case <-stopCh:
 			return
 		default:
 			if err := x.handleStream(); err != nil {
 				atomic.StoreInt32(&x.connected, 0)
 				x.SharedNode.SetStatus(types.StatusReconnecting, err.Error())
-				if client, _ := x.SharedNode.GetSafely(); client != nil {
+				// 只关闭已存在的连接；GetSafely 会懒建连，用 Instance 探测避免多余拨号
+				if client, ok := x.SharedNode.Instance(); ok && client != nil {
 					x.SharedNode.Close()
 				}
 			}
-			time.Sleep(time.Duration(x.Config.CheckInterval) * time.Millisecond)
+			select {
+			case <-stopCh:
+				return
+			case <-time.After(time.Duration(x.Config.CheckInterval) * time.Millisecond):
+			}
 		}
 	}
 }
 
 // Destroy 销毁组件
 func (x *GrpcStream) Destroy() {
-	if x.stopCh != nil {
+	x.lifecycleMu.Lock()
+	if x.started {
 		close(x.stopCh)
+		x.stopCh = nil
+		x.started = false
 	}
+	x.lifecycleMu.Unlock()
 	//清理实例
 	_ = x.SharedNode.Close()
 	//设置为nil，防止goroutine重建
@@ -358,6 +378,8 @@ func (x *GrpcStream) handleStream() error {
 			if atomic.CompareAndSwapInt32(&x.connected, 0, 1) {
 				x.SharedNode.SetStatus(types.StatusConnected, "")
 			}
+			// DefaultEventHandler 会把每次响应写入 Out，长流必须清空防止无界增长
+			responseBuffer.Reset()
 			x.Printf("Received message: %s", string(jsonBytes))
 			x.RLock()
 			if x.Router != nil {
