@@ -195,7 +195,7 @@ func (r *ResponseMessage) SetBody(body []byte) {
 		}
 		_, _, err := r.response.SendMessage(message)
 		if err != nil {
-
+			r.log("kafka response send err:%v", err)
 		}
 	}
 }
@@ -567,12 +567,15 @@ func (h *consumerHandler) Setup(sarama.ConsumerGroupSession) error   { return ni
 func (h *consumerHandler) Cleanup(sarama.ConsumerGroupSession) error { return nil }
 func (h *consumerHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	for msg := range claim.Messages() {
+		// 入队前先计数，避免 Close 阶段2在任务尚未执行时看到 0 提前关 producer
+		atomic.AddInt64(&h.ep.activeMessages, 1)
 		// 处理消息逻辑
 		if h.ruleConfig.Pool != nil {
 			err := h.ruleConfig.Pool.Submit(func() {
 				h.handlerMsg(session, msg)
 			})
 			if err != nil {
+				atomic.AddInt64(&h.ep.activeMessages, -1)
 				h.ep.Printf("kafka consumer handler err :%v", err)
 			}
 			// 不要立即返回错误，继续处理下一条消息
@@ -581,6 +584,13 @@ func (h *consumerHandler) ConsumeClaim(session sarama.ConsumerGroupSession, clai
 		}
 	}
 	return nil
+}
+
+// currentProducer 快照读取 producer 引用，避免与 Close 置 nil 竞争
+func (x *Kafka) currentProducer() sarama.SyncProducer {
+	x.RLock()
+	defer x.RUnlock()
+	return x.producer
 }
 
 func (h *consumerHandler) handlerMsg(session sarama.ConsumerGroupSession, msg *sarama.ConsumerMessage) {
@@ -592,9 +602,6 @@ func (h *consumerHandler) handlerMsg(session sarama.ConsumerGroupSession, msg *s
 			h.ep.Printf("[ERROR] kafka endpoint handler panic: %v\n%v", e, runtime.Stack())
 		}
 	}()
-
-	// 增加活跃消息计数
-	atomic.AddInt64(&h.ep.activeMessages, 1)
 
 	// 检查是否正在关闭，如果是则拒绝处理新消息
 	if h.ep.IsShuttingDown() {
@@ -608,7 +615,7 @@ func (h *consumerHandler) handlerMsg(session sarama.ConsumerGroupSession, msg *s
 		},
 		Out: &ResponseMessage{
 			request:  msg,
-			response: h.ep.producer,
+			response: h.ep.currentProducer(),
 			log: func(format string, v ...interface{}) {
 				h.ep.Printf(format, v...)
 			},
@@ -700,13 +707,22 @@ func (x *Kafka) startConsumerWithRetry(consumer sarama.ConsumerGroup, topics []s
 					x.Printf("[ERROR] Failed to recreate consumer for topic %s: %v", topics[0], createErr)
 					return
 				}
-				// 更新handlers中的消费者引用
+				// 更新handlers中的消费者引用；路由已被移除或端点已关闭时
+				// 丢弃新消费者退出，防止 RemoveRouter 后消费复活/句柄泄漏
 				x.Lock()
-				oldConsumer := consumer
-				if x.handlers != nil {
-					x.handlers[routerId] = newConsumer
-					consumer = newConsumer
+				if x.closed || x.handlers == nil {
+					x.Unlock()
+					_ = newConsumer.Close()
+					return
 				}
+				if _, exists := x.handlers[routerId]; !exists {
+					x.Unlock()
+					_ = newConsumer.Close()
+					return
+				}
+				oldConsumer := consumer
+				x.handlers[routerId] = newConsumer
+				consumer = newConsumer
 				x.Unlock()
 				// 在释放锁后关闭旧的消费者
 				_ = oldConsumer.Close()

@@ -18,8 +18,10 @@ package rabbitmq
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/textproto"
+	"sync"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -229,6 +231,10 @@ type RabbitMQ struct {
 	RuleConfig types.Config
 	Config     Config
 	channels   map[string]*amqp.Channel
+	// gens 在 RemoveRouter 时递增，consumeLoop 据此停止重建，防止已移除的路由被重连复活
+	gens map[string]uint64
+	// reconnectMu 串行化多个 consumeLoop 的并发重连拨号
+	reconnectMu sync.Mutex
 }
 
 func (x *RabbitMQ) Type() string {
@@ -249,6 +255,7 @@ func (x *RabbitMQ) New() types.Node {
 			AutoDelete:   true,
 		},
 		channels: make(map[string]*amqp.Channel),
+		gens:     make(map[string]uint64),
 	}
 }
 
@@ -326,52 +333,76 @@ func (x *RabbitMQ) Close() error {
 		_ = ch.Close()
 	}
 	x.channels = map[string]*amqp.Channel{}
+	// 递增全部代数，让仍在 backoff 等待中的 consumeLoop 退出
+	for id := range x.gens {
+		x.gens[id]++
+	}
 	return nil
 }
 
 func (x *RabbitMQ) AddRouter(router endpointApi.Router, params ...interface{}) (string, error) {
 	routerId := x.CheckAndSetRouterId(router)
 
-	x.RLock()
-	_, ok := x.channels[routerId]
-	x.RUnlock()
-	if ok {
+	// 先占位再建连，避免并发 AddRouter 同 ID 各建一个消费者重复消费
+	x.Lock()
+	if x.channels == nil {
+		x.channels = make(map[string]*amqp.Channel)
+	}
+	if x.gens == nil {
+		x.gens = make(map[string]uint64)
+	}
+	if _, ok := x.channels[routerId]; ok {
+		x.Unlock()
 		return routerId, fmt.Errorf("routerId %s already exists", routerId)
 	}
+	x.channels[routerId] = nil
+	gen := x.gens[routerId]
+	x.Unlock()
 
-	if ch, q, err := x.queueBind(router.FromToString()); err != nil {
-		return "", err
-	} else {
+	ch, q, err := x.queueBind(router.FromToString())
+	if err != nil {
 		x.Lock()
-		defer x.Unlock()
-		if x.channels == nil {
-			x.channels = make(map[string]*amqp.Channel)
-		}
-		x.channels[routerId] = ch
-		msgs, err := ch.Consume(
-			q.Name, // Queue name
-			"",     // Consumer tag
-			true,   // Auto-ack (acknowledgment of message receipt)
-			false,  // Exclusive
-			false,  // No-local
-			false,  // No-wait
-			nil,    // Arguments
-		)
-		if err != nil {
-			return "", err
-		}
-		go x.consumeLoop(router, routerId, ch, msgs)
+		delete(x.channels, routerId)
+		x.Unlock()
+		return "", err
+	}
+	msgs, err := ch.Consume(
+		q.Name, // Queue name
+		"",     // Consumer tag
+		true,   // Auto-ack (acknowledgment of message receipt)
+		false,  // Exclusive
+		false,  // No-local
+		false,  // No-wait
+		nil,    // Arguments
+	)
+	if err != nil {
+		_ = ch.Close()
+		x.Lock()
+		delete(x.channels, routerId)
+		x.Unlock()
+		return "", err
+	}
+	x.Lock()
+	if x.gens[routerId] != gen {
+		// 占位期间被 RemoveRouter/Close 抢先
+		x.Unlock()
+		_ = ch.Close()
 		return routerId, nil
 	}
+	x.channels[routerId] = ch
+	x.Unlock()
+	go x.consumeLoop(router, routerId, gen, ch, msgs)
+	return routerId, nil
 }
 
 // consumeLoop consumes deliveries and rebuilds the connection/channel when the delivery chan closes.
 // amqp091-go has no auto-reconnect, so a closed delivery chan means the connection/channel is lost.
-func (x *RabbitMQ) consumeLoop(router endpointApi.Router, routerId string, ch *amqp.Channel, msgs <-chan amqp.Delivery) {
+// gen 是启动时路由的代数，RemoveRouter/Close 会递增它；代数变化即退出，不再重建。
+func (x *RabbitMQ) consumeLoop(router endpointApi.Router, routerId string, gen uint64, ch *amqp.Channel, msgs <-chan amqp.Delivery) {
 	backoff := time.Second
 	hadErr := false
 	for {
-		if x.GracefulShutdown.IsShuttingDown() {
+		if x.GracefulShutdown.IsShuttingDown() || !x.routerAlive(routerId, gen) {
 			return
 		}
 		// Process deliveries until the chan closes (connection or channel lost).
@@ -390,7 +421,7 @@ func (x *RabbitMQ) consumeLoop(router endpointApi.Router, routerId string, ch *a
 				go x.handlerMsg(router, curCh, msg)
 			}
 		}
-		if x.GracefulShutdown.IsShuttingDown() {
+		if x.GracefulShutdown.IsShuttingDown() || !x.routerAlive(routerId, gen) {
 			return
 		}
 		// Delivery chan closed: mark reconnecting and rebuild with exponential backoff.
@@ -402,6 +433,10 @@ func (x *RabbitMQ) consumeLoop(router endpointApi.Router, routerId string, ch *a
 		select {
 		case <-time.After(backoff):
 		case <-x.GracefulShutdown.GetShutdownContext().Done():
+			return
+		}
+		// backoff 期间可能已停机或移除路由，重建前再确认一次
+		if x.GracefulShutdown.IsShuttingDown() || !x.routerAlive(routerId, gen) {
 			return
 		}
 		if backoff < 30*time.Second {
@@ -425,6 +460,12 @@ func (x *RabbitMQ) consumeLoop(router endpointApi.Router, routerId string, ch *a
 		ch = nch
 		msgs = nmsgs
 		x.Lock()
+		if x.gens[routerId] != gen {
+			// 重建期间路由被移除，丢弃新通道退出
+			x.Unlock()
+			_ = nch.Close()
+			return
+		}
 		x.channels[routerId] = ch
 		x.Unlock()
 		x.SharedNode.SetStatus(types.StatusConnected, "")
@@ -433,12 +474,24 @@ func (x *RabbitMQ) consumeLoop(router endpointApi.Router, routerId string, ch *a
 	}
 }
 
+// routerAlive 报告 routerId 是否仍处于当前代数且未被移除
+func (x *RabbitMQ) routerAlive(routerId string, gen uint64) bool {
+	x.RLock()
+	defer x.RUnlock()
+	if _, ok := x.channels[routerId]; !ok {
+		return false
+	}
+	return x.gens[routerId] == gen
+}
+
 // ensureConnection rebuilds the underlying amqp connection when it has been closed.
 func (x *RabbitMQ) ensureConnection() error {
 	// ref:// borrowers rely on the source node to reconnect.
 	if x.SharedNode.IsFromPool() {
 		return nil
 	}
+	x.reconnectMu.Lock()
+	defer x.reconnectMu.Unlock()
 	conn, ok := x.SharedNode.Instance()
 	if ok && !conn.IsClosed() {
 		return nil
@@ -459,7 +512,14 @@ func (x *RabbitMQ) RemoveRouter(routerId string, params ...interface{}) error {
 	defer x.Unlock()
 	if ch, ok := x.channels[routerId]; ok {
 		delete(x.channels, routerId)
-		return ch.Close()
+		// 代数递增让 consumeLoop 停止重建；关闭 channel 让 range msgs 尽快退出
+		if x.gens != nil {
+			x.gens[routerId]++
+		}
+		if ch != nil {
+			return ch.Close()
+		}
+		return nil
 	}
 	return nil
 }
@@ -500,19 +560,34 @@ func (x *RabbitMQ) queueBind(key string) (*amqp.Channel, *amqp.Queue, error) {
 	}
 	q, err := ch.QueueDeclare("", x.Config.Durable, x.Config.AutoDelete, true, false, nil)
 	if err != nil {
+		_ = ch.Close()
 		return nil, nil, err
 	}
 
 	err = ch.QueueBind(q.Name, key, x.Config.Exchange, false, nil)
-	if err != nil && err.(*amqp.Error).Code == 404 {
+	if err != nil {
+		// exchange 不存在（404）时声明后重绑；错误可能是非 *amqp.Error 的网络错误，不能裸断言
+		var amqpErr *amqp.Error
+		if !errors.As(err, &amqpErr) || amqpErr.Code != 404 {
+			_ = ch.Close()
+			return nil, nil, err
+		}
+		_ = ch.Close()
 		ch, err = conn.Channel()
-		err = ch.ExchangeDeclare(x.Config.Exchange, x.Config.ExchangeType, x.Config.Durable, x.Config.AutoDelete, false, false, nil)
 		if err != nil {
-			ch, err = conn.Channel()
+			return nil, nil, err
+		}
+		if err = ch.ExchangeDeclare(x.Config.Exchange, x.Config.ExchangeType, x.Config.Durable, x.Config.AutoDelete, false, false, nil); err != nil {
+			_ = ch.Close()
+			return nil, nil, err
 		}
 		err = ch.QueueBind(q.Name, key, x.Config.Exchange, false, nil)
+		if err != nil {
+			_ = ch.Close()
+			return nil, nil, err
+		}
 	}
-	return ch, &q, err
+	return ch, &q, nil
 }
 
 func (x *RabbitMQ) handlerMsg(router endpointApi.Router, ch *amqp.Channel, msg amqp.Delivery) {
