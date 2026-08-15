@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/rulego/rulego-components/pkg/statusprobe"
 	"github.com/rulego/rulego/api/types"
 	endpointApi "github.com/rulego/rulego/api/types/endpoint"
 	"github.com/rulego/rulego/components/base"
@@ -206,6 +207,8 @@ type Redis struct {
 	Config           Config
 	pubSub           *redis.PubSub
 	channelRouterMap map[string][]endpointApi.Router
+	// probe 限频 Ping 探测
+	probe *statusprobe.Throttled
 }
 
 // Type 组件类型
@@ -259,7 +262,16 @@ func (x *Redis) Init(ruleConfig types.Config, configuration types.Configuration)
 		}
 		return nil
 	})
+	x.probe = statusprobe.New()
 	return err
+}
+
+// ConnectionStatus reports the live redis server state.
+func (x *Redis) ConnectionStatus() types.StatusInfo {
+	if client, ok := x.SharedNode.Instance(); ok {
+		return x.probe.Status(func(ctx context.Context) error { return client.Ping(ctx).Err() })
+	}
+	return x.SharedNode.ConnectionStatus()
 }
 
 // Destroy 销毁

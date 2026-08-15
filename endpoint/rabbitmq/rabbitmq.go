@@ -296,6 +296,17 @@ func (x *RabbitMQ) Destroy() {
 	})
 }
 
+// ConnectionStatus reports the live amqp connection state.
+func (x *RabbitMQ) ConnectionStatus() types.StatusInfo {
+	if conn, ok := x.SharedNode.Instance(); ok {
+		if conn.IsClosed() {
+			return types.StatusInfo{Status: types.StatusReconnecting, Message: "amqp connection closed"}
+		}
+		return types.StatusInfo{Status: types.StatusConnected}
+	}
+	return x.SharedNode.ConnectionStatus()
+}
+
 // GracefulStop provides graceful shutdown for the RabbitMQ endpoint
 // GracefulStop 为 RabbitMQ 端点提供优雅停机
 func (x *RabbitMQ) GracefulStop() {
