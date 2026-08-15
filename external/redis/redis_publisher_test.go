@@ -85,3 +85,19 @@ func TestPublisherNode(t *testing.T) {
 		time.Sleep(time.Millisecond * 100)
 	})
 }
+
+func TestPublisherNodeConnectionStatus(t *testing.T) {
+	var node PublisherNode
+	config := types.NewConfig()
+	err := node.Init(config, types.Configuration{
+		"Server":  "127.0.0.1:6379",
+		"Channel": "test",
+	})
+	assert.Nil(t, err)
+	if _, err := node.SharedNode.GetSafely(); err != nil {
+		t.Skipf("redis server not available: %v", err)
+	}
+	assert.Equal(t, types.StatusConnected, node.ConnectionStatus().Status)
+	node.Destroy()
+	assert.Equal(t, types.StatusDisconnected, node.ConnectionStatus().Status)
+}
