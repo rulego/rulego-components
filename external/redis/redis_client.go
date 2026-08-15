@@ -67,6 +67,8 @@ type ClientNode struct {
 	cmdTemplate el.Template
 	// paramsTemplates 参数模板列表，用于解析动态参数
 	paramsTemplates []el.Template
+	// probe 限频 Ping 探测
+	probe *pingProbe
 }
 
 // Type 返回组件类型
@@ -92,13 +94,14 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 			return fmt.Errorf("cmd field cannot be empty")
 		}
 
-		//初始化客户端
+		// 初始化客户端
 		_ = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.Config.Server, ruleConfig.NodeClientInitNow, func() (*redis.Client, error) {
 			return x.initClient()
 		}, func(client *redis.Client) error {
 			// 清理回调函数
 			return client.Close()
 		})
+		x.probe = newPingProbe()
 
 		// 构建命令模板
 		if cmdTemplate, err := el.NewTemplate(x.Config.Cmd); err != nil {

@@ -45,6 +45,8 @@ type PublisherNode struct {
 	channelTemplate el.Template
 	// hasVar 标识模板是否包含变量
 	hasVar bool
+	// probe 限频 Ping 探测
+	probe *pingProbe
 }
 
 // Type 返回组件类型
@@ -71,6 +73,7 @@ func (x *PublisherNode) Init(ruleConfig types.Config, configuration types.Config
 			// 清理回调函数
 			return client.Close()
 		})
+		x.probe = newPingProbe()
 		x.channelTemplate, err = el.NewTemplate(strings.TrimSpace(x.Config.Channel))
 		if err != nil {
 			return err

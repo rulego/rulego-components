@@ -227,6 +227,17 @@ func (x *ClientNode) Destroy() {
 	_ = x.SharedNode.Close()
 }
 
+// ConnectionStatus reports the live amqp connection state.
+func (x *ClientNode) ConnectionStatus() types.StatusInfo {
+	if conn, ok := x.SharedNode.Instance(); ok {
+		if conn.IsClosed() {
+			return types.StatusInfo{Status: types.StatusReconnecting, Message: "amqp connection closed"}
+		}
+		return types.StatusInfo{Status: types.StatusConnected}
+	}
+	return x.SharedNode.ConnectionStatus()
+}
+
 // Desc returns the component description
 func (x *ClientNode) Desc() string {
 	return "RabbitMQ client for publishing messages. Key supports ${metadata.key} and ${msg.key} substitution. Routes to Success/Failure"

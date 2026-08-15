@@ -92,6 +92,8 @@ type ClientNode struct {
 	// hasVar 标识模板是否包含变量
 	// hasVar indicates whether the template contains variables
 	hasVar bool
+	// probe 限频 Ping 探测
+	probe *pingProbe
 }
 
 // Type 返回组件类型
@@ -172,6 +174,7 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 		// 清理回调函数
 		return client.Disconnect(context.TODO())
 	})
+	x.probe = newPingProbe()
 	return nil
 }
 

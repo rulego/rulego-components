@@ -61,6 +61,8 @@ type ClientNode struct {
 	Config ClientNodeConfiguration
 	//topic 模板
 	topicTemplate el.Template
+	// probe 限频 Ping 探测
+	probe *pingProbe
 }
 
 // Type 组件类型
@@ -89,6 +91,7 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 			client.Stop()
 			return nil
 		})
+		x.probe = newPingProbe()
 		if x.Config.Topic == "" {
 			return errors.New("topic cannot be empty")
 		}
@@ -212,29 +215,29 @@ func (x *ClientNode) initClient() (*nsq.Producer, error) {
 func (x *ClientNode) discoverNsqdFromLookupd(lookupdAddr string) (string, error) {
 	// 构建lookupd API URL
 	apiURL := fmt.Sprintf("%s/nodes", strings.TrimSuffix(lookupdAddr, "/"))
-	
+
 	// 创建HTTP客户端，设置超时
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
-	
+
 	// 发送GET请求到lookupd
 	resp, err := client.Get(apiURL)
 	if err != nil {
 		return "", fmt.Errorf("failed to query lookupd API: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("lookupd API returned status %d", resp.StatusCode)
 	}
-	
+
 	// 读取响应体
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("failed to read lookupd response: %w", err)
 	}
-	
+
 	// 解析JSON响应
 	var response struct {
 		Producers []struct {
@@ -246,17 +249,17 @@ func (x *ClientNode) discoverNsqdFromLookupd(lookupdAddr string) (string, error)
 			Version          string `json:"version"`
 		} `json:"producers"`
 	}
-	
+
 	err = json.Unmarshal(body, &response)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse lookupd response: %w", err)
 	}
-	
+
 	// 检查是否有可用的nsqd节点
 	if len(response.Producers) == 0 {
 		return "", errors.New("no nsqd nodes found from lookupd")
 	}
-	
+
 	// 返回第一个可用的nsqd地址
 	producer := response.Producers[0]
 	var nsqdAddr string
@@ -265,6 +268,6 @@ func (x *ClientNode) discoverNsqdFromLookupd(lookupdAddr string) (string, error)
 	} else {
 		nsqdAddr = fmt.Sprintf("%s:%d", producer.RemoteAddress, producer.TCPPort)
 	}
-	
+
 	return nsqdAddr, nil
 }
