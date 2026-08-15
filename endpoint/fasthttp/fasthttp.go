@@ -41,6 +41,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rulego/rulego/endpoint/rest"
@@ -92,6 +93,12 @@ func init() {
 type RequestMessage struct {
 	ctx  *fasthttp.RequestCtx
 	body []byte
+	// handler 在返回前对请求做的快照：ctx 在 handler 返回后会被 fasthttp 回收复用，
+	// 异步链路再访问 ctx 会读到别的请求数据
+	method      string
+	uri         string
+	headers     textproto.MIMEHeader
+	queryArgs   map[string]string
 	//路径参数
 	Params   map[string]string
 	msg      *types.RuleMsg
@@ -99,14 +106,32 @@ type RequestMessage struct {
 	Metadata *types.Metadata
 }
 
+// snapshot 在 handler 内拷贝请求侧数据，之后所有访问走快照
+func (r *RequestMessage) snapshot(ctx *fasthttp.RequestCtx) {
+	r.method = string(ctx.Method())
+	r.uri = string(ctx.RequestURI())
+	r.body = append([]byte{}, ctx.PostBody()...)
+	r.headers = make(textproto.MIMEHeader)
+	ctx.Request.Header.VisitAll(func(key, value []byte) {
+		r.headers.Add(string(key), string(value))
+	})
+	r.queryArgs = make(map[string]string)
+	ctx.QueryArgs().VisitAll(func(key, value []byte) {
+		r.queryArgs[string(key)] = string(value)
+	})
+}
+
 func (r *RequestMessage) Body() []byte {
 	if r.body == nil && r.ctx != nil {
-		r.body = r.ctx.PostBody()
+		r.body = ctxPostBody(r.ctx)
 	}
 	return r.body
 }
 
 func (r *RequestMessage) Headers() textproto.MIMEHeader {
+	if r.headers != nil {
+		return r.headers
+	}
 	if r.ctx == nil {
 		return nil
 	}
@@ -118,19 +143,25 @@ func (r *RequestMessage) Headers() textproto.MIMEHeader {
 }
 
 func (r *RequestMessage) AddHeader(key, value string) {
-	if r.ctx != nil {
+	if r.headers != nil {
+		r.headers.Add(key, value)
+	} else if r.ctx != nil {
 		r.ctx.Request.Header.Add(key, value)
 	}
 }
 
 func (r *RequestMessage) SetHeader(key, value string) {
-	if r.ctx != nil {
+	if r.headers != nil {
+		r.headers.Set(key, value)
+	} else if r.ctx != nil {
 		r.ctx.Request.Header.Set(key, value)
 	}
 }
 
 func (r *RequestMessage) DelHeader(key string) {
-	if r.ctx != nil {
+	if r.headers != nil {
+		r.headers.Del(key)
+	} else if r.ctx != nil {
 		r.ctx.Request.Header.Del(key)
 	}
 }
@@ -142,6 +173,9 @@ func (r *RequestMessage) GetMetadata() *types.Metadata {
 }
 
 func (r RequestMessage) From() string {
+	if r.uri != "" {
+		return r.uri
+	}
 	if r.ctx == nil {
 		return ""
 	}
@@ -149,11 +183,14 @@ func (r RequestMessage) From() string {
 }
 
 func (r *RequestMessage) GetParam(key string) string {
-	if r.ctx == nil {
-		return ""
-	}
 	if v, ok := r.Params[key]; ok {
 		return v
+	}
+	if v, ok := r.queryArgs[key]; ok {
+		return v
+	}
+	if r.ctx == nil {
+		return ""
 	}
 	return string(r.ctx.QueryArgs().Peek(key))
 }
@@ -166,22 +203,27 @@ func (r *RequestMessage) GetMsg() *types.RuleMsg {
 	if r.msg == nil {
 		dataType := types.TEXT
 		var data string
-		if r.ctx != nil {
-			if string(r.ctx.Method()) == fasthttp.MethodGet {
-				dataType = types.JSON
-				queryArgs := make(map[string]interface{})
+		method := r.method
+		if method == "" && r.ctx != nil {
+			method = string(r.ctx.Method())
+		}
+		if method == fasthttp.MethodGet {
+			dataType = types.JSON
+			queryArgs := make(map[string]interface{})
+			if r.queryArgs != nil {
+				for k, v := range r.queryArgs {
+					queryArgs[k] = v
+				}
+			} else if r.ctx != nil {
 				r.ctx.QueryArgs().VisitAll(func(key, value []byte) {
 					queryArgs[string(key)] = string(value)
 				})
-				data = str.ToString(queryArgs)
-			} else {
-				if contentType := string(r.ctx.Request.Header.Peek(ContentTypeKey)); strings.HasPrefix(contentType, JsonContextType) {
-					dataType = types.JSON
-				}
-				data = string(r.Body())
 			}
+			data = str.ToString(queryArgs)
 		} else {
-			// 当ctx为nil时，使用默认值
+			if contentType := r.Headers().Get(ContentTypeKey); strings.HasPrefix(contentType, JsonContextType) {
+				dataType = types.JSON
+			}
 			data = string(r.Body())
 		}
 		if r.Metadata == nil {
@@ -219,10 +261,58 @@ type ResponseMessage struct {
 	to   string
 	msg  *types.RuleMsg
 	err  error
-	// 流式响应 writer，由 handler 通过 SetBodyStreamWriter 设置
-	writer *bufio.Writer
-	// 流式模式下缓存的 headers，避免竞态访问 ctx.Response
-	cachedHeaders textproto.MIMEHeader
+	// gate 非 nil 表示 handler 走流式路径，SetBody 经由 gate 送到客户端
+	gate *streamGate
+	mu   sync.Mutex
+	// streaming 置位后响应头已提交，header/状态码写入变为 no-op
+	streaming      bool
+	cachedHeaders  textproto.MIMEHeader
+}
+
+func (r *ResponseMessage) Body() []byte {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.body
+}
+
+func (r *ResponseMessage) Headers() textproto.MIMEHeader {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.ctx == nil {
+		return nil
+	}
+	if r.streaming {
+		return r.cachedHeaders
+	}
+	headers := make(textproto.MIMEHeader)
+	r.ctx.Response.Header.VisitAll(func(key, value []byte) {
+		headers.Add(string(key), string(value))
+	})
+	return headers
+}
+
+func (r *ResponseMessage) AddHeader(key, value string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.ctx != nil && !r.streaming {
+		r.ctx.Response.Header.Add(key, value)
+	}
+}
+
+func (r *ResponseMessage) SetHeader(key, value string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.ctx != nil && !r.streaming {
+		r.ctx.Response.Header.Set(key, value)
+	}
+}
+
+func (r *ResponseMessage) DelHeader(key string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.ctx != nil && !r.streaming {
+		r.ctx.Response.Header.Del(key)
+	}
 }
 
 // fasthttpResponseWriter 适配器，将 fasthttp.RequestCtx 适配为 http.ResponseWriter
@@ -258,41 +348,6 @@ func (w *fasthttpResponseWriter) WriteHeader(statusCode int) {
 	}
 }
 
-func (r *ResponseMessage) Body() []byte {
-	return r.body
-}
-
-func (r *ResponseMessage) Headers() textproto.MIMEHeader {
-	if r.ctx == nil {
-		return nil
-	}
-	if r.writer != nil {
-		return r.cachedHeaders
-	}
-	headers := make(textproto.MIMEHeader)
-	r.ctx.Response.Header.VisitAll(func(key, value []byte) {
-		headers.Add(string(key), string(value))
-	})
-	return headers
-}
-
-func (r *ResponseMessage) AddHeader(key, value string) {
-	if r.ctx != nil && r.writer == nil {
-		r.ctx.Response.Header.Add(key, value)
-	}
-}
-
-func (r *ResponseMessage) SetHeader(key, value string) {
-	if r.ctx != nil && r.writer == nil {
-		r.ctx.Response.Header.Set(key, value)
-	}
-}
-
-func (r *ResponseMessage) DelHeader(key string) {
-	if r.ctx != nil && r.writer == nil {
-		r.ctx.Response.Header.Del(key)
-	}
-}
 func (r *ResponseMessage) GetMetadata() *types.Metadata {
 	if msg := r.GetMsg(); msg != nil {
 		return msg.GetMetadata()
@@ -322,37 +377,156 @@ func (r *ResponseMessage) GetMsg() *types.RuleMsg {
 }
 
 func (r *ResponseMessage) SetStatusCode(statusCode int) {
-	if r.ctx != nil && r.writer == nil {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.ctx != nil && !r.streaming {
 		r.ctx.SetStatusCode(statusCode)
 	}
 }
 
 func (r *ResponseMessage) SetBody(body []byte) {
+	r.mu.Lock()
 	r.body = body
-	if r.writer != nil {
-		r.writer.Write(body)
+	gate := r.gate
+	r.mu.Unlock()
+	if gate != nil {
+		gate.write(body)
 	} else if r.ctx != nil {
 		r.ctx.Write(body)
 	}
 }
 
 func (r *ResponseMessage) SetError(err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.err = err
 }
 
 func (r *ResponseMessage) GetError() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	return r.err
 }
 
 // Flush 将缓冲数据实时推送到客户端，用于 SSE 流式响应。
+// 流式路径下由 drain 循环在写出每个 chunk 后自动 Flush，这里无需再做。
 func (r *ResponseMessage) Flush() {
-	if r.writer != nil {
-		r.writer.Flush()
-	}
 }
 
 func (r *ResponseMessage) RequestCtx() *fasthttp.RequestCtx {
 	return r.ctx
+}
+
+// beginStreaming 在首个响应 chunk 写出前调用：此后响应头即将提交，
+// header/状态码写入变为 no-op，Headers() 改读快照
+func (r *ResponseMessage) beginStreaming() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.streaming {
+		return
+	}
+	r.streaming = true
+	if r.ctx != nil {
+		headers := make(textproto.MIMEHeader)
+		r.ctx.Response.Header.VisitAll(func(key, value []byte) {
+			headers.Set(string(key), string(value))
+		})
+		r.cachedHeaders = headers
+	}
+}
+
+// streamGate 桥接规则链处理 goroutine（SetBody 生产 chunk）与 fasthttp
+// bodyStream 回调 goroutine（drain 消费 chunk 写给客户端）。
+// queue 有字节上限：客户端消费慢时生产端阻塞等待，形成背压。
+type streamGate struct {
+	mu         sync.Mutex
+	dataCond   *sync.Cond
+	spaceCond  *sync.Cond
+	queue      [][]byte
+	bytes      int
+	closed     bool
+	dead       bool
+	firstWrite chan struct{}
+	firstOnce  sync.Once
+}
+
+const streamGateMaxBytes = 2 << 20 // 2MB
+
+func newStreamGate() *streamGate {
+	g := &streamGate{firstWrite: make(chan struct{})}
+	g.dataCond = sync.NewCond(&g.mu)
+	g.spaceCond = sync.NewCond(&g.mu)
+	return g
+}
+
+// write 由处理 goroutine 调用，firstWrite 唤醒等待中的 handler
+func (g *streamGate) write(chunk []byte) {
+	if len(chunk) == 0 {
+		return
+	}
+	c := append([]byte{}, chunk...)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.firstOnce.Do(func() { close(g.firstWrite) })
+	for !g.closed && !g.dead && g.bytes+len(c) > streamGateMaxBytes {
+		g.spaceCond.Wait()
+	}
+	if g.closed || g.dead {
+		return
+	}
+	g.queue = append(g.queue, c)
+	g.bytes += len(c)
+	g.dataCond.Signal()
+}
+
+// close 处理结束时调用，drain 循环清空队列后退出
+func (g *streamGate) close() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.closed = true
+	g.dataCond.Broadcast()
+	g.spaceCond.Broadcast()
+}
+
+func (g *streamGate) markDead() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.dead = true
+	g.queue = nil
+	g.bytes = 0
+	g.dataCond.Broadcast()
+	g.spaceCond.Broadcast()
+}
+
+// drain 在 fasthttp bodyStream 回调 goroutine 中运行
+func (g *streamGate) drain(w *bufio.Writer) {
+	for {
+		g.mu.Lock()
+		for len(g.queue) == 0 && !g.closed {
+			g.dataCond.Wait()
+		}
+		if len(g.queue) == 0 {
+			g.mu.Unlock()
+			return
+		}
+		chunk := g.queue[0]
+		g.queue = g.queue[1:]
+		g.bytes -= len(chunk)
+		g.spaceCond.Signal()
+		g.mu.Unlock()
+		if _, err := w.Write(chunk); err != nil {
+			g.markDead()
+			return
+		}
+		if err := w.Flush(); err != nil {
+			g.markDead()
+			return
+		}
+	}
+}
+
+func ctxPostBody(ctx *fasthttp.RequestCtx) []byte {
+	return append([]byte{}, ctx.PostBody()...)
 }
 
 // Config FastHttp 服务配置
@@ -701,7 +875,7 @@ func (fh *FastHttp) GlobalOPTIONS(handler http.Handler) endpointApi.HttpEndpoint
 		// 创建响应写入器适配器
 		w := &fasthttpResponseWriter{
 			ctx:    ctx,
-			header: req.Response.Header,
+			header: make(http.Header),
 		}
 
 		// 调用原始的 http.Handler
@@ -805,21 +979,23 @@ func (fh *FastHttp) handler(router endpointApi.Router, isWait bool) fasthttp.Req
 			}
 		})
 
+		requestMsg := &RequestMessage{
+			ctx:      ctx,
+			Params:   params,
+			Metadata: metadata,
+		}
+		// 请求侧数据先做快照：ctx 在 handler 返回后会被回收复用
+		requestMsg.snapshot(ctx)
+		respMsg := &ResponseMessage{ctx: ctx}
 		exchange := &endpointApi.Exchange{
-			In: &RequestMessage{
-				ctx:      ctx,
-				Params:   params,
-				Metadata: metadata,
-			},
-			Out: &ResponseMessage{
-				ctx: ctx,
-			},
+			In:  requestMsg,
+			Out: respMsg,
 		}
 
 		//把url?参数放到msg元数据中
-		ctx.QueryArgs().VisitAll(func(key, value []byte) {
-			metadata.PutValue(string(key), string(value))
-		})
+		for k, v := range requestMsg.queryArgs {
+			metadata.PutValue(k, v)
+		}
 
 		// CORS headers 必须在 SetBodyStreamWriter 之前设置，
 		// 因为 HTTP headers 在 bodyStream 回调执行之前就已发送
@@ -829,31 +1005,49 @@ func (fh *FastHttp) handler(router endpointApi.Router, isWait bool) fasthttp.Req
 			ctx.Response.Header.Set(HeaderKeyAccessControlAllowHeaders, HeaderValueAll)
 		}
 
-		// 缓存 headers，避免 bodyStream 回调内竞态访问 ctx.Response
-		if resp, ok := exchange.Out.(*ResponseMessage); ok && resp.ctx != nil {
-			headers := make(textproto.MIMEHeader)
-			resp.ctx.Response.Header.VisitAll(func(key, value []byte) {
-				headers.Set(string(key), string(value))
-			})
-			resp.cachedHeaders = headers
-		}
-
+		// DoProcess 与响应写出并发执行：处理 goroutine 经 SetBody/gate 生产 chunk，
+		// fasthttp 的 bodyStream 回调 drain 后写给客户端（SSE 实时推送依赖此路径）。
+		gate := newStreamGate()
+		respMsg.gate = gate
 		ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
-			if resp, ok := exchange.Out.(*ResponseMessage); ok {
-				resp.writer = w
-			}
-			var reqCtx context.Context
-			var cancel context.CancelFunc
-			if isWait {
-				reqCtx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
-				defer cancel()
-			} else {
-				reqCtx = context.Background()
-			}
+			defer func() {
+				if e := recover(); e != nil {
+					fh.Printf("fasthttp body stream err :\n%v", runtime.Stack())
+					gate.markDead()
+				}
+			}()
+			gate.drain(w)
+		})
 
+		procDone := make(chan struct{})
+		go func() {
+			defer close(procDone)
+			defer gate.close()
+			defer func() {
+				if e := recover(); e != nil {
+					fh.Printf("fasthttp process err :\n%v", runtime.Stack())
+					// 响应头未提交时恢复 500；已进入流式则只能记日志
+					respMsg.SetStatusCode(fasthttp.StatusInternalServerError)
+				}
+			}()
+			var reqCtx = context.Background()
+			if isWait {
+				var cancel context.CancelFunc
+				reqCtx, cancel = context.WithTimeout(reqCtx, 30*time.Second)
+				defer cancel()
+			}
 			exchange.Context = reqCtx
 			fh.DoProcess(reqCtx, router, exchange)
-		})
+		}()
+
+		// handler 返回后 fasthttp 才提交响应头。等到首个 chunk（用户代码已把
+		// 初始 header/状态码设完）或处理结束再返回，保证响应头内容完整；
+		// 首个 chunk 之后 header 已提交，beginStreaming 将后续写入转为 no-op
+		select {
+		case <-gate.firstWrite:
+			respMsg.beginStreaming()
+		case <-procDone:
+		}
 	}
 }
 
@@ -992,10 +1186,10 @@ func (fh *FastHttp) newRouter() *router.Router {
 		}
 
 		fh.AddInterceptors(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
-			if respMsg, ok := exchange.Out.(*ResponseMessage); ok && respMsg.ctx != nil && respMsg.writer == nil {
-				respMsg.ctx.Response.Header.Set(HeaderKeyAccessControlAllowOrigin, HeaderValueAll)
-				respMsg.ctx.Response.Header.Set(HeaderKeyAccessControlAllowMethods, HeaderValueAll)
-				respMsg.ctx.Response.Header.Set(HeaderKeyAccessControlAllowHeaders, HeaderValueAll)
+			if respMsg, ok := exchange.Out.(*ResponseMessage); ok && respMsg.ctx != nil {
+				respMsg.SetHeader(HeaderKeyAccessControlAllowOrigin, HeaderValueAll)
+				respMsg.SetHeader(HeaderKeyAccessControlAllowMethods, HeaderValueAll)
+				respMsg.SetHeader(HeaderKeyAccessControlAllowHeaders, HeaderValueAll)
 			}
 			return true
 		})
