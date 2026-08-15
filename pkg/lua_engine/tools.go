@@ -17,6 +17,7 @@
 package luaEngine
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 
@@ -77,31 +78,39 @@ func SliceToLTable(L *lua.LState, slice interface{}) *lua.LTable {
 // GoToLua converts a Go value to a lua.LValue
 func GoToLua(L *lua.LState, v interface{}) lua.LValue {
 	// get the value's type and kind
-	t := reflect.TypeOf(v)
+	if v == nil {
+		return lua.LNil
+	}
+	rv := reflect.ValueOf(v)
+	t := rv.Type()
 	k := t.Kind()
 	// switch on the kind
 	switch k {
 	case reflect.String:
 		// convert string to lua.LString
-		return lua.LString(v.(string))
+		return lua.LString(rv.String())
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		// convert int to lua.LNumber
-		return lua.LNumber(v.(int))
+		return lua.LNumber(rv.Int())
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		// convert uint to lua.LNumber
-		return lua.LNumber(v.(uint))
+		return lua.LNumber(rv.Uint())
 	case reflect.Float32, reflect.Float64:
 		// convert float to lua.LNumber
-		return lua.LNumber(v.(float64))
+		return lua.LNumber(rv.Float())
 	case reflect.Bool:
 		// convert bool to lua.LBool
-		return lua.LBool(v.(bool))
+		return lua.LBool(rv.Bool())
 	case reflect.Slice, reflect.Array:
 		// convert slice/array to lua.LTable
 		return SliceToLTable(L, v)
 	case reflect.Map:
-		// convert map to lua.LTable
-		return MapToLTable(L, v.(map[string]interface{}))
+		// convert map of any key/value type to lua.LTable
+		table := L.NewTable()
+		for _, key := range rv.MapKeys() {
+			table.RawSet(lua.LString(fmt.Sprintf("%v", key.Interface())), GoToLua(L, rv.MapIndex(key).Interface()))
+		}
+		return table
 	//case reflect.Struct:
 	//	// convert struct to lua.LTable
 	//	return StructToLTable(L, v)

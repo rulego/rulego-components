@@ -51,7 +51,11 @@ func (p *preloader) Register(f func(state *lua.LState)) {
 
 // Execute preload lua third-party tool library
 func (p *preloader) Execute(state *lua.LState) {
-	for _, item := range p.preloaderFuncList {
+	p.m.Lock()
+	list := make([]func(*lua.LState), len(p.preloaderFuncList))
+	copy(list, p.preloaderFuncList)
+	p.m.Unlock()
+	for _, item := range list {
 		item(state)
 	}
 }
@@ -59,12 +63,16 @@ func (p *preloader) Execute(state *lua.LState) {
 type LStatePool struct {
 	m       sync.Mutex
 	saved   []*lua.LState
+	closed  bool
 	config  types.Config
 	script  string
 	path    string
 	vars    map[string]interface{}
 	chainId string //规则链ID
 }
+
+// maxIdleStates 闲置 LState 上限，突发并发过后回收多余 VM
+const maxIdleStates = 64
 
 func NewStringLStatePool(config types.Config, script string, configuration types.Configuration) *LStatePool {
 	fromVars := base.NodeUtils.GetVars(configuration)
@@ -101,6 +109,9 @@ func NewFileLStatePool(config types.Config, path string, configuration types.Con
 func (pl *LStatePool) Get() *lua.LState {
 	pl.m.Lock()
 	defer pl.m.Unlock()
+	if pl.closed {
+		return nil
+	}
 	n := len(pl.saved)
 	if n == 0 {
 		return pl.New()
@@ -172,27 +183,51 @@ func (pl *LStatePool) New() *lua.LState {
 		}
 	}
 	if pl.script != "" {
-		if L.DoString(pl.script) != nil {
+		if err := L.DoString(pl.script); err != nil {
+			pl.logLoadError(err)
+			L.Close()
 			return nil
 		}
 	} else if pl.path != "" {
-		if L.DoFile(pl.path) != nil {
+		if err := L.DoFile(pl.path); err != nil {
+			pl.logLoadError(err)
+			L.Close()
 			return nil
 		}
 	}
 	return L
 }
 
+func (pl *LStatePool) logLoadError(err error) {
+	if pl.config.Logger != nil {
+		pl.config.Logger.Errorf("lua script load error: %v", err)
+	}
+}
+
 func (pl *LStatePool) Put(L *lua.LState) {
+	if L == nil {
+		return
+	}
 	pl.m.Lock()
 	defer pl.m.Unlock()
+	if pl.closed || len(pl.saved) >= maxIdleStates {
+		L.Close()
+		return
+	}
 	pl.saved = append(pl.saved, L)
 }
 
 func (pl *LStatePool) Shutdown() {
+	pl.m.Lock()
+	defer pl.m.Unlock()
+	if pl.closed {
+		return
+	}
+	pl.closed = true
 	for _, L := range pl.saved {
 		L.Close()
 	}
+	pl.saved = nil
 }
 
 // createLuaCacheBinding is a helper function to create Lua bindings for a types.Cache instance.
