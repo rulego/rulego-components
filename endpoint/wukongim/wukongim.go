@@ -244,6 +244,8 @@ func (x *Wukongim) AddRouter(router endpointApi.Router, params ...interface{}) (
 	if router == nil {
 		return "", errors.New("router cannot be nil")
 	}
+	x.Lock()
+	defer x.Unlock()
 	if x.Router != nil {
 		return "", errors.New("duplicate router")
 	}
@@ -258,10 +260,15 @@ func (x *Wukongim) RemoveRouter(routerId string, params ...interface{}) error {
 	return nil
 }
 
+func (x *Wukongim) getRouter() endpointApi.Router {
+	x.RLock()
+	defer x.RUnlock()
+	return x.Router
+}
+
 func (x *Wukongim) Start() error {
-	var err error
 	if !x.SharedNode.IsInit() {
-		err = x.SharedNode.InitWithClose(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*wksdk.Client, error) {
+		err := x.SharedNode.InitWithClose(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*wksdk.Client, error) {
 			return x.initClient()
 		}, func(client *wksdk.Client) error {
 			if client != nil {
@@ -269,26 +276,53 @@ func (x *Wukongim) Start() error {
 			}
 			return nil
 		})
+		if err != nil {
+			return err
+		}
 	}
 	client, err := x.SharedNode.GetSafely()
 	if err != nil {
 		return err
 	}
 	client.OnMessage(func(msg *wksdk.Message) {
-		if !x.Config.AutoAck {
-			err = msg.Ack()
-			if err != nil {
+		// SDK 读循环同步调用回调，处理放到池里，避免阻塞心跳和后续消息
+		if x.RuleConfig.Pool != nil {
+			if err := x.RuleConfig.Pool.Submit(func() {
+				x.processMsg(msg)
+			}); err != nil {
+				x.Printf("wukongim handler submit err :%v", err)
+			}
+		} else {
+			go x.processMsg(msg)
+		}
+	})
+	return nil
+}
+
+func (x *Wukongim) processMsg(msg *wksdk.Message) {
+	// SDK 读循环无 recover，这里的 panic 会拖垮整个进程
+	defer func() {
+		if e := recover(); e != nil {
+			x.Printf("wukongim endpoint handler err :%v", e)
+		}
+	}()
+	router := x.getRouter()
+	if router == nil {
+		return
+	}
+	if !x.Config.AutoAck {
+		defer func() {
+			if err := msg.Ack(); err != nil {
 				x.Printf("msg ack failed,msg: %v, err: %s", msg, err)
 			}
-		}
-		exchange := &endpoint.Exchange{
-			In: &RequestMessage{body: []byte(string(msg.Payload))},
-			Out: &ResponseMessage{
-				body: []byte(string(msg.Payload)),
-			}}
-		x.DoProcess(context.Background(), x.Router, exchange)
-	})
-	return err
+		}()
+	}
+	exchange := &endpoint.Exchange{
+		In: &RequestMessage{body: []byte(string(msg.Payload))},
+		Out: &ResponseMessage{
+			body: []byte(string(msg.Payload)),
+		}}
+	x.DoProcess(context.Background(), router, exchange)
 }
 
 func (x *Wukongim) Printf(format string, v ...interface{}) {
@@ -305,6 +339,7 @@ func (x *Wukongim) initClient() (*wksdk.Client, error) {
 		wksdk.WithToken(x.Config.Token),
 		wksdk.WithPingInterval(time.Duration(x.Config.PingInterval)*time.Second),
 		wksdk.WithReconnect(x.Config.Reconnect),
+		wksdk.WithAutoAck(x.Config.AutoAck),
 	)
 	client.OnConnect(func(status wksdk.ConnectStatus, reasonCode wkproto.ReasonCode) {
 		x.SharedNode.SetStatus(wkStatusToNodeStatus(status), reasonCode.String())
