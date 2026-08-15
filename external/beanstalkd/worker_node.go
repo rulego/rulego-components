@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/beanstalkd/go-beanstalk"
@@ -59,6 +60,9 @@ type WorkerConfiguration struct {
 // 失败：转向Failure链
 type WorkerNode struct {
 	base.SharedNode[*beanstalk.Conn]
+	// opMu 串行化对 *beanstalk.Conn 的操作（go-beanstalk 连接非线程安全）。
+	// 不能复用 SharedNode 的 Locker：GetSafely 本地模式内部会再取该锁。
+	opMu sync.Mutex
 	//节点配置
 	Config WorkerConfiguration
 	// tubeTemplate Tube名称模板，用于解析动态Tube名称
@@ -127,8 +131,6 @@ func (x *WorkerNode) Init(ruleConfig types.Config, configuration types.Configura
 
 // OnMsg 处理消息
 func (x *WorkerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
-	x.Locker.Lock()
-	defer x.Locker.Unlock()
 	var (
 		err    error
 		body   []byte
@@ -138,13 +140,18 @@ func (x *WorkerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		stat   map[string]string
 	)
 	params, err = x.getParams(ctx, msg)
-	// use tube
+	if err != nil {
+		ctx.TellFailure(msg, err)
+		return
+	}
 	conn, err := x.SharedNode.GetSafely()
 	if err != nil {
 		ctx.TellFailure(msg, err)
 		return
 	}
 	x.Printf("conn :%v ", conn)
+	x.opMu.Lock()
+	defer x.opMu.Unlock()
 	conn.Tube.Name = params.Tube
 	switch x.Config.Cmd {
 	case Delete:
@@ -216,11 +223,8 @@ func (x *WorkerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		err = errors.New("Unknown Command")
 	}
 	// Rebuild the connection if the operation failed because the TCP conn died.
-	// Release the SharedNode Locker first: rebuildBeanstalkConn re-acquires it.
 	if err != nil && isBeanstalkConnDead(err) {
-		x.Locker.Unlock()
 		rebuildBeanstalkConn(&x.SharedNode, x.initClient, err.Error())
-		x.Locker.Lock()
 	}
 	if err != nil {
 		ctx.TellFailure(msg, err)
@@ -271,6 +275,11 @@ func (x *WorkerNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*Worke
 	if !x.jobIdTemplate.IsNotVar() {
 		tmp := x.jobIdTemplate.ExecuteAsString(evn)
 		id, err = strconv.ParseUint(tmp, 10, 64)
+	} else if len(x.Config.JobId) > 0 {
+		id, err = strconv.ParseUint(x.Config.JobId, 10, 64)
+	}
+	if err != nil {
+		return nil, err
 	}
 	// 获取优先级参数
 	var ti int

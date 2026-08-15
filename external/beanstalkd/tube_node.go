@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/beanstalkd/go-beanstalk"
@@ -100,6 +101,9 @@ type TubeConfiguration struct {
 // 失败：转向Failure链
 type TubeNode struct {
 	base.SharedNode[*beanstalk.Conn]
+	// opMu 串行化对 *beanstalk.Conn 的操作（go-beanstalk 连接非线程安全）。
+	// 不能复用 SharedNode 的 Locker：GetSafely 本地模式内部会再取该锁。
+	opMu sync.Mutex
 	//节点配置
 	Config TubeConfiguration
 	// tubeTemplate Tube名称模板，用于解析动态Tube名称
@@ -189,8 +193,6 @@ func (x *TubeNode) Init(ruleConfig types.Config, configuration types.Configurati
 
 // OnMsg 处理消息
 func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
-	x.Locker.Lock()
-	defer x.Locker.Unlock()
 	var (
 		err    error
 		id     uint64
@@ -201,20 +203,20 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		params *TubeMsgParams
 	)
 	params, err = x.getParams(ctx, msg)
-
-	// use tube
+	if err != nil {
+		ctx.TellFailure(msg, err)
+		return
+	}
 	conn, err := x.SharedNode.GetSafely()
 	if err != nil {
 		ctx.TellFailure(msg, err)
 		return
 	}
 	x.Printf("conn :%v ", conn)
+	x.opMu.Lock()
+	defer x.opMu.Unlock()
 	tube := beanstalk.NewTube(conn, params.Tube)
 	conn.Tube.Name = params.Tube
-	if err != nil {
-		ctx.TellFailure(msg, err)
-		return
-	}
 	switch x.Config.Cmd {
 	case Put:
 		id, err = tube.Put([]byte(params.Body), params.Pri, params.Delay, params.Ttr)
@@ -268,11 +270,8 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		err = errors.New("Unknown Command")
 	}
 	// Rebuild the connection if the operation failed because the TCP conn died.
-	// Release the SharedNode Locker first: rebuildBeanstalkConn re-acquires it.
 	if err != nil && isBeanstalkConnDead(err) {
-		x.Locker.Unlock()
 		rebuildBeanstalkConn(&x.SharedNode, x.initClient, err.Error())
-		x.Locker.Lock()
 	}
 	if err != nil {
 		ctx.TellFailure(msg, err)
@@ -286,11 +285,11 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		if id > 0 {
 			stat, err = tube.Conn.StatsJob(id)
 			if err != nil {
+				// job 已入队，stats 查询失败不影响结果
 				x.Printf("get job stats error %v ", err)
-				ctx.TellFailure(msg, err)
-				return
+			} else {
+				msg.Metadata.ReplaceAll(stat)
 			}
-			msg.Metadata.ReplaceAll(stat)
 		}
 		ctx.TellSuccess(msg)
 	}
