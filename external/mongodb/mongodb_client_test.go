@@ -688,7 +688,8 @@ func TestMongoDBErrorHandling(t *testing.T) {
 			"database":   "test_crud",
 			"collection": "users",
 			"opType":     "QUERY",
-			// 故意不设置filter字段
+			// 显式置空：New() 的默认配置带 filter，不显式置空会继承默认值
+			"filter":     "",
 		}, Registry)
 		assert.Nil(t, err) // 节点创建应该成功
 
