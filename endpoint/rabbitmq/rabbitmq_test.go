@@ -199,3 +199,15 @@ func TestEndpointConnectionStatus(t *testing.T) {
 	info := endpoint.ConnectionStatus()
 	assert.Equal(t, types.StatusReconnecting, info.Status)
 }
+
+// AddRouter 采用"先占位再建连"，建连窗口内 channels 会含 nil 占位项。
+// 该窗口内并发 Close 遍历关闭 channel 时不得对 nil 调 Close 而 panic。
+func TestCloseWithPendingPlaceholder(t *testing.T) {
+	ep := (&RabbitMQ{}).New().(*RabbitMQ)
+	// 模拟 AddRouter 已写入 nil 占位、channel 尚未建立
+	ep.channels["pending-router"] = nil
+	ep.gens["pending-router"] = 0
+
+	assert.Nil(t, ep.Close())
+	assert.Equal(t, 0, len(ep.channels))
+}

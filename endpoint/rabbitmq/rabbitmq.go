@@ -330,7 +330,10 @@ func (x *RabbitMQ) Close() error {
 	x.Lock()
 	defer x.Unlock()
 	for _, ch := range x.channels {
-		_ = ch.Close()
+		// AddRouter 先占位再建连，窗口内 channels 存在 nil 占位项
+		if ch != nil {
+			_ = ch.Close()
+		}
 	}
 	x.channels = map[string]*amqp.Channel{}
 	// 递增全部代数，让仍在 backoff 等待中的 consumeLoop 退出
