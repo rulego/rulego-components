@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/textproto"
 	"strings"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/rulego/rulego-components/pkg/statusprobe"
@@ -328,17 +329,32 @@ func (x *Redis) AddRouter(router endpointApi.Router, params ...interface{}) (str
 
 func (x *Redis) pSubscribe(client *redis.Client, channels ...string) {
 	x.Lock()
-	defer x.Unlock()
 	if x.pubSub != nil {
 		_ = x.pubSub.Close()
 		x.pubSub = nil
 	}
 	if len(channels) == 0 {
+		x.Unlock()
 		return
 	}
 	// 使用本地变量，避免数据竞争
 	pubSub := client.PSubscribe(context.Background(), channels...)
 	x.pubSub = pubSub
+	x.Unlock()
+
+	// 等待订阅确认（PSubscribe 只写命令不等待确认，生效前发布的消息会丢失）
+	deadline := time.Now().Add(3 * time.Second)
+	for i := 0; i < len(channels); i++ {
+		remain := time.Until(deadline)
+		if remain <= 0 {
+			break
+		}
+		if _, err := pubSub.ReceiveTimeout(context.Background(), remain); err != nil {
+			x.Printf("redis endpoint psubscribe confirm err: %v", err)
+			break
+		}
+	}
+
 	go func() {
 		// 遍历接收消息
 		for msg := range pubSub.Channel() {

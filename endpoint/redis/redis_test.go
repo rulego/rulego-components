@@ -62,6 +62,12 @@ func TestRedisEndpoint(t *testing.T) {
 	if err != nil {
 		t.Skipf("Failed to create Redis endpoint (Redis may not be available): %v", err)
 	}
+	// 关闭端点，避免 -count>1 时残留订阅干扰后续轮次
+	defer func() {
+		if c, ok := ep.(interface{ Close() error }); ok {
+			_ = c.Close()
+		}
+	}()
 	count := int32(0)
 	// 路由1
 	router1 := endpoint.NewRouter().SetId("router1").From("device.msg.request,device.msg.response").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
