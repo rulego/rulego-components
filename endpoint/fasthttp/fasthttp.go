@@ -265,8 +265,10 @@ type ResponseMessage struct {
 	gate *streamGate
 	mu   sync.Mutex
 	// streaming 置位后响应头已提交，header/状态码写入变为 no-op
-	streaming      bool
-	cachedHeaders  textproto.MIMEHeader
+	streaming     bool
+	cachedHeaders textproto.MIMEHeader
+	// onStreamStart 首次 Flush 时调用，通知 handler 提前返回以支持 SSE 流式
+	onStreamStart func()
 }
 
 func (r *ResponseMessage) Body() []byte {
@@ -390,10 +392,11 @@ func (r *ResponseMessage) SetBody(body []byte) {
 	gate := r.gate
 	r.mu.Unlock()
 	if gate != nil {
+		// 流式路径：通过 gate 写出
 		gate.write(body)
-	} else if r.ctx != nil {
-		r.ctx.Write(body)
 	}
+	// 非流式路径：body 缓存在 r.body，由 handler 在 procDone 后写出。
+	// Flush 被调用时惰性创建 gate 并接管后续写入。
 }
 
 func (r *ResponseMessage) SetError(err error) {
@@ -409,8 +412,34 @@ func (r *ResponseMessage) GetError() error {
 }
 
 // Flush 将缓冲数据实时推送到客户端，用于 SSE 流式响应。
-// 流式路径下由 drain 循环在写出每个 chunk 后自动 Flush，这里无需再做。
+// 首次调用时惰性创建 streamGate 和 bodyStreamWriter，非流式请求零开销。
 func (r *ResponseMessage) Flush() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.ctx == nil {
+		return
+	}
+	// 惰性初始化流式通道：只在首次 Flush 时创建
+	if r.gate == nil {
+		r.gate = newStreamGate()
+		r.ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
+			defer func() {
+				if e := recover(); e != nil {
+					r.gate.markDead()
+				}
+			}()
+			r.gate.drain(w)
+		})
+		// 把 SetBody 已缓冲的 body 通过 gate 写出
+		if len(r.body) > 0 {
+			r.gate.write(r.body)
+		}
+		// 通知 handler 可以提前返回，fasthttp 开始推送流式数据
+		if r.onStreamStart != nil {
+			r.onStreamStart()
+			r.onStreamStart = nil
+		}
+	}
 }
 
 func (r *ResponseMessage) RequestCtx() *fasthttp.RequestCtx {
@@ -956,10 +985,8 @@ func (fh *FastHttp) RouterKey(method string, from string) string {
 func (fh *FastHttp) handler(router endpointApi.Router, isWait bool) fasthttp.RequestHandler {
 	return func(ctx *fasthttp.RequestCtx) {
 		defer func() {
-			//捕捉异常
 			if e := recover(); e != nil {
 				fh.Printf("fasthttp endpointApi handler err :\n%v", runtime.Stack())
-				// 设置错误响应
 				ctx.SetStatusCode(fasthttp.StatusInternalServerError)
 				ctx.SetBodyString("Internal Server Error")
 			}
@@ -971,7 +998,6 @@ func (fh *FastHttp) handler(router endpointApi.Router, isWait bool) fasthttp.Req
 		metadata := types.NewMetadata()
 		params := make(map[string]string)
 
-		// 提取路径参数
 		ctx.VisitUserValues(func(key []byte, value interface{}) {
 			if v, ok := value.(string); ok {
 				params[string(key)] = v
@@ -984,7 +1010,6 @@ func (fh *FastHttp) handler(router endpointApi.Router, isWait bool) fasthttp.Req
 			Params:   params,
 			Metadata: metadata,
 		}
-		// 请求侧数据先做快照：ctx 在 handler 返回后会被回收复用
 		requestMsg.snapshot(ctx)
 		respMsg := &ResponseMessage{ctx: ctx}
 		exchange := &endpointApi.Exchange{
@@ -992,61 +1017,63 @@ func (fh *FastHttp) handler(router endpointApi.Router, isWait bool) fasthttp.Req
 			Out: respMsg,
 		}
 
-		//把url?参数放到msg元数据中
 		for k, v := range requestMsg.queryArgs {
 			metadata.PutValue(k, v)
 		}
 
-		// CORS headers 必须在 SetBodyStreamWriter 之前设置，
-		// 因为 HTTP headers 在 bodyStream 回调执行之前就已发送
 		if fh.Config.AllowCors {
 			ctx.Response.Header.Set(HeaderKeyAccessControlAllowOrigin, HeaderValueAll)
 			ctx.Response.Header.Set(HeaderKeyAccessControlAllowMethods, HeaderValueAll)
 			ctx.Response.Header.Set(HeaderKeyAccessControlAllowHeaders, HeaderValueAll)
 		}
 
-		// DoProcess 与响应写出并发执行：处理 goroutine 经 SetBody/gate 生产 chunk，
-		// fasthttp 的 bodyStream 回调 drain 后写给客户端（SSE 实时推送依赖此路径）。
-		gate := newStreamGate()
-		respMsg.gate = gate
-		ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
-			defer func() {
-				if e := recover(); e != nil {
-					fh.Printf("fasthttp body stream err :\n%v", runtime.Stack())
-					gate.markDead()
-				}
-			}()
-			gate.drain(w)
+		var reqCtx = context.Background()
+		if isWait {
+			var cancel context.CancelFunc
+			reqCtx, cancel = context.WithTimeout(reqCtx, 30*time.Second)
+			defer cancel()
+		}
+		exchange.Context = reqCtx
+
+		// 惰性流式：普通请求零额外开销，SSE 流式请求按需启用。
+		procDone := make(chan struct{})
+		streamStart := make(chan struct{})
+		respMsg.onStreamStart = sync.OnceFunc(func() {
+			close(streamStart)
 		})
 
-		procDone := make(chan struct{})
 		go func() {
 			defer close(procDone)
-			defer gate.close()
+			defer func() {
+				// 关闭 gate 让 drain 循环退出（流式路径）
+				respMsg.mu.Lock()
+				if respMsg.gate != nil {
+					respMsg.gate.close()
+				}
+				respMsg.mu.Unlock()
+			}()
 			defer func() {
 				if e := recover(); e != nil {
 					fh.Printf("fasthttp process err :\n%v", runtime.Stack())
-					// 响应头未提交时恢复 500；已进入流式则只能记日志
 					respMsg.SetStatusCode(fasthttp.StatusInternalServerError)
 				}
 			}()
-			var reqCtx = context.Background()
-			if isWait {
-				var cancel context.CancelFunc
-				reqCtx, cancel = context.WithTimeout(reqCtx, 30*time.Second)
-				defer cancel()
-			}
-			exchange.Context = reqCtx
 			fh.DoProcess(reqCtx, router, exchange)
 		}()
 
-		// handler 返回后 fasthttp 才提交响应头。等到首个 chunk（用户代码已把
-		// 初始 header/状态码设完）或处理结束再返回，保证响应头内容完整；
-		// 首个 chunk 之后 header 已提交，beginStreaming 将后续写入转为 no-op
 		select {
-		case <-gate.firstWrite:
+		case <-streamStart:
+			// 流式已启动（Flush 被调用），gate/drain 已接管，
+			// handler 提前返回让 fasthttp 开始推送 SSE 数据。
 			respMsg.beginStreaming()
 		case <-procDone:
+			// 非流式：把 SetBody 缓存的 body 写出。
+			respMsg.mu.Lock()
+			body := respMsg.body
+			respMsg.mu.Unlock()
+			if len(body) > 0 {
+				ctx.Write(body)
+			}
 		}
 	}
 }
