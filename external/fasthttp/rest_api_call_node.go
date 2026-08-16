@@ -80,7 +80,7 @@ func (x *RestApiCallNode) New() types.Node {
 	headers := map[string]string{"Content-Type": "application/json"}
 	config := external.RestApiCallNodeConfiguration{
 		RequestMethod:            "POST",
-		MaxParallelRequestsCount: 200,
+		MaxParallelRequestsCount: 2000,
 		ReadTimeoutMs:            2000,
 		Headers:                  headers,
 	}

@@ -51,7 +51,7 @@ func TestRestApiCallNode(t *testing.T) {
 	t.Run("NewNode", func(t *testing.T) {
 		test.NodeNew(t, targetNodeType, &RestApiCallNode{}, types.Configuration{
 			"requestMethod":            "POST",
-			"maxParallelRequestsCount": 200,
+			"maxParallelRequestsCount": 2000,
 			"readTimeoutMs":            2000,
 			"headers":                  headers,
 		}, Registry)
