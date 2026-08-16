@@ -412,7 +412,13 @@ func (r *ResponseMessage) GetError() error {
 }
 
 // Flush 将缓冲数据实时推送到客户端，用于 SSE 流式响应。
-// 首次调用时惰性创建 streamGate 和 bodyStreamWriter，非流式请求零开销。
+// 首次调用时惰性创建 streamGate 和 bodyStreamWriter，未调用 Flush 的请求零开销。
+//
+// 两条路径下的行为：
+//   - 流式路由（streaming=true）：onStreamStart 通知 handler 提前返回，
+//     fasthttp 开始增量推送 gate 中的 chunk；
+//   - 普通路由（默认）：handler 仍在同步执行，chunk 只在 gate 排队，
+//     处理结束后随 handler 返回一次性写出（内容完整，不增量）。
 func (r *ResponseMessage) Flush() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -833,14 +839,16 @@ func (fh *FastHttp) addRouter(method string, routers ...endpointApi.Router) erro
 				fh.newRouter()
 			}
 			isWait := false
+			isStreaming := false
 			if from := item.GetFrom(); from != nil {
 				if to := from.GetTo(); to != nil {
 					isWait = to.IsWait()
 				}
+				isStreaming = configIsStreaming(from.GetConfiguration())
 			}
 			// 转换路径参数格式：将 :id 格式转换为 {id} 格式
 			path = convertPathParams(path)
-			fh.router.Handle(method, path, fh.handler(item, isWait))
+			fh.router.Handle(method, path, fh.handler(item, isWait, isStreaming))
 		}
 	}
 	return nil
@@ -982,7 +990,18 @@ func (fh *FastHttp) RouterKey(method string, from string) string {
 	return method + ":" + from
 }
 
-func (fh *FastHttp) handler(router endpointApi.Router, isWait bool) fasthttp.RequestHandler {
+// handler 把请求交给规则链处理。fasthttp 的关键约束：没有 handler 内 Flush，
+// 流式推送只能靠 SetBodyStreamWriter，而它要求 handler 先返回。
+// 由此分两条路径：
+//
+//	普通请求（默认，未标记 streaming）：同步路径。DoProcess 在 fasthttp worker
+//	goroutine 内直接执行完，handler 返回后 fasthttp 写出响应。零额外开销，
+//	与 net/http 行为一致。
+//
+//	流式请求（from 配置 streaming=true，如 SSE）：异步路径。处理逻辑移入独立
+//	goroutine，handler 在首个 chunk 就绪（Flush 被调用）后提前返回，fasthttp
+//	随即通过 bodyStreamWriter 增量推送。
+func (fh *FastHttp) handler(router endpointApi.Router, isWait, isStreaming bool) fasthttp.RequestHandler {
 	return func(ctx *fasthttp.RequestCtx) {
 		defer func() {
 			if e := recover(); e != nil {
@@ -996,10 +1015,14 @@ func (fh *FastHttp) handler(router endpointApi.Router, isWait bool) fasthttp.Req
 			return
 		}
 		metadata := types.NewMetadata()
-		params := make(map[string]string)
+		// 无路径参数的路由不分配 map
+		var params map[string]string
 
 		ctx.VisitUserValues(func(key []byte, value interface{}) {
 			if v, ok := value.(string); ok {
+				if params == nil {
+					params = make(map[string]string)
+				}
 				params[string(key)] = v
 				metadata.PutValue(string(key), v)
 			}
@@ -1035,54 +1058,108 @@ func (fh *FastHttp) handler(router endpointApi.Router, isWait bool) fasthttp.Req
 		}
 		exchange.Context = reqCtx
 
-		// 惰性流式：普通请求零额外开销，SSE 流式请求按需启用。
-		procDone := make(chan struct{})
-		streamStart := make(chan struct{})
-		respMsg.onStreamStart = sync.OnceFunc(func() {
-			close(streamStart)
-		})
+		if !isStreaming {
+			fh.processSync(reqCtx, router, exchange, respMsg, ctx)
+			return
+		}
+		fh.processStreaming(reqCtx, router, exchange, respMsg, ctx)
+	}
+}
 
-		go func() {
-			defer close(procDone)
-			defer func() {
-				// 关闭 gate 让 drain 循环退出（流式路径）
-				respMsg.mu.Lock()
-				if respMsg.gate != nil {
-					respMsg.gate.close()
-				}
-				respMsg.mu.Unlock()
-			}()
-			defer func() {
-				if e := recover(); e != nil {
-					fh.Printf("fasthttp process err :\n%v", runtime.Stack())
-					respMsg.SetStatusCode(fasthttp.StatusInternalServerError)
-				}
-			}()
-			fh.DoProcess(reqCtx, router, exchange)
-		}()
+// processSync 普通请求路径：同步执行，无额外 goroutine/channel。
+func (fh *FastHttp) processSync(reqCtx context.Context, router endpointApi.Router, exchange *endpointApi.Exchange, respMsg *ResponseMessage, ctx *fasthttp.RequestCtx) {
+	fh.doProcessSafely(reqCtx, router, exchange, respMsg)
+	respMsg.mu.Lock()
+	gate := respMsg.gate
+	body := respMsg.body
+	respMsg.mu.Unlock()
+	if gate != nil {
+		// 未标记流式的路由调用了 Flush（SSE 数据已缓冲在 gate）：
+		// handler 返回后由 bodyStreamWriter 一次性写出，内容完整但不增量。
+		gate.close()
+		return
+	}
+	if len(body) > 0 {
+		ctx.Write(body)
+	}
+}
 
-		select {
-		case <-streamStart:
-			// 流式已启动（Flush 被调用），gate/drain 已接管，
-			// handler 提前返回让 fasthttp 开始推送 SSE 数据。
-			respMsg.beginStreaming()
-		case <-procDone:
-			// 非流式：把 SetBody 缓存的 body 写出。
+// processStreaming 流式请求路径：处理逻辑在独立 goroutine，handler 等待
+// 首个 Flush（提前返回，开始增量推送）或处理完成（当作普通请求写出）。
+func (fh *FastHttp) processStreaming(reqCtx context.Context, router endpointApi.Router, exchange *endpointApi.Exchange, respMsg *ResponseMessage, ctx *fasthttp.RequestCtx) {
+	procDone := make(chan struct{})
+	streamStart := make(chan struct{})
+	respMsg.onStreamStart = sync.OnceFunc(func() {
+		close(streamStart)
+	})
+
+	go func() {
+		defer close(procDone)
+		defer func() {
+			// 关闭 gate 让 drain 循环退出（流式路径）
 			respMsg.mu.Lock()
-			body := respMsg.body
-			respMsg.mu.Unlock()
-			if len(body) > 0 {
-				ctx.Write(body)
+			if respMsg.gate != nil {
+				respMsg.gate.close()
 			}
+			respMsg.mu.Unlock()
+		}()
+		fh.doProcessSafely(reqCtx, router, exchange, respMsg)
+	}()
+
+	select {
+	case <-streamStart:
+		// 流式已启动（Flush 被调用），gate/drain 已接管，
+		// handler 提前返回让 fasthttp 开始推送 SSE 数据。
+		respMsg.beginStreaming()
+	case <-procDone:
+		// 处理在 Flush 之前完成（标记了 streaming 但实际未流式，如 stream=false），
+		// 走与同步路径相同的收尾。gate 非 nil 说明收尾阶段才 Flush，
+		// 此时 chunk 已在 gate 队列，交给 stream writer 写出，不能再用 ctx.Write
+		// （stream writer 与 ctx.Write 同时存在会重复/丢失数据）。
+		respMsg.mu.Lock()
+		gate := respMsg.gate
+		body := respMsg.body
+		respMsg.mu.Unlock()
+		if gate != nil {
+			gate.close()
+			return
+		}
+		if len(body) > 0 {
+			ctx.Write(body)
 		}
 	}
 }
 
+// doProcessSafely 执行 DoProcess 并兜底处理 panic（两条路径共用）。
+func (fh *FastHttp) doProcessSafely(reqCtx context.Context, router endpointApi.Router, exchange *endpointApi.Exchange, respMsg *ResponseMessage) {
+	defer func() {
+		if e := recover(); e != nil {
+			fh.Printf("fasthttp process err :\n%v", runtime.Stack())
+			respMsg.SetStatusCode(fasthttp.StatusInternalServerError)
+		}
+	}()
+	fh.DoProcess(reqCtx, router, exchange)
+}
+
+// configIsStreaming 读取 from 配置的 streaming 标记。
+// DSL JSON 反序列化为 bool；代码构造的配置可能传字符串。
+func configIsStreaming(config map[string]interface{}) bool {
+	switch v := config[endpointApi.ConfigKeyStreaming].(type) {
+	case bool:
+		return v
+	case string:
+		return strings.EqualFold(v, "true") || v == "1"
+	default:
+		return false
+	}
+}
+
+// pathParamRegex :id 路径参数匹配，注册路由时使用
+var pathParamRegex = regexp.MustCompile(`:([a-zA-Z_][a-zA-Z0-9_]*)`)
+
 // convertPathParams 转换路径参数格式：将 :id 格式转换为 {id} 格式
 func convertPathParams(path string) string {
-	// 使用正则表达式匹配 :参数名 格式并转换为 {参数名} 格式
-	re := regexp.MustCompile(`:([a-zA-Z_][a-zA-Z0-9_]*)`)
-	return re.ReplaceAllString(path, "{$1}")
+	return pathParamRegex.ReplaceAllString(path, "{$1}")
 }
 
 func (fh *FastHttp) Printf(format string, v ...interface{}) {
