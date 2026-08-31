@@ -80,25 +80,29 @@ var _ endpointApi.Endpoint = (*Endpoint)(nil)
 var _ endpointApi.HttpEndpoint = (*Endpoint)(nil)
 
 // 注册组件
-// 在300并发以上，相对于标准的 http endpoint 组件，性能提升3倍
+// 短连接/高并发场景吞吐提升约 20%~30%，常规 keep-alive API 提升约 7%~10%
 func init() {
 	// 可以使用fasthttp代替标准http endpoint组件
 	// 1. 删除标准 http endpoint 组件
+	// Unregister 会连带删除 "endpoint/http" 的别名（rest/http），不补回则链 DSL 的 "type": "http" 解析失败
 	_ = endpoint.Registry.Unregister(Type)
 	// 2. 注册fasthttp版本 http endpoint组件
 	_ = endpoint.Registry.Register(&Endpoint{})
+	// 3. 恢复别名
+	_ = endpoint.Registry.RegisterAlias(Type, "rest", "http")
 }
 
 // RequestMessage fasthttp请求消息
 type RequestMessage struct {
 	ctx  *fasthttp.RequestCtx
 	body []byte
-	// handler 在返回前对请求做的快照：ctx 在 handler 返回后会被 fasthttp 回收复用，
-	// 异步链路再访问 ctx 会读到别的请求数据
-	method      string
-	uri         string
-	headers     textproto.MIMEHeader
-	queryArgs   map[string]string
+	// detached=true 表示 ctx 已随 handler 返回被回收，method/uri/headers/queryArgs
+	// 快照是唯一数据源；detached=false 时所有读取直接走 ctx（handler 生命周期内有效）
+	detached  bool
+	method    string
+	uri       string
+	headers   textproto.MIMEHeader
+	queryArgs map[string]string
 	//路径参数
 	Params   map[string]string
 	msg      *types.RuleMsg
@@ -106,8 +110,10 @@ type RequestMessage struct {
 	Metadata *types.Metadata
 }
 
-// snapshot 在 handler 内拷贝请求侧数据，之后所有访问走快照
+// snapshot 在 handler 内拷贝请求侧数据，之后所有访问走快照。
+// 只有处理会越过 handler 生命周期的路由（流式、非 wait 异步）才需要。
 func (r *RequestMessage) snapshot(ctx *fasthttp.RequestCtx) {
+	r.detached = true
 	r.method = string(ctx.Method())
 	r.uri = string(ctx.RequestURI())
 	r.body = append([]byte{}, ctx.PostBody()...)
@@ -128,6 +134,17 @@ func (r *RequestMessage) Body() []byte {
 	return r.body
 }
 
+// bodyString 供 GetMsg 使用：body 尚未拷贝时直接从 ctx 转 string，避免中间拷贝
+func (r *RequestMessage) bodyString() string {
+	if r.body != nil {
+		return string(r.body)
+	}
+	if r.ctx != nil {
+		return string(r.ctx.PostBody())
+	}
+	return ""
+}
+
 func (r *RequestMessage) Headers() textproto.MIMEHeader {
 	if r.headers != nil {
 		return r.headers
@@ -139,7 +156,19 @@ func (r *RequestMessage) Headers() textproto.MIMEHeader {
 	r.ctx.Request.Header.VisitAll(func(key, value []byte) {
 		headers.Add(string(key), string(value))
 	})
+	r.headers = headers
 	return headers
+}
+
+// contentType 只读单个请求头，避免为取 Content-Type 触发全量 header 拷贝
+func (r *RequestMessage) contentType() string {
+	if r.headers != nil {
+		return r.headers.Get(ContentTypeKey)
+	}
+	if r.ctx != nil {
+		return string(r.ctx.Request.Header.Peek(ContentTypeKey))
+	}
+	return ""
 }
 
 func (r *RequestMessage) AddHeader(key, value string) {
@@ -186,11 +215,17 @@ func (r *RequestMessage) GetParam(key string) string {
 	if v, ok := r.Params[key]; ok {
 		return v
 	}
-	if v, ok := r.queryArgs[key]; ok {
-		return v
+	if r.detached {
+		if v, ok := r.queryArgs[key]; ok {
+			return v
+		}
+		return ""
 	}
 	if r.ctx == nil {
 		return ""
+	}
+	if v, ok := r.queryArgs[key]; ok {
+		return v
 	}
 	return string(r.ctx.QueryArgs().Peek(key))
 }
@@ -221,10 +256,10 @@ func (r *RequestMessage) GetMsg() *types.RuleMsg {
 			}
 			data = str.ToString(queryArgs)
 		} else {
-			if contentType := r.Headers().Get(ContentTypeKey); strings.HasPrefix(contentType, JsonContextType) {
+			if strings.HasPrefix(r.contentType(), JsonContextType) {
 				dataType = types.JSON
 			}
-			data = string(r.Body())
+			data = r.bodyString()
 		}
 		if r.Metadata == nil {
 			r.Metadata = types.NewMetadata()
@@ -840,15 +875,17 @@ func (fh *FastHttp) addRouter(method string, routers ...endpointApi.Router) erro
 			}
 			isWait := false
 			isStreaming := false
+			hasTo := false
 			if from := item.GetFrom(); from != nil {
 				if to := from.GetTo(); to != nil {
 					isWait = to.IsWait()
+					hasTo = true
 				}
 				isStreaming = configIsStreaming(from.GetConfiguration())
 			}
 			// 转换路径参数格式：将 :id 格式转换为 {id} 格式
 			path = convertPathParams(path)
-			fh.router.Handle(method, path, fh.handler(item, isWait, isStreaming))
+			fh.router.Handle(method, path, fh.handler(item, isWait, isStreaming, hasTo))
 		}
 	}
 	return nil
@@ -1001,7 +1038,7 @@ func (fh *FastHttp) RouterKey(method string, from string) string {
 //	流式请求（from 配置 streaming=true，如 SSE）：异步路径。处理逻辑移入独立
 //	goroutine，handler 在首个 chunk 就绪（Flush 被调用）后提前返回，fasthttp
 //	随即通过 bodyStreamWriter 增量推送。
-func (fh *FastHttp) handler(router endpointApi.Router, isWait, isStreaming bool) fasthttp.RequestHandler {
+func (fh *FastHttp) handler(router endpointApi.Router, isWait, isStreaming, hasTo bool) fasthttp.RequestHandler {
 	return func(ctx *fasthttp.RequestCtx) {
 		defer func() {
 			if e := recover(); e != nil {
@@ -1033,15 +1070,26 @@ func (fh *FastHttp) handler(router endpointApi.Router, isWait, isStreaming bool)
 			Params:   params,
 			Metadata: metadata,
 		}
-		requestMsg.snapshot(ctx)
+		// 快照只给处理会越过 handler 生命周期的路由：流式（handler 提前返回）与
+		// 带 To 的非 wait 异步（链回调晚于 handler 返回）。wait 路由与纯 Process
+		// 路由全程在 handler 内同步完成，ctx 始终有效，无需快照。
+		if isStreaming || (!isWait && hasTo) {
+			requestMsg.snapshot(ctx)
+		}
 		respMsg := &ResponseMessage{ctx: ctx}
 		exchange := &endpointApi.Exchange{
 			In:  requestMsg,
 			Out: respMsg,
 		}
 
-		for k, v := range requestMsg.queryArgs {
-			metadata.PutValue(k, v)
+		if requestMsg.queryArgs != nil {
+			for k, v := range requestMsg.queryArgs {
+				metadata.PutValue(k, v)
+			}
+		} else {
+			ctx.QueryArgs().VisitAll(func(key, value []byte) {
+				metadata.PutValue(string(key), string(value))
+			})
 		}
 
 		if fh.Config.AllowCors {
@@ -1059,7 +1107,7 @@ func (fh *FastHttp) handler(router endpointApi.Router, isWait, isStreaming bool)
 		exchange.Context = reqCtx
 
 		if !isStreaming {
-			fh.processSync(reqCtx, router, exchange, respMsg, ctx)
+			fh.processSync(isWait, reqCtx, router, exchange, respMsg, ctx)
 			return
 		}
 		fh.processStreaming(reqCtx, router, exchange, respMsg, ctx)
@@ -1067,9 +1115,14 @@ func (fh *FastHttp) handler(router endpointApi.Router, isWait, isStreaming bool)
 }
 
 // processSync 普通请求路径：同步执行，无额外 goroutine/channel。
-func (fh *FastHttp) processSync(reqCtx context.Context, router endpointApi.Router, exchange *endpointApi.Exchange, respMsg *ResponseMessage, ctx *fasthttp.RequestCtx) {
+func (fh *FastHttp) processSync(isWait bool, reqCtx context.Context, router endpointApi.Router, exchange *endpointApi.Exchange, respMsg *ResponseMessage, ctx *fasthttp.RequestCtx) {
 	fh.doProcessSafely(reqCtx, router, exchange, respMsg)
 	respMsg.mu.Lock()
+	if !isWait {
+		// 异步路由：链回调晚于 handler 返回，ctx 即将被回收复用，
+		// 摘掉引用，后续 header/status/body 写入退化为 no-op
+		respMsg.ctx = nil
+	}
 	gate := respMsg.gate
 	body := respMsg.body
 	respMsg.mu.Unlock()

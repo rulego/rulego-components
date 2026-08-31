@@ -66,3 +66,14 @@ func TestSetBody_EmptyBody(t *testing.T) {
 
 	assert.Equal(t, "", string(resp.Body()), "空 body 应覆盖之前的缓存")
 }
+
+// TestConfigIsStreaming 验证 from 配置的 streaming 标记解析（bool/字符串/缺省）
+func TestConfigIsStreaming(t *testing.T) {
+	assert.False(t, configIsStreaming(nil))
+	assert.False(t, configIsStreaming(map[string]interface{}{}))
+	assert.True(t, configIsStreaming(map[string]interface{}{"streaming": true}))
+	assert.False(t, configIsStreaming(map[string]interface{}{"streaming": false}))
+	assert.True(t, configIsStreaming(map[string]interface{}{"streaming": "true"}))
+	assert.True(t, configIsStreaming(map[string]interface{}{"streaming": "1"}))
+	assert.False(t, configIsStreaming(map[string]interface{}{"streaming": "yes"}))
+}
