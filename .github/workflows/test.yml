@@ -105,21 +105,16 @@ jobs:
         env:
           OTEL_RESOURCE_ATTRIBUTES: "service.name=test-collector,service.version=1.0.0"
 
-
-
-
-
-    strategy:
-      matrix:
-        go-version: ['1.22', '1.23']
-
     steps:
     - uses: actions/checkout@v4
 
+    # go.mod 声明 go 1.25.0，若 setup-go 装的版本低于它，GOTOOLCHAIN 会切到
+    # 模块缓存下载的 toolchain（1.25 起裁剪掉 covdata），-coverprofile 会报
+    # "no such tool covdata" 并整体失败（golang/go#75031），故用 go-version-file 跟随 go.mod
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: ${{ matrix.go-version }}
+        go-version-file: go.mod
 
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -146,9 +141,9 @@ jobs:
         path: |
           ~/.cache/go-build
           ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
         restore-keys: |
-          ${{ runner.os }}-go-${{ matrix.go-version }}-
+          ${{ runner.os }}-go-
 
     - name: Download dependencies
       run: go mod download
