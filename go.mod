@@ -6,6 +6,7 @@ require (
 	github.com/IBM/sarama v1.46.0
 	github.com/WuKongIM/WuKongIMGoProto v1.2.3
 	github.com/WuKongIM/WuKongIMGoSDK v1.0.0
+	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/apache/pulsar-client-go v0.17.0
 	github.com/beanstalkd/go-beanstalk v0.2.0
 	github.com/emersion/go-imap v1.2.1
@@ -19,7 +20,7 @@ require (
 	github.com/nsqio/go-nsq v1.1.1-0.20250723164658-7188fbbac4d5
 	github.com/rabbitmq/amqp091-go v1.10.1-0.20240821123418-dc67c21576c2
 	github.com/redis/go-redis/v9 v9.17.2
-	github.com/rulego/rulego v0.37.1-0.20260816112453-8995627f6da7
+	github.com/rulego/rulego v0.37.3-0.20260906085017-82080e4c9d25
 	github.com/rulego/streamsql v1.1.3
 	github.com/stretchr/testify v1.11.1
 	github.com/vadv/gopher-lua-libs v0.5.0
