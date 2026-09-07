@@ -233,8 +233,20 @@ type RabbitMQ struct {
 	channels   map[string]*amqp.Channel
 	// gens 在 RemoveRouter 时递增，consumeLoop 据此停止重建，防止已移除的路由被重连复活
 	gens map[string]uint64
+	// routers 保存路由对象：consumeLoop 闭包持有一份，降级重启时按 id 找回
+	routers map[string]endpointApi.Router
+	// starting 标记建连中的路由，晋升回调与 AddRouter 并发启动同一路由时去重
+	starting map[string]bool
 	// reconnectMu 串行化多个 consumeLoop 的并发重连拨号
 	reconnectMu sync.Mutex
+	// chainId 所属规则链 ID，取自 Init 注入的链定义，参与选主锁键
+	chainId string
+	// instanceKey 实例标识：配置内容的散列，多副本部署同名端点生成相同键
+	instanceKey string
+	// guard 多副本选主：leader 建队列消费，待命副本只登记路由不建队列
+	guard *types.ActiveGuard
+	// guardCancel 停掉选主循环
+	guardCancel context.CancelFunc
 }
 
 func (x *RabbitMQ) Type() string {
@@ -256,6 +268,8 @@ func (x *RabbitMQ) New() types.Node {
 		},
 		channels: make(map[string]*amqp.Channel),
 		gens:     make(map[string]uint64),
+		routers:  make(map[string]endpointApi.Router),
+		starting: make(map[string]bool),
 	}
 }
 
@@ -279,6 +293,18 @@ func (x *RabbitMQ) Def() types.ComponentForm {
 func (x *RabbitMQ) Init(ruleConfig types.Config, configuration types.Configuration) error {
 	err := maps.Map2Struct(configuration, &x.Config)
 	x.RuleConfig = ruleConfig
+
+	if def := x.GetRuleChainDefinition(configuration); def != nil {
+		x.chainId = def.RuleChain.ID
+	}
+	// 实例标识优先取端点节点 Id（链内唯一、跨副本一致），无 Id 时回退配置散列，
+	// 避免同链内同配置的多端点节点锁键互撞
+	x.instanceKey = base.NodeIdOf(configuration)
+	if x.instanceKey == "" {
+		x.instanceKey = base.ConfigKey(x.Config)
+	}
+	x.guard = types.NewActiveGuard(ruleConfig,
+		types.OnceScope(Type, ruleConfig.Owner, x.chainId, x.instanceKey))
 
 	// 初始化优雅停机功能
 	x.GracefulShutdown.InitGracefulShutdown(x.RuleConfig.Logger, 0)
@@ -323,6 +349,9 @@ func (x *RabbitMQ) GracefulStop() {
 }
 
 func (x *RabbitMQ) Close() error {
+	if x.guardCancel != nil {
+		x.guardCancel()
+	}
 	// SharedNode 会通过 InitWithClose 中的清理函数来管理客户端的关闭
 	// SharedNode manages client closure through the cleanup function in InitWithClose
 	_ = x.SharedNode.Close()
@@ -336,6 +365,8 @@ func (x *RabbitMQ) Close() error {
 		}
 	}
 	x.channels = map[string]*amqp.Channel{}
+	x.routers = map[string]endpointApi.Router{}
+	x.starting = map[string]bool{}
 	// 递增全部代数，让仍在 backoff 等待中的 consumeLoop 退出
 	for id := range x.gens {
 		x.gens[id]++
@@ -354,20 +385,59 @@ func (x *RabbitMQ) AddRouter(router endpointApi.Router, params ...interface{}) (
 	if x.gens == nil {
 		x.gens = make(map[string]uint64)
 	}
+	if x.routers == nil {
+		x.routers = make(map[string]endpointApi.Router)
+	}
+	if x.starting == nil {
+		x.starting = make(map[string]bool)
+	}
 	if _, ok := x.channels[routerId]; ok {
 		x.Unlock()
 		return routerId, fmt.Errorf("routerId %s already exists", routerId)
 	}
 	x.channels[routerId] = nil
-	gen := x.gens[routerId]
+	x.routers[routerId] = router
 	x.Unlock()
 
-	ch, q, err := x.queueBind(router.FromToString())
-	if err != nil {
+	// 待命副本只登记路由不建队列，晋升后由守卫回调统一启动
+	if !x.guard.IsActive() {
+		return routerId, nil
+	}
+	if err := x.startRouter(routerId); err != nil {
 		x.Lock()
 		delete(x.channels, routerId)
+		delete(x.routers, routerId)
 		x.Unlock()
 		return "", err
+	}
+	return routerId, nil
+}
+
+// startRouter 为单个路由建连、声明队列并启动消费循环，幂等：已在消费或
+// 正在启动时直接返回，晋升回调与 AddRouter 并发到达安全。调用前路由必须
+// 已在 channels 中占位。
+func (x *RabbitMQ) startRouter(routerId string) error {
+	x.Lock()
+	if ch, ok := x.channels[routerId]; (ok && ch != nil) || x.starting[routerId] {
+		x.Unlock()
+		return nil
+	}
+	x.starting[routerId] = true
+	gen := x.gens[routerId]
+	router := x.routers[routerId]
+	x.Unlock()
+	defer func() {
+		x.Lock()
+		delete(x.starting, routerId)
+		x.Unlock()
+	}()
+
+	if router == nil {
+		return fmt.Errorf("router %s not found", routerId)
+	}
+	ch, q, err := x.queueBind(router.FromToString())
+	if err != nil {
+		return err
 	}
 	msgs, err := ch.Consume(
 		q.Name, // Queue name
@@ -380,22 +450,54 @@ func (x *RabbitMQ) AddRouter(router endpointApi.Router, params ...interface{}) (
 	)
 	if err != nil {
 		_ = ch.Close()
-		x.Lock()
-		delete(x.channels, routerId)
-		x.Unlock()
-		return "", err
+		return err
 	}
 	x.Lock()
 	if x.gens[routerId] != gen {
 		// 占位期间被 RemoveRouter/Close 抢先
 		x.Unlock()
 		_ = ch.Close()
-		return routerId, nil
+		return nil
 	}
 	x.channels[routerId] = ch
 	x.Unlock()
 	go x.consumeLoop(router, routerId, gen, ch, msgs)
-	return routerId, nil
+	return nil
+}
+
+// onPromoted 启动全部已登记路由，已在消费的由 startRouter 幂等跳过。
+// 启动失败返回错误：守卫会回调 onDemoted 回收已启动的路由并释放租约，
+// 下个轮询周期重试
+func (x *RabbitMQ) onPromoted() error {
+	x.RLock()
+	routerIds := make([]string, 0, len(x.routers))
+	for id := range x.routers {
+		routerIds = append(routerIds, id)
+	}
+	x.RUnlock()
+	for _, routerId := range routerIds {
+		if err := x.startRouter(routerId); err != nil {
+			x.Printf("rabbitmq endpoint start router %s err: %v", routerId, err)
+			return err
+		}
+	}
+	return nil
+}
+
+// onDemoted 降级：关闭全部消费通道并递增代数让 consumeLoop 退出；
+// 路由登记保留、占位置回 nil，重新晋升后统一重启。
+func (x *RabbitMQ) onDemoted() {
+	x.Lock()
+	defer x.Unlock()
+	for id, ch := range x.channels {
+		if ch != nil {
+			_ = ch.Close()
+		}
+		x.channels[id] = nil
+		if x.gens != nil {
+			x.gens[id]++
+		}
+	}
 }
 
 // consumeLoop consumes deliveries and rebuilds the connection/channel when the delivery chan closes.
@@ -513,6 +615,7 @@ func (x *RabbitMQ) RemoveRouter(routerId string, params ...interface{}) error {
 	}
 	x.Lock()
 	defer x.Unlock()
+	delete(x.routers, routerId)
 	if ch, ok := x.channels[routerId]; ok {
 		delete(x.channels, routerId)
 		// 代数递增让 consumeLoop 停止重建；关闭 channel 让 range msgs 尽快退出
@@ -529,15 +632,21 @@ func (x *RabbitMQ) RemoveRouter(routerId string, params ...interface{}) error {
 
 func (x *RabbitMQ) Start() error {
 	if !x.SharedNode.IsInit() {
-		return x.SharedNode.InitWithClose(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*amqp.Connection, error) {
+		if err := x.SharedNode.InitWithClose(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*amqp.Connection, error) {
 			return x.initClient()
 		}, func(conn *amqp.Connection) error {
 			if conn != nil && !conn.IsClosed() {
 				return conn.Close()
 			}
 			return nil
-		})
+		}); err != nil {
+			return err
+		}
 	}
+	// 选主循环：无 Locker 时恒为活跃态，行为与未接入守卫前一致
+	ctx, cancel := context.WithCancel(context.Background())
+	x.guardCancel = cancel
+	go x.guard.Run(ctx, x.onPromoted, x.onDemoted)
 	return nil
 }
 
@@ -552,6 +661,8 @@ func (x *RabbitMQ) initClient() (*amqp.Connection, error) {
 	return conn, err
 }
 
+// queueBind 声明匿名 exclusive 队列并绑定路由键。队列随连接关闭而删除，
+// 主备切换窗口内发布的消息没有队列承接会丢失，无 at-least-once 保证
 func (x *RabbitMQ) queueBind(key string) (*amqp.Channel, *amqp.Queue, error) {
 	conn, err := x.SharedNode.GetSafely()
 	if err != nil {

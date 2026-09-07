@@ -208,8 +208,19 @@ type Redis struct {
 	Config           Config
 	pubSub           *redis.PubSub
 	channelRouterMap map[string][]endpointApi.Router
+	// demoted 降级标记：订阅重建与降级并发时，安装前复核避免 standby 带订阅消费
+	demoted          bool
 	// probe 限频 Ping 探测
 	probe *statusprobe.Throttled
+	// chainId 所属规则链 ID，取自 Init 注入的链定义，参与选主锁键
+	chainId string
+	// instanceKey 实例标识：配置内容的散列，多副本部署同名端点生成相同键
+	instanceKey string
+	// guard 多副本选主：leader 订阅消费，待命副本只登记路由不订阅。
+	// Pub/Sub 不落盘，主备切换窗口内发布的消息会丢失，无 at-least-once 保证
+	guard *types.ActiveGuard
+	// guardCancel 停掉选主循环
+	guardCancel context.CancelFunc
 }
 
 // Type 组件类型
@@ -252,6 +263,18 @@ func (x *Redis) Init(ruleConfig types.Config, configuration types.Configuration)
 	err := maps.Map2Struct(configuration, &x.Config)
 	x.RuleConfig = ruleConfig
 
+	if def := x.GetRuleChainDefinition(configuration); def != nil {
+		x.chainId = def.RuleChain.ID
+	}
+	// 实例标识优先取端点节点 Id（链内唯一、跨副本一致），无 Id 时回退配置散列，
+	// 避免同链内同配置的多端点节点锁键互撞
+	x.instanceKey = base.NodeIdOf(configuration)
+	if x.instanceKey == "" {
+		x.instanceKey = base.ConfigKey(x.Config)
+	}
+	x.guard = types.NewActiveGuard(ruleConfig,
+		types.OnceScope(Type, ruleConfig.Owner, x.chainId, x.instanceKey))
+
 	// 初始化优雅停机功能
 	x.GracefulShutdown.InitGracefulShutdown(x.RuleConfig.Logger, 0)
 
@@ -291,6 +314,9 @@ func (x *Redis) GracefulStop() {
 }
 
 func (x *Redis) Close() error {
+	if x.guardCancel != nil {
+		x.guardCancel()
+	}
 	// 先销毁父组件，它会清理自己的资源，例如通过CheckAndSetRouterId注册的路由
 	x.BaseEndpoint.Destroy()
 	// SharedNode 会通过 InitWithClose 中的清理函数来管理客户端的关闭
@@ -322,20 +348,58 @@ func (x *Redis) AddRouter(router endpointApi.Router, params ...interface{}) (str
 		return routerId, fmt.Errorf("routerId:%s already exists", routerId)
 	}
 	channels := strings.Split(router.GetFrom().ToString(), ",")
-	newChannels := x.addRouter(router, channels...)
-	x.pSubscribe(client, newChannels...)
+	x.addRouter(router, channels...)
+	// 待命副本只登记路由，晋升后由守卫回调统一订阅；订阅失败只记录不报错，
+	// 路由登记必须保留
+	_ = x.applySubscription(client)
 	return routerId, nil
 }
 
-func (x *Redis) pSubscribe(client *redis.Client, channels ...string) {
+// currentChannels 返回当前登记的全部 channel
+func (x *Redis) currentChannels() []string {
+	x.RLock()
+	defer x.RUnlock()
+	channels := make([]string, 0, len(x.channelRouterMap))
+	for channel := range x.channelRouterMap {
+		channels = append(channels, channel)
+	}
+	return channels
+}
+
+// applySubscription 持有租约时按当前登记的 channel 全量重建订阅；
+// 待命态不订阅。重建是全量幂等的，晋升回调与 AddRouter 并发到达安全。
+// 订阅确认失败返回错误：守卫据此释放租约，下个轮询周期重建。
+func (x *Redis) applySubscription(client *redis.Client) error {
+	if !x.guard.IsActive() {
+		return nil
+	}
+	x.Lock()
+	x.demoted = false
+	x.Unlock()
+	return x.pSubscribe(client, x.currentChannels()...)
+}
+
+// stopSubscription 降级时关闭订阅；路由登记保留，重新晋升后统一重订。
+func (x *Redis) stopSubscription() {
+	x.Lock()
+	x.demoted = true
+	if x.pubSub != nil {
+		_ = x.pubSub.Close()
+		x.pubSub = nil
+	}
+	x.Unlock()
+}
+
+func (x *Redis) pSubscribe(client *redis.Client, channels ...string) error {
 	x.Lock()
 	if x.pubSub != nil {
 		_ = x.pubSub.Close()
 		x.pubSub = nil
 	}
-	if len(channels) == 0 {
+	if len(channels) == 0 || x.demoted {
+		// 快照后已被降级：不安装订阅，避免 standby 带订阅消费
 		x.Unlock()
-		return
+		return nil
 	}
 	// 使用本地变量，避免数据竞争
 	pubSub := client.PSubscribe(context.Background(), channels...)
@@ -351,7 +415,15 @@ func (x *Redis) pSubscribe(client *redis.Client, channels ...string) {
 		}
 		if _, err := pubSub.ReceiveTimeout(context.Background(), remain); err != nil {
 			x.Printf("redis endpoint psubscribe confirm err: %v", err)
-			break
+			// 未生效的订阅关闭置空并返回错误，交守卫释放租约下轮重建，
+			// 避免 leader 持着租约带死订阅空转
+			x.Lock()
+			if x.pubSub == pubSub {
+				_ = pubSub.Close()
+				x.pubSub = nil
+			}
+			x.Unlock()
+			return err
 		}
 	}
 
@@ -371,29 +443,43 @@ func (x *Redis) pSubscribe(client *redis.Client, channels ...string) {
 			}
 		}
 	}()
+	return nil
 }
 
 func (x *Redis) RemoveRouter(routerId string, params ...interface{}) error {
-	channels := x.removeSubByRouterId(routerId)
 	client, err := x.SharedNode.GetSafely()
 	if err != nil {
 		return err
 	}
-	x.pSubscribe(client, channels...)
+	x.removeSubByRouterId(routerId)
+	_ = x.applySubscription(client)
 	return nil
 }
 
 func (x *Redis) Start() error {
 	if !x.SharedNode.IsInit() {
-		return x.SharedNode.InitWithClose(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*redis.Client, error) {
+		if err := x.SharedNode.InitWithClose(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*redis.Client, error) {
 			return x.initClient()
 		}, func(client *redis.Client) error {
 			if client != nil {
 				return client.Close()
 			}
 			return nil
-		})
+		}); err != nil {
+			return err
+		}
 	}
+	// 选主循环：无 Locker 时恒为活跃态，行为与未接入守卫前一致
+	ctx, cancel := context.WithCancel(context.Background())
+	x.guardCancel = cancel
+	go x.guard.Run(ctx, func() error {
+		client, err := x.SharedNode.GetSafely()
+		if err != nil {
+			x.Printf("redis endpoint promotion get client err: %v", err)
+			return err
+		}
+		return x.applySubscription(client)
+	}, x.stopSubscription)
 	return nil
 }
 

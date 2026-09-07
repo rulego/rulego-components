@@ -107,3 +107,23 @@ func TestRedisLockerConcurrent(t *testing.T) {
 		t.Fatalf("exactly one goroutine should win, got %d", winners)
 	}
 }
+
+func TestRedisLockerRenew(t *testing.T) {
+	locker, srv := newTestLocker(t)
+	ctx := context.Background()
+
+	token, ok, err := locker.TryLock(ctx, "k1", 200*time.Millisecond)
+	if err != nil || !ok {
+		t.Fatalf("TryLock: %v %v", ok, err)
+	}
+	if ok, err := locker.Renew(ctx, "k1", token, time.Minute); err != nil || !ok {
+		t.Fatalf("Renew own lock: %v %v", ok, err)
+	}
+	srv.FastForward(300 * time.Millisecond)
+	if _, ok, _ := locker.TryLock(ctx, "k1", time.Minute); ok {
+		t.Fatal("lock should still be held after renew extended the TTL")
+	}
+	if ok, err := locker.Renew(ctx, "k1", "wrong-token", time.Minute); ok || err != nil {
+		t.Fatalf("Renew with wrong token should be false, nil: %v %v", ok, err)
+	}
+}

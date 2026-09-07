@@ -38,6 +38,9 @@ import (
 // ErrLockExists 锁已被其他持有者占用（Lock/TryLock 竞争失败时返回）。
 var ErrLockExists = errors.New("lock already exists")
 
+// lockRetryInterval Lock 阻塞语义的轮询间隔。
+const lockRetryInterval = 50 * time.Millisecond
+
 // unlockScript 校验凭证后删除，保证不误删其他持有者的锁。
 const unlockScript = `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end`
 
@@ -53,8 +56,9 @@ func NewRedisLocker(client redis.UniversalClient) *RedisLocker {
 	return &RedisLocker{client: client}
 }
 
-// Lock 单次尝试获取锁，返回持有凭证；锁被其他持有者占用时返回 ErrLockExists。
-func (r *RedisLocker) Lock(ctx context.Context, key string, expiration time.Duration) (string, error) {
+// lockOnce 单次 SetNX 获取锁，是 Lock/TryLock/LockWithRetry 的公共原语；
+// 键被占用时返回 ErrLockExists。
+func (r *RedisLocker) lockOnce(ctx context.Context, key string, expiration time.Duration) (string, error) {
 	value := newLockValue()
 	result := r.client.SetNX(ctx, key, value, expiration)
 	if err := result.Err(); err != nil {
@@ -64,6 +68,24 @@ func (r *RedisLocker) Lock(ctx context.Context, key string, expiration time.Dura
 		return "", ErrLockExists
 	}
 	return value, nil
+}
+
+// Lock 阻塞获取锁：占用时按固定间隔重试，直到获得或 ctx 结束，返回持有凭证。
+func (r *RedisLocker) Lock(ctx context.Context, key string, expiration time.Duration) (string, error) {
+	for {
+		value, err := r.lockOnce(ctx, key, expiration)
+		if err == nil {
+			return value, nil
+		}
+		if !errors.Is(err, ErrLockExists) {
+			return "", err
+		}
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(lockRetryInterval):
+		}
+	}
 }
 
 // Unlock 释放锁；凭证不匹配返回错误。
@@ -80,7 +102,7 @@ func (r *RedisLocker) Unlock(ctx context.Context, key, token string) error {
 
 // TryLock 非阻塞获取；acquired=false 表示锁被占用，不视为错误。
 func (r *RedisLocker) TryLock(ctx context.Context, key string, expiration time.Duration) (string, bool, error) {
-	value, err := r.Lock(ctx, key, expiration)
+	value, err := r.lockOnce(ctx, key, expiration)
 	if err != nil {
 		if errors.Is(err, ErrLockExists) {
 			return "", false, nil
@@ -88,6 +110,18 @@ func (r *RedisLocker) TryLock(ctx context.Context, key string, expiration time.D
 		return "", false, err
 	}
 	return value, true, nil
+}
+
+// renewScript 校验凭证后顺延 TTL，持锁续约期间不会被其他持有者抢占。
+const renewScript = `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("pexpire", KEYS[1], ARGV[2]) else return 0 end`
+
+// Renew 顺延持锁 TTL；凭证不匹配或键已失效返回 false。
+func (r *RedisLocker) Renew(ctx context.Context, key, token string, expiration time.Duration) (bool, error) {
+	result := r.client.Eval(ctx, renewScript, []string{key}, token, expiration.Milliseconds())
+	if err := result.Err(); err != nil {
+		return false, fmt.Errorf("failed to renew lock: %w", err)
+	}
+	return result.Val().(int64) == 1, nil
 }
 
 // LockWithRetry 先立即尝试一次，之后每隔 retryInterval 重试，最多重试 maxRetries 次。

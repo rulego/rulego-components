@@ -211,3 +211,94 @@ func TestCloseWithPendingPlaceholder(t *testing.T) {
 	assert.Nil(t, ep.Close())
 	assert.Equal(t, 0, len(ep.channels))
 }
+
+const electionTestRouterId = "k1"
+
+// newGateTestEndpoint 构造参与选主的端点实例，broker 地址指向不可达端口。
+func newGateTestEndpoint(t *testing.T, locker types.Locker) *RabbitMQ {
+	t.Helper()
+	x := &RabbitMQ{}
+	configuration := types.Configuration{
+		"server":   "amqp://guest:guest@127.0.0.1:1/",
+		"exchange": "elected",
+		types.NodeConfigurationKeyRuleChainDefinition: &types.RuleChain{
+			RuleChain: types.RuleChainBaseInfo{ID: "election-chain"},
+		},
+	}
+	assert.Nil(t, x.Init(types.Config{Locker: locker}, configuration))
+	assert.Nil(t, x.Start())
+	return x
+}
+
+func placeholderCount(x *RabbitMQ) int {
+	x.RLock()
+	defer x.RUnlock()
+	n := 0
+	for _, ch := range x.channels {
+		if ch == nil {
+			n++
+		}
+	}
+	return n
+}
+
+// TestRabbitMQElectionGate 无 broker 环境验证选主门控：待命副本只登记路由
+// 不建连，主副本建连失败路由登记被清理；接管后待命副本反复尝试建连。
+func TestRabbitMQElectionGate(t *testing.T) {
+	locker := types.NewLocalLocker()
+	a := newGateTestEndpoint(t, locker)
+	defer a.Close()
+	b := newGateTestEndpoint(t, locker)
+	defer b.Close()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for a.guard.IsActive() == b.guard.IsActive() {
+		if time.Now().After(deadline) {
+			t.Fatalf("no unique leader elected, active a=%v b=%v", a.guard.IsActive(), b.guard.IsActive())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	leader, standby := a, b
+	if b.guard.IsActive() {
+		leader, standby = b, a
+	}
+
+	// 待命副本：登记路由成功，不尝试建连（无论环境有没有 broker）
+	router := endpoint.NewRouter().From(electionTestRouterId).Process(func(rt endpointApi.Router, exchange *endpointApi.Exchange) bool {
+		return true
+	}).End()
+	routerId, err := standby.AddRouter(router)
+	assert.Nil(t, err)
+	assert.Equal(t, 1, placeholderCount(standby))
+	_ = routerId
+
+	// 主副本：门控已打开，AddRouter 走真实建连——broker 不可达返回错误，
+	// broker 可用则建队列成功（兼容 CI 带真 broker 的环境），两条路径互斥
+	_, err = leader.AddRouter(router)
+	assert.True(t, err != nil || channelOf(leader, electionTestRouterId) != nil)
+
+	// 主副本停机释放租约后，待命副本反复「晋升-建连失败-降级」重试：
+	// broker 不可达，晋升回调返回错误让守卫释放租约，代数被降级回调
+	// 持续递增即证明重试未停
+	leader.Close()
+	base := gensOf(standby, electionTestRouterId)
+	deadline = time.Now().Add(12 * time.Second)
+	for gensOf(standby, electionTestRouterId) < base+2 {
+		if time.Now().After(deadline) {
+			t.Fatal("standby did not keep retrying promotion after leader shutdown")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func gensOf(x *RabbitMQ, routerId string) uint64 {
+	x.RLock()
+	defer x.RUnlock()
+	return x.gens[routerId]
+}
+
+func channelOf(x *RabbitMQ, routerId string) *amqp.Channel {
+	x.RLock()
+	defer x.RUnlock()
+	return x.channels[routerId]
+}

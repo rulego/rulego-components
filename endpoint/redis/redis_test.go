@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/test/assert"
@@ -283,4 +284,118 @@ func TestEndpointConnectionStatus(t *testing.T) {
 	assert.Equal(t, types.StatusConnected, endpoint.ConnectionStatus().Status)
 	endpoint.Destroy()
 	assert.Equal(t, types.StatusDisconnected, endpoint.ConnectionStatus().Status)
+}
+
+const electionTestChannel = "orders.created"
+
+func (x *Redis) subscribedForTest() bool {
+	x.RLock()
+	defer x.RUnlock()
+	return x.pubSub != nil
+}
+
+// newElectionEndpoint 构造一个参与选主的端点实例，count 累计其消费的消息数。
+// 两个实例共享同一个 LocalLocker 模拟两副本共享锁后端。
+func newElectionEndpoint(t *testing.T, locker types.Locker, srv *miniredis.Miniredis) (*Redis, *int32) {
+	t.Helper()
+	x := &Redis{}
+	var count int32
+	configuration := types.Configuration{
+		"server": srv.Addr(),
+		types.NodeConfigurationKeyRuleChainDefinition: &types.RuleChain{
+			RuleChain: types.RuleChainBaseInfo{ID: "election-chain"},
+		},
+	}
+	assert.Nil(t, x.Init(types.Config{Locker: locker}, configuration))
+	// 用相同 scope 重建短租约守卫加速测试；生产走 Init 内建的默认 15s
+	x.guard = types.NewActiveGuard(types.Config{Locker: locker},
+		types.OnceScope(Type, "", "election-chain", x.instanceKey),
+		types.WithActiveTTL(300*time.Millisecond), types.WithActiveInterval(100*time.Millisecond))
+	router := endpoint.NewRouter().From(electionTestChannel).Process(func(rt endpointApi.Router, exchange *endpointApi.Exchange) bool {
+		atomic.AddInt32(&count, 1)
+		return true
+	}).End()
+	_, err := x.AddRouter(router)
+	assert.Nil(t, err)
+	assert.Nil(t, x.Start())
+	return x, &count
+}
+
+// publishUntil 持续发布消息直到任一计数超过初始值。计数经线程池异步递增，
+// 发布后必须等入账再重发，否则一条消息被计成多次。
+func publishUntil(t *testing.T, srv *miniredis.Miniredis, want ...*int32) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		base := make([]int32, len(want))
+		for i, c := range want {
+			base[i] = atomic.LoadInt32(c)
+		}
+		srv.Publish(electionTestChannel, "payload")
+		wait := time.Now().Add(2 * time.Second)
+		for time.Now().Before(wait) {
+			for i, c := range want {
+				if atomic.LoadInt32(c) > base[i] {
+					return
+				}
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+	t.Fatal("no consumer received the message")
+}
+
+// TestRedisEndpointElection 两个副本只有主副本订阅消费；主副本停机后
+// 待命副本接管，每条消息整个集群只触发一次规则链。
+func TestRedisEndpointElection(t *testing.T) {
+	srv := miniredis.RunT(t)
+	locker := types.NewLocalLocker()
+
+	a, countA := newElectionEndpoint(t, locker, srv)
+	defer a.Close()
+	b, countB := newElectionEndpoint(t, locker, srv)
+	defer b.Close()
+
+	// 选出唯一 leader：恰好一个订阅、一个不订阅
+	deadline := time.Now().Add(5 * time.Second)
+	for a.guard.IsActive() == b.guard.IsActive() {
+		if time.Now().After(deadline) {
+			t.Fatalf("no unique leader elected, active a=%v b=%v", a.guard.IsActive(), b.guard.IsActive())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	leader, countLeader := a, countA
+	standby, countStandby := b, countB
+	if b.guard.IsActive() {
+		leader, countLeader = b, countB
+		standby, countStandby = a, countA
+	}
+
+	deadline = time.Now().Add(3 * time.Second)
+	for !leader.subscribedForTest() {
+		if time.Now().After(deadline) {
+			t.Fatal("leader did not subscribe")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	assert.False(t, standby.subscribedForTest())
+
+	publishUntil(t, srv, countLeader, countStandby)
+	assert.Equal(t, int32(1), atomic.LoadInt32(countLeader))
+	assert.Equal(t, int32(0), atomic.LoadInt32(countStandby))
+
+	// 主副本停机释放租约，待命副本接管并重新订阅
+	leader.Close()
+	deadline = time.Now().Add(5 * time.Second)
+	for !standby.subscribedForTest() {
+		if time.Now().After(deadline) {
+			t.Fatal("new leader did not subscribe after leader shutdown")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	publishUntil(t, srv, countStandby)
+	// 旧主消费第 1 条、新主消费第 2 条，各自恰好一条
+	assert.Equal(t, int32(1), atomic.LoadInt32(countLeader))
+	assert.Equal(t, int32(1), atomic.LoadInt32(countStandby))
 }
