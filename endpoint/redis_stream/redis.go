@@ -273,20 +273,24 @@ func (x *Redis) Init(ruleConfig types.Config, configuration types.Configuration)
 		if x.Config.GroupId == "" {
 			x.Config.GroupId = "rulego"
 		}
-		// SharedNode 依赖 RuleConfig（ref:// 借用需读 NodePool），必须先赋值再初始化
-		x.RuleConfig = ruleConfig
-		_ = x.SharedNode.InitWithClose(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*redis.Client, error) {
-			return x.initClient()
-		}, func(client *redis.Client) error {
-			if client != nil {
-				return client.Close()
-			}
-			return nil
-		})
-		x.probe = statusprobe.New()
+			// SharedNode 依赖 RuleConfig（ref:// 借用需读 NodePool），必须先赋值再初始化
+			x.RuleConfig = ruleConfig
+			_ = x.SharedNode.InitWithClose(x.RuleConfig, x.Type(), x.Config.Server, true, func() (*redis.Client, error) {
+				return x.initClient()
+			}, func(client *redis.Client) error {
+				if client != nil {
+					return client.Close()
+				}
+				return nil
+			})
+			// chainCtx is injected when deployed on a chain: enables chain-scoped ref://
+			// resolution (borrowing from same-chain nodes or endpoints) and registers
+			// this endpoint's connection for same-chain borrowers
+			x.SharedNode.BindChain(configuration)
+			x.probe = statusprobe.New()
+		}
+		return err
 	}
-	return err
-}
 
 // ConnectionStatus reports the live redis server state.
 func (x *Redis) ConnectionStatus() types.StatusInfo {

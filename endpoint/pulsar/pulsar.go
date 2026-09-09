@@ -382,6 +382,10 @@ func (x *Pulsar) Init(ruleConfig types.Config, configuration types.Configuration
 		}
 		return nil
 	})
+	// chainCtx is injected when deployed on a chain: enables chain-scoped ref://
+	// resolution (borrowing from same-chain nodes or endpoints) and registers
+	// this endpoint's connection for same-chain borrowers
+	x.SharedNode.BindChain(configuration)
 
 	return err
 }
