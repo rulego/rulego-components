@@ -18,7 +18,6 @@ package kafka
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"net/textproto"
@@ -28,8 +27,10 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
+	kafkaclient "github.com/rulego/rulego-components/external/kafka"
 	"github.com/rulego/rulego/api/types"
 	endpointApi "github.com/rulego/rulego/api/types/endpoint"
+	"github.com/rulego/rulego/components/base"
 	"github.com/rulego/rulego/endpoint"
 	"github.com/rulego/rulego/endpoint/impl"
 	"github.com/rulego/rulego/utils/maps"
@@ -131,6 +132,8 @@ type ResponseMessage struct {
 	headers  textproto.MIMEHeader
 	err      error
 	log      func(format string, v ...interface{})
+	// 指定响应主题但 producer 不可用时置位，消费方据此不标记位点
+	sendFailed bool
 }
 
 func (r *ResponseMessage) Body() []byte {
@@ -193,8 +196,15 @@ func (r *ResponseMessage) SetBody(body []byte) {
 			Key:       sarama.StringEncoder(key),
 			Value:     sarama.StringEncoder(r.body),
 		}
+		if r.response == nil {
+			r.sendFailed = true
+			if r.log != nil {
+				r.log("kafka response send skipped: producer not available, topic=%s", topic)
+			}
+			return
+		}
 		_, _, err := r.response.SendMessage(message)
-		if err != nil {
+		if err != nil && r.log != nil {
 			r.log("kafka response send err:%v", err)
 		}
 	}
@@ -215,28 +225,20 @@ type Config struct {
 	TLS     TLSConfig  `json:"tls" label:"TLS" desc:"TLS encryption configuration"`
 }
 
-type SASLConfig struct {
-	Enable    bool   `json:"enable" label:"Enable" desc:"Enable SASL authentication"`
-	Mechanism string `json:"mechanism" label:"Mechanism" desc:"SASL mechanism: PLAIN, SCRAM-SHA-256, SCRAM-SHA-512"`
-	Username  string `json:"username" label:"Username" desc:"SASL authentication username" ref:"shared"`
-	Password  string `json:"password" label:"Password" desc:"SASL authentication password" ref:"shared"`
-}
-
-type TLSConfig struct {
-	Enable            bool `json:"enable" label:"Enable" desc:"Enable TLS encryption"`
-	InsecureSkipVerify bool `json:"insecureSkipVerify" label:"Skip Verify" desc:"Skip server certificate verification, disable in production"`
-}
+// SASL/TLS 配置复用 x/kafkaProducer 的定义，ref:// 共享连接时两端配置一致
+type SASLConfig = kafkaclient.SASLConfig
+type TLSConfig = kafkaclient.TLSConfig
 
 // Kafka Kafka 接收端端点
 type Kafka struct {
 	impl.BaseEndpoint
+	// server 为 ref:// 时从全局节点池借用，与 x/kafkaProducer 共享同一连接类型
+	base.SharedNode[*kafkaclient.SharedConn]
 	RuleConfig types.Config
 	//Config 配置
 	Config Config
 	// brokers kafka服务器地址列表
 	brokers []string
-	//消息生产者，用于响应
-	producer sarama.SyncProducer
 	// 主题和主题消费者映射关系，用于取消订阅
 	handlers map[string]sarama.ConsumerGroup
 	closed   bool
@@ -287,9 +289,23 @@ func (x *Kafka) Def() types.ComponentForm {
 }
 
 func (x *Kafka) getBrokerFromOldVersion(configuration types.Configuration) []string {
-	if v, ok := configuration["brokers"]; ok {
-		return v.([]string)
-	} else {
+	v, ok := configuration["brokers"]
+	if !ok {
+		return nil
+	}
+	// JSON DSL 加载的数组是 []interface{}，直接断言 []string 会 panic
+	switch brokers := v.(type) {
+	case []string:
+		return brokers
+	case []interface{}:
+		result := make([]string, 0, len(brokers))
+		for _, item := range brokers {
+			if s, ok := item.(string); ok {
+				result = append(result, s)
+			}
+		}
+		return result
+	default:
 		return nil
 	}
 }
@@ -309,6 +325,11 @@ func (x *Kafka) Init(ruleConfig types.Config, configuration types.Configuration)
 		return errors.New("brokers is empty")
 	}
 	x.RuleConfig = ruleConfig
+	//软失败：broker 未就绪不阻塞链启动，消费时再按冷却重试
+	_ = x.SharedNode.InitWithCloseSoftFail(ruleConfig, x.Type(), x.Config.Server, true, x.initSharedConn,
+		func(conn *kafkaclient.SharedConn) error {
+			return conn.Close()
+		})
 	return err
 }
 
@@ -368,19 +389,12 @@ func (x *Kafka) Close() error {
 	}
 
 forceClose:
-	// 阶段3：关闭producer
+	// 阶段3：关闭生产者；ref:// 借用方 Close 为 no-op，连接归池源所有
 	x.Lock()
 	x.handlers = nil
-
-	var err error
-	if x.producer != nil {
-		err = x.producer.Close()
-		if err != nil {
-			x.Printf("[ERROR] Error closing Kafka producer: %v", err)
-		}
-		x.producer = nil
-	}
 	x.Unlock()
+
+	err := x.SharedNode.Close()
 
 	// 在释放锁后调用BaseEndpoint.Destroy()以避免死锁
 	x.BaseEndpoint.Destroy()
@@ -408,16 +422,18 @@ func (x *Kafka) AddRouter(router endpointApi.Router, params ...interface{}) (str
 	if router == nil {
 		return "", errors.New("router can not nil")
 	}
-	//初始化kafka客户端
-	if err := x.initKafkaProducer(); err != nil {
-		x.Printf("[ERROR] Failed to initialize Kafka producer: %v", err)
+	//取连接失败则不注册路由
+	conn, err := x.SharedNode.GetSafely()
+	if err != nil {
+		x.Printf("[ERROR] Failed to initialize Kafka connection: %v", err)
 		return "", err
 	}
 
 	if id := router.GetId(); id == "" {
 		router.SetId(router.GetFrom().ToString())
 	}
-	if err := x.createTopicConsumer(router); err != nil {
+	//消费组不能共享 client，用共享连接的 brokers 与认证信息各自建连
+	if err := x.createTopicConsumer(conn, router); err != nil {
 		x.Printf("[ERROR] Failed to create topic consumer for %s: %v", router.GetFrom().ToString(), err)
 		return "", err
 	}
@@ -440,57 +456,29 @@ func (x *Kafka) RemoveRouter(routerId string, params ...interface{}) error {
 }
 
 func (x *Kafka) Start() error {
-	return x.initKafkaProducer()
+	//探测共享连接（本地模式立即建连，ref:// 校验池资源存在）
+	_, err := x.SharedNode.GetSafely()
+	return err
 }
 
-// initKafkaProducer 初始化kafka生产者，用于响应
-func (x *Kafka) initKafkaProducer() error {
-	x.Lock()
-	defer x.Unlock()
-	if x.producer != nil {
-		return nil
+// initSharedConn 创建共享连接
+func (x *Kafka) initSharedConn() (*kafkaclient.SharedConn, error) {
+	//端点下线后拒绝重建：作为池源时销毁后借用方仍会经 GetSafely 走到这里。
+	//用原子标志而非 x.closed：本函数持 SharedNode 写锁，再取 x.RWMutex 会与
+	//createTopicConsumer 的 x.Lock→GetSafely 路径死锁
+	if x.IsShuttingDown() {
+		return nil, errors.New("kafka endpoint is closed")
 	}
-	config := sarama.NewConfig()
-	config.Producer.Return.Successes = true // 同步模式需要设置这个参数为true
-
-	// 配置SASL认证
-	if x.Config.SASL.Enable {
-		config.Net.SASL.Enable = true
-		config.Net.SASL.User = x.Config.SASL.Username
-		config.Net.SASL.Password = x.Config.SASL.Password
-
-		switch strings.ToUpper(x.Config.SASL.Mechanism) {
-		case "PLAIN":
-			config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
-		case "SCRAM-SHA-256":
-			config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA256
-		case "SCRAM-SHA-512":
-			config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA512
-		default:
-			config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
-		}
-	}
-
-	// 配置TLS
-	if x.Config.TLS.Enable {
-		config.Net.TLS.Enable = true
-		if x.Config.TLS.InsecureSkipVerify {
-			config.Net.TLS.Config = &tls.Config{InsecureSkipVerify: true}
-		}
-	}
-
-	producer, err := sarama.NewSyncProducer(x.brokers, config)
+	conn, err := kafkaclient.NewSharedConn(x.brokers, x.Config.SASL, x.Config.TLS)
 	if err != nil {
 		x.Printf("[ERROR] Failed to create Kafka producer: %v", err)
-		return err
+		return nil, err
 	}
-	x.producer = producer
-
-	return nil
+	return conn, nil
 }
 
 // 创建kafka消费者
-func (x *Kafka) createTopicConsumer(router endpointApi.Router) error {
+func (x *Kafka) createTopicConsumer(conn *kafkaclient.SharedConn, router endpointApi.Router) error {
 	if form := router.GetFrom(); form != nil {
 		routerId := router.GetId()
 		if routerId == "" {
@@ -506,40 +494,9 @@ func (x *Kafka) createTopicConsumer(router endpointApi.Router) error {
 			x.Printf("[ERROR] RouterId %s already exists", routerId)
 			return fmt.Errorf("routerId %s already exists", routerId)
 		}
-		config := sarama.NewConfig()
-		// 设置重连相关配置
-		config.Consumer.Return.Errors = true
-		config.Metadata.Retry.Max = 3
-		config.Metadata.Retry.Backoff = 250 * 1000000 // 250ms
-		config.Consumer.Offsets.Initial = sarama.OffsetNewest
 
-		// 配置SASL认证
-		if x.Config.SASL.Enable {
-			config.Net.SASL.Enable = true
-			config.Net.SASL.User = x.Config.SASL.Username
-			config.Net.SASL.Password = x.Config.SASL.Password
-
-			switch strings.ToUpper(x.Config.SASL.Mechanism) {
-			case "PLAIN":
-				config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
-			case "SCRAM-SHA-256":
-				config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA256
-			case "SCRAM-SHA-512":
-				config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA512
-			default:
-				config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
-			}
-		}
-
-		// 配置TLS
-		if x.Config.TLS.Enable {
-			config.Net.TLS.Enable = true
-			if x.Config.TLS.InsecureSkipVerify {
-				config.Net.TLS.Config = &tls.Config{InsecureSkipVerify: true}
-			}
-		}
-
-		consumer, err := sarama.NewConsumerGroup(x.brokers, x.Config.GroupId, config)
+		brokers := connConsumerBrokers(conn, x.brokers)
+		consumer, err := sarama.NewConsumerGroup(brokers, x.Config.GroupId, conn.NewConsumerGroupConfig())
 		if err != nil {
 			x.Printf("[ERROR] Failed to create consumer group for topic %s: %v", form.ToString(), err)
 			return err
@@ -554,6 +511,13 @@ func (x *Kafka) createTopicConsumer(router endpointApi.Router) error {
 
 	}
 	return nil
+}
+
+func connConsumerBrokers(conn *kafkaclient.SharedConn, fallback []string) []string {
+	if len(conn.Brokers) > 0 {
+		return conn.Brokers
+	}
+	return fallback
 }
 
 // 自定义消费者处理程序
@@ -586,13 +550,6 @@ func (h *consumerHandler) ConsumeClaim(session sarama.ConsumerGroupSession, clai
 	return nil
 }
 
-// currentProducer 快照读取 producer 引用，避免与 Close 置 nil 竞争
-func (x *Kafka) currentProducer() sarama.SyncProducer {
-	x.RLock()
-	defer x.RUnlock()
-	return x.producer
-}
-
 func (h *consumerHandler) handlerMsg(session sarama.ConsumerGroupSession, msg *sarama.ConsumerMessage) {
 	defer func() {
 		// 减少活跃消息计数
@@ -609,13 +566,21 @@ func (h *consumerHandler) handlerMsg(session sarama.ConsumerGroupSession, msg *s
 		return
 	}
 
+	//响应生产者随取随用，池源重连后消息走最新连接
+	var responseProducer sarama.SyncProducer
+	if conn, err := h.ep.SharedNode.GetSafely(); err == nil {
+		responseProducer = conn.Producer
+	} else {
+		h.ep.Printf("[ERROR] Failed to get kafka connection for response: %v", err)
+	}
+
 	exchange := &endpointApi.Exchange{
 		In: &RequestMessage{
 			request: msg,
 		},
 		Out: &ResponseMessage{
 			request:  msg,
-			response: h.ep.currentProducer(),
+			response: responseProducer,
 			log: func(format string, v ...interface{}) {
 				h.ep.Printf(format, v...)
 			},
@@ -626,6 +591,10 @@ func (h *consumerHandler) handlerMsg(session sarama.ConsumerGroupSession, msg *s
 	metadata.PutValue(Partition, strconv.Itoa(int(msg.Partition)))
 
 	h.ep.DoProcess(context.Background(), h.router, exchange)
+	if out, ok := exchange.Out.(*ResponseMessage); ok && out.sendFailed {
+		//响应无法投递，不标记位点等待重投
+		return
+	}
 	session.MarkMessage(msg, "") // 标记消息已处理
 }
 
@@ -669,40 +638,13 @@ func (x *Kafka) startConsumerWithRetry(consumer sarama.ConsumerGroup, topics []s
 			x.Printf("[ERROR] Failed to consume for topic %s: %v", topics[0], err)
 			// 如果是致命错误，重新创建消费者
 			if err == sarama.ErrClosedConsumerGroup {
-				// 重新创建消费者，使用完整的配置
-				config := sarama.NewConfig()
-				config.Consumer.Return.Errors = true
-				config.Metadata.Retry.Max = 3
-				config.Metadata.Retry.Backoff = 250 * 1000000 // 250ms
-				config.Consumer.Offsets.Initial = sarama.OffsetNewest
-
-				// 配置SASL认证
-				if x.Config.SASL.Enable {
-					config.Net.SASL.Enable = true
-					config.Net.SASL.User = x.Config.SASL.Username
-					config.Net.SASL.Password = x.Config.SASL.Password
-
-					switch strings.ToUpper(x.Config.SASL.Mechanism) {
-					case "PLAIN":
-						config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
-					case "SCRAM-SHA-256":
-						config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA256
-					case "SCRAM-SHA-512":
-						config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA512
-					default:
-						config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
-					}
+				//重建消费者：重新取连接，跟随池源最新 brokers 与认证
+				conn, connErr := x.SharedNode.GetSafely()
+				if connErr != nil {
+					x.Printf("[ERROR] Failed to get kafka connection for topic %s: %v", topics[0], connErr)
+					return
 				}
-
-				// 配置TLS
-				if x.Config.TLS.Enable {
-					config.Net.TLS.Enable = true
-					if x.Config.TLS.InsecureSkipVerify {
-						config.Net.TLS.Config = &tls.Config{InsecureSkipVerify: true}
-					}
-				}
-
-				newConsumer, createErr := sarama.NewConsumerGroup(x.brokers, x.Config.GroupId, config)
+				newConsumer, createErr := sarama.NewConsumerGroup(connConsumerBrokers(conn, x.brokers), x.Config.GroupId, conn.NewConsumerGroupConfig())
 				if createErr != nil {
 					x.Printf("[ERROR] Failed to recreate consumer for topic %s: %v", topics[0], createErr)
 					return

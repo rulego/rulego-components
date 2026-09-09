@@ -419,7 +419,7 @@ func TestKafkaProducerSharedNode(t *testing.T) {
 
 		// 并发访问客户端
 		done := make(chan bool, numProducers)
-		var clients []sarama.SyncProducer
+		var clients []*SharedConn
 		var clientsMutex sync.Mutex
 
 		for i := 0; i < numProducers; i++ {

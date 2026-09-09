@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/IBM/sarama"
 	"github.com/rulego/rulego"
@@ -35,6 +36,78 @@ const (
 	KeyPartition = "partition"
 	KeOffset     = "offset"
 )
+
+// SharedConn kafka 共享连接，endpoint/kafka 与 x/kafkaProducer 可经 ref:// 复用同一实例。
+// sarama 的 consumer group 不能共享 client，故只共享 producer，消费组用 Brokers/SASL/TLS 自行建连。
+type SharedConn struct {
+	Producer sarama.SyncProducer
+	Brokers  []string
+	SASL     SASLConfig
+	TLS      TLSConfig
+}
+
+// Close 关闭生产者
+func (c *SharedConn) Close() error {
+	if c.Producer != nil {
+		return c.Producer.Close()
+	}
+	return nil
+}
+
+// ApplyAuth 应用 SASL/TLS 配置
+func (c *SharedConn) ApplyAuth(config *sarama.Config) {
+	if c.SASL.Enable {
+		config.Net.SASL.Enable = true
+		config.Net.SASL.User = c.SASL.Username
+		config.Net.SASL.Password = c.SASL.Password
+
+		switch strings.ToUpper(c.SASL.Mechanism) {
+		case "SCRAM-SHA-256":
+			config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA256
+		case "SCRAM-SHA-512":
+			config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA512
+		default:
+			config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
+		}
+	}
+	if c.TLS.Enable {
+		config.Net.TLS.Enable = true
+		if c.TLS.InsecureSkipVerify {
+			config.Net.TLS.Config = &tls.Config{InsecureSkipVerify: true}
+		}
+	}
+}
+
+// NewSharedConn 创建生产者并返回携带连接信息的共享连接
+func NewSharedConn(brokers []string, sasl SASLConfig, tlsConfig TLSConfig) (*SharedConn, error) {
+	config := sarama.NewConfig()
+	config.Producer.Return.Successes = true
+	config.Metadata.Retry.Max = 3
+	config.Metadata.Retry.Backoff = 250 * time.Millisecond
+	config.Producer.Retry.Max = 3
+	config.Producer.Retry.Backoff = 100 * time.Millisecond
+
+	conn := &SharedConn{Brokers: brokers, SASL: sasl, TLS: tlsConfig}
+	conn.ApplyAuth(config)
+
+	producer, err := sarama.NewSyncProducer(brokers, config)
+	if err != nil {
+		return nil, err
+	}
+	conn.Producer = producer
+	return conn, nil
+}
+
+// NewConsumerGroupConfig 返回消费组配置
+func (c *SharedConn) NewConsumerGroupConfig() *sarama.Config {
+	config := sarama.NewConfig()
+	config.Consumer.Return.Errors = true
+	config.Metadata.Retry.Max = 3
+	config.Metadata.Retry.Backoff = 250 * time.Millisecond
+	config.Consumer.Offsets.Initial = sarama.OffsetNewest
+	c.ApplyAuth(config)
+	return config
+}
 
 // 注册节点
 func init() {
@@ -66,7 +139,7 @@ type TLSConfig struct {
 }
 
 type ProducerNode struct {
-	base.SharedNode[sarama.SyncProducer]
+	base.SharedNode[*SharedConn]
 	Config NodeConfiguration
 	// brokers kafka服务器地址列表
 	brokers []string
@@ -111,10 +184,10 @@ func (x *ProducerNode) Init(ruleConfig types.Config, configuration types.Configu
 		if len(x.brokers) == 0 {
 			return errors.New("brokers is empty")
 		}
-		_ = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.brokers[0], ruleConfig.NodeClientInitNow, func() (sarama.SyncProducer, error) {
+		_ = x.SharedNode.InitWithClose(ruleConfig, x.Type(), x.brokers[0], ruleConfig.NodeClientInitNow, func() (*SharedConn, error) {
 			return x.initClient()
-		}, func(client sarama.SyncProducer) error {
-			return client.Close()
+		}, func(conn *SharedConn) error {
+			return conn.Close()
 		})
 
 		x.topicTemplate, err = el.NewTemplate(x.Config.Topic)
@@ -140,7 +213,7 @@ func (x *ProducerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	topic := x.topicTemplate.ExecuteAsString(evn)
 	key := x.keyTemplate.ExecuteAsString(evn)
 
-	client, err := x.SharedNode.GetSafely()
+	conn, err := x.SharedNode.GetSafely()
 	if err != nil {
 		ctx.TellFailure(msg, err)
 		return
@@ -151,7 +224,7 @@ func (x *ProducerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		Key:       sarama.StringEncoder(key),
 		Value:     sarama.StringEncoder(msg.GetData()),
 	}
-	partition, offset, err := client.SendMessage(message)
+	partition, offset, err := conn.Producer.SendMessage(message)
 	if err != nil {
 		// 检查是否是网络连接错误，如果是则重置客户端连接
 		if x.isNetworkError(err) {
@@ -159,9 +232,9 @@ func (x *ProducerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 			x.SharedNode.SetStatus(types.StatusReconnecting, err.Error())
 			x.resetClient()
 			// 重试一次
-			client, retryErr := x.SharedNode.GetSafely()
+			conn, retryErr := x.SharedNode.GetSafely()
 			if retryErr == nil {
-				partition, offset, err = client.SendMessage(message)
+				partition, offset, err = conn.Producer.SendMessage(message)
 				if err == nil {
 					if atomic.CompareAndSwapInt32(&x.connected, 0, 1) {
 						x.SharedNode.SetStatus(types.StatusConnected, "")
@@ -215,42 +288,8 @@ func (x *ProducerNode) getBrokerFromOldVersion(configuration types.Configuration
 	}
 }
 
-func (x *ProducerNode) initClient() (sarama.SyncProducer, error) {
-	config := sarama.NewConfig()
-	config.Producer.Return.Successes = true // 同步模式需要设置这个参数为true
-	// 设置重连相关配置
-	config.Metadata.Retry.Max = 3
-	config.Metadata.Retry.Backoff = 250 * 1000000 // 250ms
-	config.Producer.Retry.Max = 3
-	config.Producer.Retry.Backoff = 100 * 1000000 // 100ms
-
-	// 配置SASL认证
-	if x.Config.SASL.Enable {
-		config.Net.SASL.Enable = true
-		config.Net.SASL.User = x.Config.SASL.Username
-		config.Net.SASL.Password = x.Config.SASL.Password
-
-		switch strings.ToUpper(x.Config.SASL.Mechanism) {
-		case "PLAIN":
-			config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
-		case "SCRAM-SHA-256":
-			config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA256
-		case "SCRAM-SHA-512":
-			config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA512
-		default:
-			config.Net.SASL.Mechanism = sarama.SASLTypePlaintext
-		}
-	}
-
-	// 配置TLS
-	if x.Config.TLS.Enable {
-		config.Net.TLS.Enable = true
-		if x.Config.TLS.InsecureSkipVerify {
-			config.Net.TLS.Config = &tls.Config{InsecureSkipVerify: true}
-		}
-	}
-
-	return sarama.NewSyncProducer(x.brokers, config)
+func (x *ProducerNode) initClient() (*SharedConn, error) {
+	return NewSharedConn(x.brokers, x.Config.SASL, x.Config.TLS)
 }
 
 // isNetworkError 判断是否是网络连接错误

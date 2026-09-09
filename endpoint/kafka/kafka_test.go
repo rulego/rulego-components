@@ -17,8 +17,10 @@
 package kafka
 
 import (
+	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -238,4 +240,77 @@ func TestKafkaEndpoint(t *testing.T) {
 	}
 
 	kafkaEndpoint.Destroy()
+}
+
+// TestKafkaEndpointRefMode 无 kafka 实例即可验证：server=ref:// 时 Init 不拨号，
+// AddRouter 因全局节点池未命中该资源而报错（借用方不建连）
+func TestKafkaEndpointRefMode(t *testing.T) {
+	config := rulego.NewConfig(types.WithDefaultPool())
+	ep, err := endpoint.Registry.New(Type, config, Config{
+		Server:  "ref://kafka_shared_conn_not_exist",
+		GroupId: "test_ref",
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, "test_ref", ep.(*Kafka).Config.GroupId)
+
+	_, err = ep.AddRouter(endpoint.NewRouter().From("device.msg.request").End())
+	assert.NotNil(t, err)
+
+	// 借用方 Close 不关闭别人的连接，也不应 panic
+	assert.Nil(t, ep.(*Kafka).Close())
+}
+
+// TestKafkaGetBrokerFromOldVersion 旧版 brokers 数组兼容：JSON DSL 解出的是 []interface{}
+func TestKafkaGetBrokerFromOldVersion(t *testing.T) {
+	x := &Kafka{}
+	assert.Equal(t, []string{"a:9092", "b:9092"},
+		x.getBrokerFromOldVersion(types.Configuration{"brokers": []interface{}{"a:9092", "b:9092"}}))
+	assert.Equal(t, []string{"a:9092"},
+		x.getBrokerFromOldVersion(types.Configuration{"brokers": []string{"a:9092"}}))
+	assert.Equal(t, []string{"a:9092"},
+		x.getBrokerFromOldVersion(types.Configuration{"brokers": []interface{}{"a:9092", 1}}))
+	assert.Equal(t, 0,
+		len(x.getBrokerFromOldVersion(types.Configuration{"brokers": []interface{}{1, 2}})))
+	assert.Equal(t, 0,
+		len(x.getBrokerFromOldVersion(types.Configuration{"brokers": "not-a-list"})))
+	assert.Equal(t, 0,
+		len(x.getBrokerFromOldVersion(types.Configuration{})))
+}
+
+// TestResponseMessageSendFailed 指定响应主题但 producer 不可用时置 sendFailed，消费方不标记位点
+func TestResponseMessageSendFailed(t *testing.T) {
+	rm := &ResponseMessage{request: &sarama.ConsumerMessage{}}
+	rm.Headers().Set(KeyResponseTopic, "resp.topic")
+	logs := make([]string, 0, 1)
+	rm.log = func(format string, v ...interface{}) {
+		logs = append(logs, fmt.Sprintf(format, v...))
+	}
+
+	rm.SetBody([]byte("pong"))
+	assert.True(t, rm.sendFailed)
+	assert.Equal(t, 1, len(logs))
+
+	//未指定响应主题时不置位：纯消费链不受 producer 可用性影响
+	rm2 := &ResponseMessage{request: &sarama.ConsumerMessage{}, response: &stubProducer{}}
+	rm2.SetBody([]byte("anything"))
+	assert.False(t, rm2.sendFailed)
+
+	rm3 := &ResponseMessage{request: &sarama.ConsumerMessage{}, response: &stubProducer{}}
+	rm3.Headers().Set(KeyResponseTopic, "resp.topic")
+	rm3.SetBody([]byte("pong"))
+	assert.False(t, rm3.sendFailed)
+}
+
+// stubProducer 嵌入接口只为满足 sarama.SyncProducer，实际只用覆写的 SendMessage
+type stubProducer struct{ sarama.SyncProducer }
+
+func (stubProducer) SendMessage(*sarama.ProducerMessage) (int32, int64, error) { return 0, 0, nil }
+
+// TestKafkaEndpointNoReinitAfterShutdown 端点下线后 initSharedConn 拒绝重建，
+// 借用方经 GetSafely 走到这里时拿不到新连接（本测试不拨号）
+func TestKafkaEndpointNoReinitAfterShutdown(t *testing.T) {
+	x := (&Kafka{}).New().(*Kafka)
+	atomic.StoreInt32(&x.isShuttingDown, 1)
+	_, err := x.initSharedConn()
+	assert.NotNil(t, err)
 }
