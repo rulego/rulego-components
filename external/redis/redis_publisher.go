@@ -73,6 +73,9 @@ func (x *PublisherNode) Init(ruleConfig types.Config, configuration types.Config
 			// 清理回调函数
 			return client.Close()
 		})
+		// enable the chain-scoped pool: local connections register under the node id
+		// for same-chain ref:// borrowers (e.g. borrowing endpoint/redis's client)
+		x.SharedNode.BindChain(configuration)
 		x.probe = newPingProbe()
 		x.channelTemplate, err = el.NewTemplate(strings.TrimSpace(x.Config.Channel))
 		if err != nil {

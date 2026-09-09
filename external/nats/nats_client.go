@@ -76,6 +76,9 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 			client.Close()
 			return nil
 		})
+		// enable the chain-scoped pool: local connections register under the node id
+		// for same-chain ref:// borrowers (e.g. borrowing endpoint/nats's conn)
+		x.SharedNode.BindChain(configuration)
 		x.topicTemplate, err = el.NewTemplate(x.Config.Topic)
 		if err != nil {
 			return err

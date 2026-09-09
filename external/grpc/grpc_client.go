@@ -94,6 +94,10 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 		// 清理回调函数
 		return client.conn.Close()
 	})
+	// enable the chain-scoped pool: local connections register under the node id
+	// for same-chain ref:// borrowers; the editor does not expose the ref dropdown
+	// for this node until stream semantics are verified on a live server
+	x.SharedNode.BindChain(configuration)
 	// 初始化服务模板
 	serviceTemplate, err := el.NewTemplate(x.Config.Service)
 	if err != nil {

@@ -189,6 +189,9 @@ func (x *ProducerNode) Init(ruleConfig types.Config, configuration types.Configu
 		}, func(conn *SharedConn) error {
 			return conn.Close()
 		})
+		// enable the chain-scoped pool: local connections register under the node id
+		// for same-chain ref:// borrowers (e.g. borrowing endpoint/kafka's SharedConn)
+		x.SharedNode.BindChain(configuration)
 
 		x.topicTemplate, err = el.NewTemplate(x.Config.Topic)
 		if err != nil {

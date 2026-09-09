@@ -108,6 +108,9 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 			}
 			return nil
 		})
+		// enable the chain-scoped pool: local connections register under the node id
+		// for same-chain ref:// borrowers (e.g. borrowing endpoint/pulsar's client)
+		x.SharedNode.BindChain(configuration)
 		if x.Config.Topic == "" {
 			return errors.New("topic cannot be empty")
 		}

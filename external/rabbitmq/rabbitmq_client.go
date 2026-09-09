@@ -178,6 +178,9 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 		}
 		return nil
 	})
+	// enable the chain-scoped pool: local connections register under the node id
+	// for same-chain ref:// borrowers (e.g. borrowing endpoint/rabbitmq's connection)
+	x.SharedNode.BindChain(configuration)
 
 	// 初始化通道池（使用默认大小）
 	x.channelPool = newChannelPool(DefaultChannelPoolSize, func() (*amqp.Channel, error) {

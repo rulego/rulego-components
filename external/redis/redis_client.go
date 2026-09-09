@@ -101,6 +101,9 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 			// 清理回调函数
 			return client.Close()
 		})
+		// enable the chain-scoped pool: local connections register under the node id
+		// for same-chain ref:// borrowers (e.g. borrowing endpoint/redis's client)
+		x.SharedNode.BindChain(configuration)
 		x.probe = newPingProbe()
 
 		// 构建命令模板
