@@ -18,6 +18,7 @@ package kafka
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"sync/atomic"
 	"testing"
@@ -41,6 +42,39 @@ func sharedTestBroker() string {
 		return b
 	}
 	return "localhost:9092"
+}
+
+// uniqueGroupId 消费组随机后缀：固定的 groupId 会让残留的旧消费 goroutine
+// 参与同组 rebalance 抢走分区，后续测试实例收不到消息
+func uniqueGroupId(base string) string {
+	return fmt.Sprintf("%s_%d", base, time.Now().UnixNano())
+}
+
+// sendUntil 每隔 interval 重发消息直到 received 收到信号或超时：
+// 消费组 OffsetNewest，rebalance 未完成时发出的消息会被永久错过
+func sendUntil(t *testing.T, prod sarama.SyncProducer, topic string, received <-chan struct{}, timeout time.Duration) {
+	t.Helper()
+	send := func() {
+		_, _, err := prod.SendMessage(&sarama.ProducerMessage{
+			Topic: topic,
+			Value: sarama.StringEncoder("ping"),
+		})
+		assert.Nil(t, err)
+	}
+	send()
+	retry := time.NewTicker(2 * time.Second)
+	defer retry.Stop()
+	for {
+		select {
+		case <-received:
+			return
+		case <-retry.C:
+			send()
+		case <-time.After(timeout):
+			t.Errorf("timeout: did not receive message on topic %s", topic)
+			return
+		}
+	}
 }
 
 // skipIfNoKafka 探测 broker，不可达则跳过（本机无 kafka 时不阻断单元测试）
@@ -118,7 +152,7 @@ func TestKafkaEndpointSharedConnection(t *testing.T) {
 	// 借用端点：server=ref:// 池源，独立消费组
 	borrower, err := endpoint.Registry.New(Type, config, Config{
 		Server:  "ref://shared_kafka_owner",
-		GroupId: "shared_borrower_group",
+		GroupId: uniqueGroupId("shared_borrower_group"),
 	})
 	assert.Nil(t, err)
 	kafkaBorrower := borrower.(*Kafka)
@@ -147,17 +181,33 @@ func TestKafkaEndpointSharedConnection(t *testing.T) {
 
 	prod := newSaramaProducer(t, broker)
 	defer prod.Close()
-	_, _, err = prod.SendMessage(&sarama.ProducerMessage{
-		Topic: reqTopic,
-		Value: sarama.StringEncoder("shared ping"),
-	})
-	assert.Nil(t, err)
-
-	select {
-	case msg := <-respMsgs:
-		assert.Equal(t, "shared pong", string(msg.Value))
-	case <-time.After(30 * time.Second):
-		t.Errorf("timeout waiting response on topic %s (consumer received=%v)", respTopic, atomic.LoadInt32(&got) == 1)
+	//消费组 OffsetNewest：rebalance 未完成时发出的请求会被永久错过，轮询重发直到消费组就绪
+	sendReq := func() {
+		_, _, err = prod.SendMessage(&sarama.ProducerMessage{
+			Topic: reqTopic,
+			Value: sarama.StringEncoder("shared ping"),
+		})
+		assert.Nil(t, err)
+	}
+	sendReq()
+	retry := time.NewTicker(2 * time.Second)
+	defer retry.Stop()
+	var resp *sarama.ConsumerMessage
+	deadline := time.After(30 * time.Second)
+sendLoop:
+	for {
+		select {
+		case resp = <-respMsgs:
+			break sendLoop
+		case <-retry.C:
+			sendReq()
+		case <-deadline:
+			t.Errorf("timeout waiting response on topic %s (consumer received=%v)", respTopic, atomic.LoadInt32(&got) == 1)
+			break sendLoop
+		}
+	}
+	if resp != nil {
+		assert.Equal(t, "shared pong", string(resp.Value))
 	}
 	assert.Equal(t, int32(1), atomic.LoadInt32(&got))
 
@@ -196,7 +246,7 @@ func TestKafkaEndpointBorrowFromProducer(t *testing.T) {
 	// endpoint 借用 producer 池条目
 	ep, err := endpoint.Registry.New(Type, config, Config{
 		Server:  "ref://shared_kafka_producer",
-		GroupId: "shared_from_producer_group",
+		GroupId: uniqueGroupId("shared_from_producer_group"),
 	})
 	assert.Nil(t, err)
 
@@ -217,18 +267,10 @@ func TestKafkaEndpointBorrowFromProducer(t *testing.T) {
 
 	prod := newSaramaProducer(t, broker)
 	defer prod.Close()
-	_, _, err = prod.SendMessage(&sarama.ProducerMessage{
-		Topic: topic,
-		Value: sarama.StringEncoder("borrow ping"),
-	})
-	assert.Nil(t, err)
+	sendUntil(t, prod, topic, got, 30*time.Second)
 
-	select {
-	case <-got:
-		// 借用 producer 池连接的端点正常消费
-	case <-time.After(30 * time.Second):
-		t.Errorf("timeout: endpoint borrowing producer pool connection did not receive message")
-	}
+	//清理消费 goroutine：残留消费者会在后续实例参与同组 rebalance 抢走分区
+	ep.Destroy()
 }
 
 // TestKafkaProducerBorrowFromEndpoint 验证 endpoint/kafka 作为池源、
