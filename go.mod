@@ -20,7 +20,7 @@ require (
 	github.com/nsqio/go-nsq v1.1.1-0.20250723164658-7188fbbac4d5
 	github.com/rabbitmq/amqp091-go v1.10.1-0.20240821123418-dc67c21576c2
 	github.com/redis/go-redis/v9 v9.17.2
-	github.com/rulego/rulego v0.37.3-0.20260907064819-972e69b12d64
+	github.com/rulego/rulego v0.37.3
 	github.com/rulego/streamsql v1.1.3
 	github.com/stretchr/testify v1.11.1
 	github.com/vadv/gopher-lua-libs v0.5.0
