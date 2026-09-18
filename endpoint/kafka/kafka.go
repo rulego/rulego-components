@@ -366,7 +366,7 @@ func (x *Kafka) Close() error {
 	for routerId, consumer := range handlersToClose {
 		if consumer != nil {
 			if err := consumer.Close(); err != nil {
-				x.Printf("[ERROR] Error closing consumer %s: %v", routerId, err)
+				x.errorf("[ERROR] Error closing consumer %s: %v", routerId, err)
 			}
 		}
 	}
@@ -429,7 +429,7 @@ func (x *Kafka) AddRouter(router endpointApi.Router, params ...interface{}) (str
 	//取连接失败则不注册路由
 	conn, err := x.SharedNode.GetSafely()
 	if err != nil {
-		x.Printf("[ERROR] Failed to initialize Kafka connection: %v", err)
+		x.errorf("[ERROR] Failed to initialize Kafka connection: %v", err)
 		return "", err
 	}
 
@@ -438,7 +438,7 @@ func (x *Kafka) AddRouter(router endpointApi.Router, params ...interface{}) (str
 	}
 	//消费组不能共享 client，用共享连接的 brokers 与认证信息各自建连
 	if err := x.createTopicConsumer(conn, router); err != nil {
-		x.Printf("[ERROR] Failed to create topic consumer for %s: %v", router.GetFrom().ToString(), err)
+		x.errorf("[ERROR] Failed to create topic consumer for %s: %v", router.GetFrom().ToString(), err)
 		return "", err
 	}
 	return router.GetId(), nil
@@ -452,7 +452,7 @@ func (x *Kafka) RemoveRouter(routerId string, params ...interface{}) error {
 		delete(x.handlers, routerId)
 		err := v.Close()
 		if err != nil {
-			x.Printf("[ERROR] Error closing consumer for router %s: %v", routerId, err)
+			x.errorf("[ERROR] Error closing consumer for router %s: %v", routerId, err)
 		}
 		return err
 	}
@@ -475,7 +475,7 @@ func (x *Kafka) initSharedConn() (*kafkaclient.SharedConn, error) {
 	}
 	conn, err := kafkaclient.NewSharedConn(x.brokers, x.Config.SASL, x.Config.TLS)
 	if err != nil {
-		x.Printf("[ERROR] Failed to create Kafka producer: %v", err)
+		x.errorf("[ERROR] Failed to create Kafka producer: %v", err)
 		return nil, err
 	}
 	return conn, nil
@@ -495,14 +495,14 @@ func (x *Kafka) createTopicConsumer(conn *kafkaclient.SharedConn, router endpoin
 			x.handlers = make(map[string]sarama.ConsumerGroup)
 		}
 		if _, ok := x.handlers[routerId]; ok {
-			x.Printf("[ERROR] RouterId %s already exists", routerId)
+			x.errorf("[ERROR] RouterId %s already exists", routerId)
 			return fmt.Errorf("routerId %s already exists", routerId)
 		}
 
 		brokers := connConsumerBrokers(conn, x.brokers)
 		consumer, err := sarama.NewConsumerGroup(brokers, x.Config.GroupId, conn.NewConsumerGroupConfig())
 		if err != nil {
-			x.Printf("[ERROR] Failed to create consumer group for topic %s: %v", form.ToString(), err)
+			x.errorf("[ERROR] Failed to create consumer group for topic %s: %v", form.ToString(), err)
 			return err
 		}
 		x.handlers[routerId] = consumer
@@ -544,7 +544,7 @@ func (h *consumerHandler) ConsumeClaim(session sarama.ConsumerGroupSession, clai
 			})
 			if err != nil {
 				atomic.AddInt64(&h.ep.activeMessages, -1)
-				h.ep.Printf("kafka consumer handler err :%v", err)
+				h.ep.errorf("kafka consumer handler err :%v", err)
 			}
 			// 不要立即返回错误，继续处理下一条消息
 		} else {
@@ -560,7 +560,7 @@ func (h *consumerHandler) handlerMsg(session sarama.ConsumerGroupSession, msg *s
 		atomic.AddInt64(&h.ep.activeMessages, -1)
 
 		if e := recover(); e != nil {
-			h.ep.Printf("[ERROR] kafka endpoint handler panic: %v\n%v", e, runtime.Stack())
+			h.ep.errorf("[ERROR] kafka endpoint handler panic: %v\n%v", e, runtime.Stack())
 		}
 	}()
 
@@ -575,7 +575,7 @@ func (h *consumerHandler) handlerMsg(session sarama.ConsumerGroupSession, msg *s
 	if conn, err := h.ep.SharedNode.GetSafely(); err == nil {
 		responseProducer = conn.Producer
 	} else {
-		h.ep.Printf("[ERROR] Failed to get kafka connection for response: %v", err)
+		h.ep.errorf("[ERROR] Failed to get kafka connection for response: %v", err)
 	}
 
 	exchange := &endpointApi.Exchange{
@@ -586,7 +586,7 @@ func (h *consumerHandler) handlerMsg(session sarama.ConsumerGroupSession, msg *s
 			request:  msg,
 			response: responseProducer,
 			log: func(format string, v ...interface{}) {
-				h.ep.Printf(format, v...)
+				h.ep.errorf(format, v...)
 			},
 		},
 	}
@@ -639,18 +639,18 @@ func (x *Kafka) startConsumerWithRetry(consumer sarama.ConsumerGroup, topics []s
 
 		err := consumer.Consume(ctx, topics, handler)
 		if err != nil {
-			x.Printf("[ERROR] Failed to consume for topic %s: %v", topics[0], err)
+			x.errorf("[ERROR] Failed to consume for topic %s: %v", topics[0], err)
 			// 如果是致命错误，重新创建消费者
 			if err == sarama.ErrClosedConsumerGroup {
 				//重建消费者：重新取连接，跟随池源最新 brokers 与认证
 				conn, connErr := x.SharedNode.GetSafely()
 				if connErr != nil {
-					x.Printf("[ERROR] Failed to get kafka connection for topic %s: %v", topics[0], connErr)
+					x.errorf("[ERROR] Failed to get kafka connection for topic %s: %v", topics[0], connErr)
 					return
 				}
 				newConsumer, createErr := sarama.NewConsumerGroup(connConsumerBrokers(conn, x.brokers), x.Config.GroupId, conn.NewConsumerGroupConfig())
 				if createErr != nil {
-					x.Printf("[ERROR] Failed to recreate consumer for topic %s: %v", topics[0], createErr)
+					x.errorf("[ERROR] Failed to recreate consumer for topic %s: %v", topics[0], createErr)
 					return
 				}
 				// 更新handlers中的消费者引用；路由已被移除或端点已关闭时
@@ -704,8 +704,26 @@ func (x *Kafka) GetShutdownTimeout() time.Duration {
 	return 30 * time.Second
 }
 
-func (x *Kafka) Printf(format string, v ...interface{}) {
+func (x *Kafka) debugf(format string, v ...interface{}) {
 	if x.RuleConfig.Logger != nil {
-		x.RuleConfig.Logger.Printf(format, v...)
+		x.RuleConfig.Logger.Debugf(format, v...)
+	}
+}
+
+func (x *Kafka) infof(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Infof(format, v...)
+	}
+}
+
+func (x *Kafka) warnf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Warnf(format, v...)
+	}
+}
+
+func (x *Kafka) errorf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Errorf(format, v...)
 	}
 }

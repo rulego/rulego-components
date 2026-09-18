@@ -418,7 +418,7 @@ func (x *Redis) pSubscribe(client *redis.Client, channels ...string) error {
 			break
 		}
 		if _, err := pubSub.ReceiveTimeout(context.Background(), remain); err != nil {
-			x.Printf("redis endpoint psubscribe confirm err: %v", err)
+			x.errorf("redis endpoint psubscribe confirm err: %v", err)
 			// 未生效的订阅关闭置空并返回错误，交守卫释放租约下轮重建，
 			// 避免 leader 持着租约带死订阅空转
 			x.Lock()
@@ -440,7 +440,7 @@ func (x *Redis) pSubscribe(client *redis.Client, channels ...string) error {
 					x.handlerMsg(client, msg)
 				})
 				if err != nil {
-					x.Printf("redis consumer handler err :%v", err)
+					x.errorf("redis consumer handler err :%v", err)
 				}
 			} else {
 				go x.handlerMsg(client, msg)
@@ -479,7 +479,7 @@ func (x *Redis) Start() error {
 	go x.guard.Run(ctx, func() error {
 		client, err := x.SharedNode.GetSafely()
 		if err != nil {
-			x.Printf("redis endpoint promotion get client err: %v", err)
+			x.errorf("redis endpoint promotion get client err: %v", err)
 			return err
 		}
 		return x.applySubscription(client)
@@ -496,9 +496,27 @@ func (x *Redis) initClient() (*redis.Client, error) {
 	return client, client.Ping(context.Background()).Err()
 }
 
-func (x *Redis) Printf(format string, v ...interface{}) {
+func (x *Redis) debugf(format string, v ...interface{}) {
 	if x.RuleConfig.Logger != nil {
-		x.RuleConfig.Logger.Printf(format, v...)
+		x.RuleConfig.Logger.Debugf(format, v...)
+	}
+}
+
+func (x *Redis) infof(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Infof(format, v...)
+	}
+}
+
+func (x *Redis) warnf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Warnf(format, v...)
+	}
+}
+
+func (x *Redis) errorf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Errorf(format, v...)
 	}
 }
 
@@ -568,7 +586,7 @@ func (x *Redis) checkSubByRouterId(routerId string) bool {
 func (x *Redis) handlerMsg(client *redis.Client, msg *redis.Message) {
 	defer func() {
 		if e := recover(); e != nil {
-			x.Printf("redis endpoint handler err :\n%v", runtime.Stack())
+			x.errorf("redis endpoint handler err :\n%v", runtime.Stack())
 		}
 	}()
 
@@ -586,7 +604,7 @@ func (x *Redis) handlerMsg(client *redis.Client, msg *redis.Message) {
 				redisClient: client,
 				topic:       msg.Channel,
 				log: func(format string, v ...interface{}) {
-					x.Printf(format, v...)
+					x.errorf(format, v...)
 				},
 			},
 		}

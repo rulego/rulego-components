@@ -233,7 +233,7 @@ func (p *ProcessPool) warmLoop() {
 			// Put demand back so we retry, then back off.
 			p.demand <- struct{}{}
 			if p.config.Logger != nil {
-				p.config.Logger.Printf("%s: failed to start worker: %v, retrying in %v", componentPrefix, err, backoff)
+				p.config.Logger.Warnf("%s: failed to start worker: %v, retrying in %v", componentPrefix, err, backoff)
 			}
 			select {
 			case <-p.stop:

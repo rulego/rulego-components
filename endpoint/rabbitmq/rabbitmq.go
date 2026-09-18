@@ -481,7 +481,7 @@ func (x *RabbitMQ) onPromoted() error {
 	x.RUnlock()
 	for _, routerId := range routerIds {
 		if err := x.startRouter(routerId); err != nil {
-			x.Printf("rabbitmq endpoint start router %s err: %v", routerId, err)
+			x.errorf("rabbitmq endpoint start router %s err: %v", routerId, err)
 			return err
 		}
 	}
@@ -524,7 +524,7 @@ func (x *RabbitMQ) consumeLoop(router endpointApi.Router, routerId string, gen u
 					x.handlerMsg(router, curCh, msg)
 				})
 				if submitErr != nil {
-					x.Printf("rabbitmq consumer handler err :%v", submitErr)
+					x.errorf("rabbitmq consumer handler err :%v", submitErr)
 				}
 			} else {
 				go x.handlerMsg(router, curCh, msg)
@@ -538,7 +538,7 @@ func (x *RabbitMQ) consumeLoop(router endpointApi.Router, routerId string, gen u
 			x.SharedNode.SetStatus(types.StatusReconnecting, "delivery channel closed")
 			hadErr = true
 		}
-		x.Printf("rabbitmq delivery channel closed, reconnecting in %v", backoff)
+		x.warnf("rabbitmq delivery channel closed, reconnecting in %v", backoff)
 		select {
 		case <-time.After(backoff):
 		case <-x.GracefulShutdown.GetShutdownContext().Done():
@@ -552,17 +552,17 @@ func (x *RabbitMQ) consumeLoop(router endpointApi.Router, routerId string, gen u
 			backoff *= 2
 		}
 		if err := x.ensureConnection(); err != nil {
-			x.Printf("rabbitmq reconnect err: %v", err)
+			x.errorf("rabbitmq reconnect err: %v", err)
 			continue
 		}
 		nch, q, err := x.queueBind(router.FromToString())
 		if err != nil {
-			x.Printf("rabbitmq rebind err: %v", err)
+			x.errorf("rabbitmq rebind err: %v", err)
 			continue
 		}
 		nmsgs, err := nch.Consume(q.Name, "", true, false, false, false, nil)
 		if err != nil {
-			x.Printf("rabbitmq consume err: %v", err)
+			x.errorf("rabbitmq consume err: %v", err)
 			_ = nch.Close()
 			continue
 		}
@@ -654,9 +654,27 @@ func (x *RabbitMQ) Start() error {
 	return nil
 }
 
-func (x *RabbitMQ) Printf(format string, v ...interface{}) {
+func (x *RabbitMQ) debugf(format string, v ...interface{}) {
 	if x.RuleConfig.Logger != nil {
-		x.RuleConfig.Logger.Printf(format, v...)
+		x.RuleConfig.Logger.Debugf(format, v...)
+	}
+}
+
+func (x *RabbitMQ) infof(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Infof(format, v...)
+	}
+}
+
+func (x *RabbitMQ) warnf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Warnf(format, v...)
+	}
+}
+
+func (x *RabbitMQ) errorf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Errorf(format, v...)
 	}
 }
 
@@ -711,7 +729,7 @@ func (x *RabbitMQ) queueBind(key string) (*amqp.Channel, *amqp.Queue, error) {
 func (x *RabbitMQ) handlerMsg(router endpointApi.Router, ch *amqp.Channel, msg amqp.Delivery) {
 	defer func() {
 		if err := recover(); err != nil {
-			x.Printf("rabbitmq endpoint handler err :\n%v", runtime.Stack())
+			x.errorf("rabbitmq endpoint handler err :\n%v", runtime.Stack())
 		}
 	}()
 
@@ -726,7 +744,7 @@ func (x *RabbitMQ) handlerMsg(router endpointApi.Router, ch *amqp.Channel, msg a
 			exchange:   x.Config.Exchange,
 			routingKey: msg.RoutingKey,
 			log: func(format string, v ...interface{}) {
-				x.Printf(format, v...)
+				x.errorf(format, v...)
 			},
 		},
 	}

@@ -373,7 +373,7 @@ func (ws *FastHttpWebsocket) Restart() error {
 		}
 		if !ws.HasRouter(router.GetId()) {
 			if _, err := ws.AddRouter(router, router.GetParams()...); err != nil {
-				ws.Printf("fasthttp websocket add router path:=%s error:%v", router.FromToString(), err)
+				ws.errorf("fasthttp websocket add router path:=%s error:%v", router.FromToString(), err)
 				continue
 			}
 		}
@@ -438,9 +438,27 @@ func (ws *FastHttpWebsocket) RemoveRouter(routerId string, params ...interface{}
 	return nil
 }
 
-func (ws *FastHttpWebsocket) Printf(format string, v ...interface{}) {
+func (ws *FastHttpWebsocket) debugf(format string, v ...interface{}) {
 	if ws.RuleConfig.Logger != nil {
-		ws.RuleConfig.Logger.Printf(format, v...)
+		ws.RuleConfig.Logger.Debugf(format, v...)
+	}
+}
+
+func (ws *FastHttpWebsocket) infof(format string, v ...interface{}) {
+	if ws.RuleConfig.Logger != nil {
+		ws.RuleConfig.Logger.Infof(format, v...)
+	}
+}
+
+func (ws *FastHttpWebsocket) warnf(format string, v ...interface{}) {
+	if ws.RuleConfig.Logger != nil {
+		ws.RuleConfig.Logger.Warnf(format, v...)
+	}
+}
+
+func (ws *FastHttpWebsocket) errorf(format string, v ...interface{}) {
+	if ws.RuleConfig.Logger != nil {
+		ws.RuleConfig.Logger.Errorf(format, v...)
 	}
 }
 
@@ -512,7 +530,7 @@ func (ws *FastHttpWebsocket) handler(router endpointApi.Router) func(ctx *fastht
 				},
 				Out: &WebsocketResponseMessage{
 					log: func(format string, v ...interface{}) {
-						ws.Printf(format, v...)
+						ws.errorf(format, v...)
 					},
 					ctx:  ctx,
 					conn: conn,
@@ -538,7 +556,7 @@ func (ws *FastHttpWebsocket) handler(router endpointApi.Router) func(ctx *fastht
 					if onEvent != nil {
 						onEvent(endpointApi.EventDisconnect, connectExchange)
 					}
-					ws.Printf("fasthttp websocket endpoint handler err :\n%v", runtime.Stack())
+					ws.errorf("fasthttp websocket endpoint handler err :\n%v", runtime.Stack())
 				}
 			}()
 
@@ -579,7 +597,7 @@ func (ws *FastHttpWebsocket) handler(router endpointApi.Router) func(ctx *fastht
 					},
 					Out: &WebsocketResponseMessage{
 						log: func(format string, v ...interface{}) {
-							ws.Printf(format, v...)
+							ws.errorf(format, v...)
 						},
 						ctx:         ctx,
 						conn:        conn,
@@ -605,7 +623,7 @@ func (ws *FastHttpWebsocket) handler(router endpointApi.Router) func(ctx *fastht
 		})
 
 		if err != nil {
-			ws.Printf("FastHttp Websocket handler upgrade error: %v", err)
+			ws.errorf("FastHttp Websocket handler upgrade error: %v", err)
 			return
 		}
 	}

@@ -212,7 +212,7 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		ctx.TellFailure(msg, err)
 		return
 	}
-	x.Printf("conn :%v ", conn)
+	x.infof("conn :%v ", conn)
 	x.opMu.Lock()
 	defer x.opMu.Unlock()
 	tube := beanstalk.NewTube(conn, params.Tube)
@@ -221,11 +221,11 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	case Put:
 		id, err = tube.Put([]byte(params.Body), params.Pri, params.Delay, params.Ttr)
 		if err != nil {
-			x.Printf("put job with err: %s", err)
+			x.errorf("put job with err: %s", err)
 			break
 		}
 		data["id"] = id
-		x.Printf("put job id:%d to %s ", id, tube.Conn.Tube.Name)
+		x.infof("put job id:%d to %s ", id, tube.Conn.Tube.Name)
 	case PeekReady:
 		id, body, err = tube.PeekReady()
 		if err != nil {
@@ -233,7 +233,7 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		}
 		data["id"] = id
 		data["body"] = string(body)
-		x.Printf("peek ready job id:%d  with err: %s", id, err)
+		x.infof("peek ready job id:%d  with err: %s", id, err)
 	case PeekDelayed:
 		id, body, err = tube.PeekDelayed()
 		if err != nil {
@@ -241,7 +241,7 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		}
 		data["id"] = id
 		data["body"] = string(body)
-		x.Printf("peek delayed job id:%d  with err: %s", id, err)
+		x.infof("peek delayed job id:%d  with err: %s", id, err)
 	case PeekBuried:
 		id, body, err = tube.PeekBuried()
 		if err != nil {
@@ -249,23 +249,23 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		}
 		data["id"] = id
 		data["body"] = string(body)
-		x.Printf("peek bury job id:%d  with err: %s", id, err)
+		x.infof("peek bury job id:%d  with err: %s", id, err)
 	case Kick:
 		count, err = tube.Kick(params.Bound)
 		if err != nil {
 			break
 		}
 		data["count"] = count
-		x.Printf("kicked with err: %s", err)
+		x.infof("kicked with err: %s", err)
 	case Stat:
 		stat, err = tube.Stats()
 		for k, v := range stat {
 			data[k] = v
 		}
-		x.Printf("tube stats:%v, err: %s", stat, err)
+		x.infof("tube stats:%v, err: %s", stat, err)
 	case Pause:
 		err = tube.Pause(params.Pause)
-		x.Printf("pause with  err: %s", err)
+		x.infof("pause with  err: %s", err)
 	default:
 		err = errors.New("Unknown Command")
 	}
@@ -286,7 +286,7 @@ func (x *TubeNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 			stat, err = tube.Conn.StatsJob(id)
 			if err != nil {
 				// job 已入队，stats 查询失败不影响结果
-				x.Printf("get job stats error %v ", err)
+				x.errorf("get job stats error %v ", err)
 			} else {
 				msg.Metadata.ReplaceAll(stat)
 			}
@@ -396,10 +396,27 @@ func (x *TubeNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*TubeMsg
 	return &params, nil
 }
 
-// Printf 打印日志
-func (x *TubeNode) Printf(format string, v ...interface{}) {
+func (x *TubeNode) debugf(format string, v ...interface{}) {
 	if x.RuleConfig.Logger != nil {
-		x.RuleConfig.Logger.Printf(format, v...)
+		x.RuleConfig.Logger.Debugf(format, v...)
+	}
+}
+
+func (x *TubeNode) infof(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Infof(format, v...)
+	}
+}
+
+func (x *TubeNode) warnf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Warnf(format, v...)
+	}
+}
+
+func (x *TubeNode) errorf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Errorf(format, v...)
 	}
 }
 

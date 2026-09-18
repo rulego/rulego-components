@@ -384,7 +384,7 @@ func (x *Redis) createConsumerGroup(client *redis.Client, router endpointApi.Rou
 					x.SharedNode.SetStatus(types.StatusReconnecting, err.Error())
 					hadErr = true
 				}
-				x.Printf("XReadGroup err:%v", err)
+				x.errorf("XReadGroup err:%v", err)
 				time.Sleep(backoff)
 				if backoff < 30*time.Second {
 					backoff *= 2
@@ -402,7 +402,7 @@ func (x *Redis) createConsumerGroup(client *redis.Client, router endpointApi.Rou
 						if err := x.RuleConfig.Pool.Submit(func() {
 							x.handlerMsg(client, message.Stream, msg, router)
 						}); err != nil {
-							x.Printf("redis stream consumer handler err :%v", err)
+							x.errorf("redis stream consumer handler err :%v", err)
 						}
 					} else {
 						go x.handlerMsg(client, message.Stream, msg, router)
@@ -455,9 +455,27 @@ func (x *Redis) initClient() (*redis.Client, error) {
 	return client, client.Ping(context.Background()).Err()
 }
 
-func (x *Redis) Printf(format string, v ...interface{}) {
+func (x *Redis) debugf(format string, v ...interface{}) {
 	if x.RuleConfig.Logger != nil {
-		x.RuleConfig.Logger.Printf(format, v...)
+		x.RuleConfig.Logger.Debugf(format, v...)
+	}
+}
+
+func (x *Redis) infof(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Infof(format, v...)
+	}
+}
+
+func (x *Redis) warnf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Warnf(format, v...)
+	}
+}
+
+func (x *Redis) errorf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Errorf(format, v...)
 	}
 }
 
@@ -507,7 +525,7 @@ func (x *Redis) deleteRouter(id string) string {
 func (x *Redis) handlerMsg(client *redis.Client, stream string, msg redis.XMessage, router endpointApi.Router) {
 	defer func() {
 		if e := recover(); e != nil {
-			x.Printf("redis stream endpoint handler err :\n%v", runtime.Stack())
+			x.errorf("redis stream endpoint handler err :\n%v", runtime.Stack())
 		}
 	}()
 	exchange := &endpointApi.Exchange{
@@ -520,14 +538,14 @@ func (x *Redis) handlerMsg(client *redis.Client, stream string, msg redis.XMessa
 			redisClient: client,
 			topic:       stream,
 			log: func(format string, v ...interface{}) {
-				x.Printf(format, v...)
+				x.errorf(format, v...)
 			},
 		},
 	}
 	x.DoProcess(context.Background(), router, exchange)
 	if err := exchange.Out.GetError(); err != nil {
 		// 处理失败不确认不删除，消息留在 PEL，可经 XAutoClaim/XPending 重新处理
-		x.Printf("redis stream process err, keep msg %s in %s: %v", msg.ID, stream, err)
+		x.errorf("redis stream process err, keep msg %s in %s: %v", msg.ID, stream, err)
 		return
 	}
 	// 确认消息处理完成

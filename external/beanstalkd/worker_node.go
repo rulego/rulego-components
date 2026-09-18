@@ -149,7 +149,7 @@ func (x *WorkerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		ctx.TellFailure(msg, err)
 		return
 	}
-	x.Printf("conn :%v ", conn)
+	x.infof("conn :%v ", conn)
 	x.opMu.Lock()
 	defer x.opMu.Unlock()
 	conn.Tube.Name = params.Tube
@@ -160,35 +160,35 @@ func (x *WorkerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 			break
 		}
 		err = conn.Delete(params.Id)
-		x.Printf("delete job id:%d tube:%s with err: %s", params.Id, conn.Tube.Name, err)
+		x.infof("delete job id:%d tube:%s with err: %s", params.Id, conn.Tube.Name, err)
 	case Release:
 		if params.Id == 0 {
 			err = errors.New("id is empty")
 			break
 		}
 		err = conn.Release(params.Id, params.Pri, params.Delay)
-		x.Printf("release job id:%d tube:%s with err: %s", params.Id, conn.Tube.Name, err)
+		x.infof("release job id:%d tube:%s with err: %s", params.Id, conn.Tube.Name, err)
 	case Bury:
 		if params.Id == 0 {
 			err = errors.New("id is empty")
 			break
 		}
 		err = conn.Bury(params.Id, params.Pri)
-		x.Printf("bury job id:%d tube:%s with err: %s", params.Id, conn.Tube.Name, err)
+		x.infof("bury job id:%d tube:%s with err: %s", params.Id, conn.Tube.Name, err)
 	case KickJob:
 		if params.Id == 0 {
 			err = errors.New("id is empty")
 			break
 		}
 		err = conn.KickJob(params.Id)
-		x.Printf("kick job id:%d tube:%s with err: %s", params.Id, conn.Tube.Name, err)
+		x.infof("kick job id:%d tube:%s with err: %s", params.Id, conn.Tube.Name, err)
 	case Touch:
 		if params.Id == 0 {
 			err = errors.New("id is empty")
 			break
 		}
 		err = conn.Touch(params.Id)
-		x.Printf("touch job id:%d tube:%s with err: %s", params.Id, conn.Tube.Name, err)
+		x.infof("touch job id:%d tube:%s with err: %s", params.Id, conn.Tube.Name, err)
 	case Peek:
 		if params.Id == 0 {
 			err = errors.New("id is empty")
@@ -196,7 +196,7 @@ func (x *WorkerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		}
 		body, err = conn.Peek(params.Id)
 		data["body"] = string(body)
-		x.Printf("peek job id:%d tube:%s with err: %s", params.Id, conn.Tube.Name, err)
+		x.infof("peek job id:%d tube:%s with err: %s", params.Id, conn.Tube.Name, err)
 	case ReserveJob:
 		if params.Id == 0 {
 			err = errors.New("id is empty")
@@ -204,21 +204,21 @@ func (x *WorkerNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		}
 		body, err = conn.ReserveJob(params.Id)
 		data["body"] = string(body)
-		x.Printf("reserve job id:%d tube:%s with err: %s", params.Id, conn.Tube.Name, err)
+		x.infof("reserve job id:%d tube:%s with err: %s", params.Id, conn.Tube.Name, err)
 	case StatsJob:
 		if params.Id == 0 {
 			err = errors.New("id is empty")
 			break
 		}
 		data, err = conn.StatsJob(params.Id)
-		x.Printf("stats job id:%d tube:%s with err: %s", params.Id, conn.Tube.Name, err)
+		x.infof("stats job id:%d tube:%s with err: %s", params.Id, conn.Tube.Name, err)
 	case Stats:
 		data, err = conn.Stats()
-		x.Printf("stats :%v  with err: %s", data, err)
+		x.infof("stats :%v  with err: %s", data, err)
 	case ListTubes:
 		tubes, err = conn.ListTubes()
 		data["tubes"] = strings.Join(tubes, ",")
-		x.Printf("tubes :%v  with err: %s", tubes, err)
+		x.infof("tubes :%v  with err: %s", tubes, err)
 	default:
 		err = errors.New("Unknown Command")
 	}
@@ -312,10 +312,27 @@ func (x *WorkerNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*Worke
 	return &params, nil
 }
 
-// Printf 打印日志
-func (x *WorkerNode) Printf(format string, v ...interface{}) {
+func (x *WorkerNode) debugf(format string, v ...interface{}) {
 	if x.RuleConfig.Logger != nil {
-		x.RuleConfig.Logger.Printf(format, v...)
+		x.RuleConfig.Logger.Debugf(format, v...)
+	}
+}
+
+func (x *WorkerNode) infof(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Infof(format, v...)
+	}
+}
+
+func (x *WorkerNode) warnf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Warnf(format, v...)
+	}
+}
+
+func (x *WorkerNode) errorf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Errorf(format, v...)
 	}
 }
 

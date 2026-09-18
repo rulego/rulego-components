@@ -384,7 +384,7 @@ func (x *GrpcStream) handleStream() error {
 			}
 			// DefaultEventHandler 会把每次响应写入 Out，长流必须清空防止无界增长
 			responseBuffer.Reset()
-			x.Printf("Received message: %s", string(jsonBytes))
+			x.infof("Received message: %s", string(jsonBytes))
 			x.RLock()
 			if x.Router != nil {
 				exchange := &endpointApi.Exchange{
@@ -454,9 +454,26 @@ func (x *GrpcStream) RemoveRouter(routerId string, params ...interface{}) error 
 	return nil
 }
 
-// Printf 日志输出
-func (x *GrpcStream) Printf(format string, v ...interface{}) {
+func (x *GrpcStream) debugf(format string, v ...interface{}) {
 	if x.RuleConfig.Logger != nil {
-		x.RuleConfig.Logger.Printf(format, v...)
+		x.RuleConfig.Logger.Debugf(format, v...)
+	}
+}
+
+func (x *GrpcStream) infof(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Infof(format, v...)
+	}
+}
+
+func (x *GrpcStream) warnf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Warnf(format, v...)
+	}
+}
+
+func (x *GrpcStream) errorf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Errorf(format, v...)
 	}
 }

@@ -539,7 +539,7 @@ func (x *Nsq) currentPublisher() nsqPublisher {
 func (x *Nsq) handleMessage(message *nsq.Message, router endpointApi.Router, topic string) error {
 	defer func() {
 		if e := recover(); e != nil {
-			x.Printf("nsq endpoint handler err :\n%v", runtime.Stack())
+			x.errorf("nsq endpoint handler err :\n%v", runtime.Stack())
 		}
 	}()
 
@@ -709,9 +709,26 @@ func buildReachableProducers(candidates []string, cfg *nsq.Config) ([]*nsq.Produ
 	return out, nil
 }
 
-// Printf 打印日志
-func (x *Nsq) Printf(format string, v ...interface{}) {
+func (x *Nsq) debugf(format string, v ...interface{}) {
 	if x.RuleConfig.Logger != nil {
-		x.RuleConfig.Logger.Printf(format, v...)
+		x.RuleConfig.Logger.Debugf(format, v...)
+	}
+}
+
+func (x *Nsq) infof(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Infof(format, v...)
+	}
+}
+
+func (x *Nsq) warnf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Warnf(format, v...)
+	}
+}
+
+func (x *Nsq) errorf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Errorf(format, v...)
 	}
 }

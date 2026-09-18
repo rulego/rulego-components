@@ -719,7 +719,7 @@ func (fh *FastHttp) Restart() error {
 		}
 		if !fh.HasRouter(router.GetId()) {
 			if _, err := fh.AddRouter(router, router.GetParams()...); err != nil {
-				fh.Printf("fasthttp add router path:=%s error:%v", router.FromToString(), err)
+				fh.errorf("fasthttp add router path:=%s error:%v", router.FromToString(), err)
 				continue
 			}
 		}
@@ -1016,7 +1016,7 @@ func (fh *FastHttp) Router() *router.Router {
 	fh.checkIsInitSharedNode()
 
 	if fromPool, err := fh.SharedNode.GetSafely(); err != nil {
-		fh.Printf("get router err :%v", err)
+		fh.errorf("get router err :%v", err)
 		return fh.newRouter()
 	} else {
 		return fromPool.router
@@ -1042,7 +1042,7 @@ func (fh *FastHttp) handler(router endpointApi.Router, isWait, isStreaming, hasT
 	return func(ctx *fasthttp.RequestCtx) {
 		defer func() {
 			if e := recover(); e != nil {
-				fh.Printf("fasthttp endpointApi handler err :\n%v", runtime.Stack())
+				fh.errorf("fasthttp endpointApi handler err :\n%v", runtime.Stack())
 				ctx.SetStatusCode(fasthttp.StatusInternalServerError)
 				ctx.SetBodyString("Internal Server Error")
 			}
@@ -1187,7 +1187,7 @@ func (fh *FastHttp) processStreaming(reqCtx context.Context, router endpointApi.
 func (fh *FastHttp) doProcessSafely(reqCtx context.Context, router endpointApi.Router, exchange *endpointApi.Exchange, respMsg *ResponseMessage) {
 	defer func() {
 		if e := recover(); e != nil {
-			fh.Printf("fasthttp process err :\n%v", runtime.Stack())
+			fh.errorf("fasthttp process err :\n%v", runtime.Stack())
 			respMsg.SetStatusCode(fasthttp.StatusInternalServerError)
 		}
 	}()
@@ -1215,9 +1215,27 @@ func convertPathParams(path string) string {
 	return pathParamRegex.ReplaceAllString(path, "{$1}")
 }
 
-func (fh *FastHttp) Printf(format string, v ...interface{}) {
+func (fh *FastHttp) debugf(format string, v ...interface{}) {
 	if fh.RuleConfig.Logger != nil {
-		fh.RuleConfig.Logger.Printf(format, v...)
+		fh.RuleConfig.Logger.Debugf(format, v...)
+	}
+}
+
+func (fh *FastHttp) infof(format string, v ...interface{}) {
+	if fh.RuleConfig.Logger != nil {
+		fh.RuleConfig.Logger.Infof(format, v...)
+	}
+}
+
+func (fh *FastHttp) warnf(format string, v ...interface{}) {
+	if fh.RuleConfig.Logger != nil {
+		fh.RuleConfig.Logger.Warnf(format, v...)
+	}
+}
+
+func (fh *FastHttp) errorf(format string, v ...interface{}) {
+	if fh.RuleConfig.Logger != nil {
+		fh.RuleConfig.Logger.Errorf(format, v...)
 	}
 }
 
@@ -1388,7 +1406,7 @@ func (fh *FastHttp) startServer() error {
 		DisableKeepalive:   fh.Config.DisableKeepalive,
 		// 设置错误处理器，避免panic导致的goroutine泄漏
 		ErrorHandler: func(ctx *fasthttp.RequestCtx, err error) {
-			fh.Printf("fasthttp server error: %v", err)
+			fh.errorf("fasthttp server error: %v", err)
 			ctx.SetStatusCode(fasthttp.StatusInternalServerError)
 			ctx.SetBodyString("Internal Server Error")
 		},
@@ -1414,7 +1432,7 @@ func (fh *FastHttp) startServer() error {
 		onEvent(endpointApi.EventInitServer, fh)
 	}
 	if isTls {
-		fh.Printf("started fasthttp server with TLS on %s", serverAddr)
+		fh.infof("started fasthttp server with TLS on %s", serverAddr)
 		go func() {
 			defer ln.Close()
 			err = server.ServeTLS(ln, certFile, certKeyFile)
@@ -1427,7 +1445,7 @@ func (fh *FastHttp) startServer() error {
 			}
 		}()
 	} else {
-		fh.Printf("started fasthttp server on %s", serverAddr)
+		fh.infof("started fasthttp server on %s", serverAddr)
 		go func() {
 			defer ln.Close()
 			err = server.Serve(ln)

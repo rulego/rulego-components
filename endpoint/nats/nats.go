@@ -347,7 +347,7 @@ func (x *Nats) createMsgHandler(client *nats.Conn, router endpointApi.Router) fu
 	return func(msg *nats.Msg) {
 		defer func() {
 			if e := recover(); e != nil {
-				x.Printf("nats endpoint handler err :\n%v", runtime.Stack())
+				x.errorf("nats endpoint handler err :\n%v", runtime.Stack())
 			}
 		}()
 
@@ -359,7 +359,7 @@ func (x *Nats) createMsgHandler(client *nats.Conn, router endpointApi.Router) fu
 				request:  msg,
 				response: client,
 				log: func(format string, v ...interface{}) {
-					x.Printf(format, v...)
+					x.errorf(format, v...)
 				},
 			},
 		}
@@ -367,9 +367,27 @@ func (x *Nats) createMsgHandler(client *nats.Conn, router endpointApi.Router) fu
 	}
 }
 
-func (x *Nats) Printf(format string, v ...interface{}) {
+func (x *Nats) debugf(format string, v ...interface{}) {
 	if x.RuleConfig.Logger != nil {
-		x.RuleConfig.Logger.Printf(format, v...)
+		x.RuleConfig.Logger.Debugf(format, v...)
+	}
+}
+
+func (x *Nats) infof(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Infof(format, v...)
+	}
+}
+
+func (x *Nats) warnf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Warnf(format, v...)
+	}
+}
+
+func (x *Nats) errorf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Errorf(format, v...)
 	}
 }
 

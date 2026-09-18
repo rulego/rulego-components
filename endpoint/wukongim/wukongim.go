@@ -294,7 +294,7 @@ func (x *Wukongim) Start() error {
 			if err := x.RuleConfig.Pool.Submit(func() {
 				x.processMsg(msg)
 			}); err != nil {
-				x.Printf("wukongim handler submit err :%v", err)
+				x.errorf("wukongim handler submit err :%v", err)
 			}
 		} else {
 			go x.processMsg(msg)
@@ -307,7 +307,7 @@ func (x *Wukongim) processMsg(msg *wksdk.Message) {
 	// SDK 读循环无 recover，这里的 panic 会拖垮整个进程
 	defer func() {
 		if e := recover(); e != nil {
-			x.Printf("wukongim endpoint handler err :%v", e)
+			x.errorf("wukongim endpoint handler err :%v", e)
 		}
 	}()
 	router := x.getRouter()
@@ -317,7 +317,7 @@ func (x *Wukongim) processMsg(msg *wksdk.Message) {
 	if !x.Config.AutoAck {
 		defer func() {
 			if err := msg.Ack(); err != nil {
-				x.Printf("msg ack failed,msg: %v, err: %s", msg, err)
+				x.errorf("msg ack failed,msg: %v, err: %s", msg, err)
 			}
 		}()
 	}
@@ -329,9 +329,27 @@ func (x *Wukongim) processMsg(msg *wksdk.Message) {
 	x.DoProcess(context.Background(), router, exchange)
 }
 
-func (x *Wukongim) Printf(format string, v ...interface{}) {
+func (x *Wukongim) debugf(format string, v ...interface{}) {
 	if x.RuleConfig.Logger != nil {
-		x.RuleConfig.Logger.Printf(format, v...)
+		x.RuleConfig.Logger.Debugf(format, v...)
+	}
+}
+
+func (x *Wukongim) infof(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Infof(format, v...)
+	}
+}
+
+func (x *Wukongim) warnf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Warnf(format, v...)
+	}
+}
+
+func (x *Wukongim) errorf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Errorf(format, v...)
 	}
 }
 

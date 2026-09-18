@@ -172,7 +172,7 @@ func (x *BeanstalkdTubeSet) Start() error {
 		defer func() {
 			atomic.StoreInt32(&x.started, 0)
 			if e := recover(); e != nil {
-				x.Printf("beanstalkd endpoint reserve err :\n%v", runtime.Stack())
+				x.errorf("beanstalkd endpoint reserve err :\n%v", runtime.Stack())
 			}
 		}()
 		backoff := time.Second
@@ -211,7 +211,7 @@ func (x *BeanstalkdTubeSet) Start() error {
 			if !isBeanstalkConnDead(reserveErr) {
 				// Non-fatal server error (e.g. DEADLINE_SOON): connection is healthy, retry shortly.
 				markConnected()
-				x.Printf("reserve error: %v, retrying after 5 seconds", reserveErr)
+				x.warnf("reserve error: %v, retrying after 5 seconds", reserveErr)
 				select {
 				case <-time.After(5 * time.Second):
 				case <-x.GracefulShutdown.GetShutdownContext().Done():
@@ -224,7 +224,7 @@ func (x *BeanstalkdTubeSet) Start() error {
 				x.SharedNode.SetStatus(types.StatusReconnecting, reserveErr.Error())
 				hadErr = true
 			}
-			x.Printf("reserve connection error: %v, reconnecting in %v", reserveErr, backoff)
+			x.warnf("reserve connection error: %v, reconnecting in %v", reserveErr, backoff)
 			x.rebuildConnection(reserveErr.Error())
 			select {
 			case <-time.After(backoff):
@@ -291,21 +291,38 @@ func (x *BeanstalkdTubeSet) reserve() error {
 		}}
 	x.DoProcess(context.Background(), router, exchange)
 	if procErr := exchange.Out.GetError(); procErr != nil {
-		x.Printf("process job %d err: %v, release it for redelivery", id, procErr)
+		x.errorf("process job %d err: %v, release it for redelivery", id, procErr)
 		_ = conn.Release(id, 1, 0)
 		return nil
 	}
 	// 处理成功，删除 job 防止 TTR 到期后重复投递
 	if err := conn.Delete(id); err != nil {
-		x.Printf("delete job %d err: %v", id, err)
+		x.errorf("delete job %d err: %v", id, err)
 	}
 	return nil
 }
 
-// Printf 打印日志
-func (x *BeanstalkdTubeSet) Printf(format string, v ...interface{}) {
+func (x *BeanstalkdTubeSet) debugf(format string, v ...interface{}) {
 	if x.RuleConfig.Logger != nil {
-		x.RuleConfig.Logger.Printf(format, v...)
+		x.RuleConfig.Logger.Debugf(format, v...)
+	}
+}
+
+func (x *BeanstalkdTubeSet) infof(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Infof(format, v...)
+	}
+}
+
+func (x *BeanstalkdTubeSet) warnf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Warnf(format, v...)
+	}
+}
+
+func (x *BeanstalkdTubeSet) errorf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Errorf(format, v...)
 	}
 }
 

@@ -536,7 +536,7 @@ func (x *Pulsar) AddRouter(router endpointApi.Router, params ...interface{}) (st
 func (x *Pulsar) handleMessage(msg pulsar.ConsumerMessage, router endpointApi.Router) {
 	defer func() {
 		if e := recover(); e != nil {
-			x.Printf("pulsar endpoint handler err :\n%v", runtime.Stack())
+			x.errorf("pulsar endpoint handler err :\n%v", runtime.Stack())
 		}
 	}()
 
@@ -594,10 +594,27 @@ func (x *Pulsar) Start() error {
 	return nil
 }
 
-// Printf 打印日志
-func (x *Pulsar) Printf(format string, v ...interface{}) {
+func (x *Pulsar) debugf(format string, v ...interface{}) {
 	if x.RuleConfig.Logger != nil {
-		x.RuleConfig.Logger.Printf(format, v...)
+		x.RuleConfig.Logger.Debugf(format, v...)
+	}
+}
+
+func (x *Pulsar) infof(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Infof(format, v...)
+	}
+}
+
+func (x *Pulsar) warnf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Warnf(format, v...)
+	}
+}
+
+func (x *Pulsar) errorf(format string, v ...interface{}) {
+	if x.RuleConfig.Logger != nil {
+		x.RuleConfig.Logger.Errorf(format, v...)
 	}
 }
 
