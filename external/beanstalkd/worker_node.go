@@ -266,13 +266,13 @@ func (x *WorkerNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*Worke
 		evn = base.NodeUtils.GetEvnAndMetadata(ctx, msg)
 	}
 	// 获取tube参数
-	if !x.tubeTemplate.IsNotVar() {
+	if x.tubeTemplate.HasVar() {
 		tube = x.tubeTemplate.ExecuteAsString(evn)
 	} else if len(x.Config.Tube) > 0 {
 		tube = x.Config.Tube
 	}
 	// 获取jobId参数
-	if !x.jobIdTemplate.IsNotVar() {
+	if x.jobIdTemplate.HasVar() {
 		tmp := x.jobIdTemplate.ExecuteAsString(evn)
 		id, err = strconv.ParseUint(tmp, 10, 64)
 	} else if len(x.Config.JobId) > 0 {
@@ -283,7 +283,7 @@ func (x *WorkerNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*Worke
 	}
 	// 获取优先级参数
 	var ti int
-	if !x.putPriTemplate.IsNotVar() {
+	if x.putPriTemplate.HasVar() {
 		tmp := x.putPriTemplate.ExecuteAsString(evn)
 		ti, err = strconv.Atoi(tmp)
 		pri = uint32(ti)
@@ -295,7 +295,7 @@ func (x *WorkerNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*Worke
 		return nil, err
 	}
 	// 获取延迟参数
-	if !x.putDelayTemplate.IsNotVar() {
+	if x.putDelayTemplate.HasVar() {
 		tmp := x.putDelayTemplate.ExecuteAsString(evn)
 		delay, err = time.ParseDuration(tmp)
 	} else if len(x.Config.Delay) > 0 {

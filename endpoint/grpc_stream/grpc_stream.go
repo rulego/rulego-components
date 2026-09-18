@@ -364,7 +364,6 @@ func (x *GrpcStream) handleStream() error {
 	}
 	source := grpcurl.DescriptorSourceFromServer(context.Background(), client.client)
 	fullMethod := fmt.Sprintf("%s/%s", x.Config.Service, x.Config.Method)
-	//x.Printf("Starting gRPC stream for method: %s", fullMethod)
 	var responseBuffer bytes.Buffer
 	handler := &grpcurl.DefaultEventHandler{
 		Out: &responseBuffer,

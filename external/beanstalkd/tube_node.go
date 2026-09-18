@@ -320,13 +320,13 @@ func (x *TubeNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*TubeMsg
 		evn = base.NodeUtils.GetEvnAndMetadata(ctx, msg)
 	}
 	// 获取tube参数
-	if !x.tubeTemplate.IsNotVar() {
+	if x.tubeTemplate.HasVar() {
 		tube = x.tubeTemplate.ExecuteAsString(evn)
 	} else if len(x.Config.Tube) > 0 {
 		tube = x.Config.Tube
 	}
 	// 获取body参数
-	if !x.putBodyTemplate.IsNotVar() {
+	if x.putBodyTemplate.HasVar() {
 		body = x.putBodyTemplate.ExecuteAsString(evn)
 	} else if len(x.Config.Body) > 0 {
 		body = x.Config.Body
@@ -335,7 +335,7 @@ func (x *TubeNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*TubeMsg
 	}
 	// 获取优先级参数
 	var ti int
-	if !x.putPriTemplate.IsNotVar() {
+	if x.putPriTemplate.HasVar() {
 		tmp := x.putPriTemplate.ExecuteAsString(evn)
 		ti, err = strconv.Atoi(tmp)
 		pri = uint32(ti)
@@ -347,7 +347,7 @@ func (x *TubeNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*TubeMsg
 		return nil, err
 	}
 	// 获取延迟参数
-	if !x.putDelayTemplate.IsNotVar() {
+	if x.putDelayTemplate.HasVar() {
 		tmp := x.putDelayTemplate.ExecuteAsString(evn)
 		delay, err = time.ParseDuration(tmp)
 	} else if len(x.Config.Delay) > 0 {
@@ -357,7 +357,7 @@ func (x *TubeNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*TubeMsg
 		return nil, err
 	}
 	// 获取TTR参数
-	if !x.putTTRTemplate.IsNotVar() {
+	if x.putTTRTemplate.HasVar() {
 		tmp := x.putTTRTemplate.ExecuteAsString(evn)
 		ttr, err = time.ParseDuration(tmp)
 	} else if len(x.Config.Ttr) > 0 {
@@ -367,7 +367,7 @@ func (x *TubeNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*TubeMsg
 		return nil, err
 	}
 	// 获取Bound数量参数
-	if !x.kickBoundTemplate.IsNotVar() {
+	if x.kickBoundTemplate.HasVar() {
 		tmp := x.kickBoundTemplate.ExecuteAsString(evn)
 		bound, err = strconv.Atoi(tmp)
 	} else if len(x.Config.KickBound) > 0 {
@@ -377,7 +377,7 @@ func (x *TubeNode) getParams(ctx types.RuleContext, msg types.RuleMsg) (*TubeMsg
 		return nil, err
 	}
 	// 获取暂停时间参数
-	if !x.pauseTimeTemplate.IsNotVar() {
+	if x.pauseTimeTemplate.HasVar() {
 		tmp := x.pauseTimeTemplate.ExecuteAsString(evn)
 		pause, err = time.ParseDuration(tmp)
 	} else if len(x.Config.PauseTime) > 0 {
