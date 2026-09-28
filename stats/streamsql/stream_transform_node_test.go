@@ -1000,6 +1000,44 @@ func captureNodeEnd(t *testing.T, eng types.RuleEngine, msg types.RuleMsg) (map[
 	}
 }
 
+// TestStreamTransformNode_InlineTableLeftJoin explicit source=inline metadata table: LEFT JOIN hits are enriched,
+// misses keep the stream row with empty table-side columns.
+func TestStreamTransformNode_InlineTableLeftJoin(t *testing.T) {
+	sql := "SELECT deviceId, m.location FROM stream LEFT JOIN meta m ON deviceId = m.deviceId"
+	tables := []map[string]interface{}{
+		{"name": "meta", "source": "inline", "rows": []map[string]interface{}{
+			{"deviceId": "d1", "location": "plantA"},
+		}},
+	}
+	eng, cleanup := newJoinEngine(t, sql, tables)
+	defer cleanup()
+
+	r := sendJoinMsg(t, eng, map[string]interface{}{"deviceId": "d1"})
+	assert.NotNil(t, r, "d1 with inline metadata should be enriched")
+	assert.Equal(t, "plantA", r["location"], "location enrichment is correct")
+
+	r2 := sendJoinMsg(t, eng, map[string]interface{}{"deviceId": "d9"})
+	assert.NotNil(t, r2, "LEFT JOIN with no match should keep the stream row")
+	assert.True(t, r2["location"] == nil, "with no match the table-side column should be empty")
+}
+
+// TestStreamTransformNode_CSVFileTableEnrich CSV 文件表节点级富化。
+func TestStreamTransformNode_CSVFileTableEnrich(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "meta.csv")
+	assert.Nil(t, os.WriteFile(path, []byte("deviceId,location\nd1,plantA\nd2,plantB\n"), 0644), "write CSV file")
+	sql := "SELECT deviceId, m.location FROM stream JOIN meta m ON deviceId = m.deviceId"
+	tables := []map[string]interface{}{
+		{"name": "meta", "source": "file", "path": path, "format": "csv"},
+	}
+	eng, cleanup := newJoinEngine(t, sql, tables)
+	defer cleanup()
+
+	r := sendJoinMsg(t, eng, map[string]interface{}{"deviceId": "d2"})
+	assert.NotNil(t, r, "CSV metadata table should be able to enrich")
+	assert.Equal(t, "plantB", r["location"], "CSV column enrichment is correct")
+}
+
 // TestNodeScenario_AnalyticState 验证分析函数在节点实例内跨消息保留状态（streamTransform 路径）。
 // 通过同一引擎顺序发送多条消息，断言状态随事件演进。
 func TestNodeScenario_AnalyticState(t *testing.T) {

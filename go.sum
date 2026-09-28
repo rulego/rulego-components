@@ -386,8 +386,8 @@ github.com/rogpeppe/go-internal v1.13.1 h1:KvO1DLK/DRN07sQ1LQKScxyZJuNnedQ5/wKSR
 github.com/rogpeppe/go-internal v1.13.1/go.mod h1:uMEvuHeurkdAXX61udpOXGD/AzZDWNMNyH2VO9fmH0o=
 github.com/rulego/rulego v0.38.0 h1:bUJpVSoALBb/vDRrtKPoKpXfL4puCei+DM1EqSQ1YOw=
 github.com/rulego/rulego v0.38.0/go.mod h1:C+5ohZtTIBNB4l1UY3aVLX+OKAXOHbryRn0I3+no8cs=
-github.com/rulego/streamsql v1.1.3 h1:cEppkyg/yD/jog3mofHqBIj1ob0JEcchrWBELoWHeLI=
-github.com/rulego/streamsql v1.1.3/go.mod h1:un/TbbM6ln1FoMPpfV9ktav6PPHV8krA5FUaPPpCfCI=
+github.com/rulego/streamsql v1.3.0 h1:ZoIZEro1J4A3QohYzm+LO9+4D20goVT1yKb7aSpeDL8=
+github.com/rulego/streamsql v1.3.0/go.mod h1:a3sJe4JbiHH9Y/znDxdueUIQEJ0je3KKzGiQMjx/2y4=
 github.com/savsgio/gotils v0.0.0-20240704082632-aef3928b8a38 h1:D0vL7YNisV2yqE55+q0lFuGse6U8lxlg7fYTctlT5Gc=
 github.com/savsgio/gotils v0.0.0-20240704082632-aef3928b8a38/go.mod h1:sM7Mt7uEoCeFSCBM+qBrqvEo+/9vdmj19wzp3yzUhmg=
 github.com/shirou/gopsutil/v3 v3.23.12 h1:z90NtUkp3bMtmICZKpC4+WaknU1eXtp5vtbQ11DgpE4=

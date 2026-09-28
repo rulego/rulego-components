@@ -25,6 +25,7 @@ import (
 	"github.com/rulego/rulego"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/components/base"
+	"github.com/rulego/rulego/utils/el"
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/str"
 	"github.com/rulego/streamsql"
@@ -58,15 +59,27 @@ type StreamAggregatorNodeConfiguration struct {
 	// optionally refreshed. JOIN works with both transform and aggregation/window
 	// queries. See TableConfig.
 	Tables []TableConfig `json:"tables"`
+
+	// StreamKey routes input rows to their source stream for stream-stream JOIN
+	// (WITHIN) queries. Two forms:
+	//   - plain string: treated as the metadata key holding the stream name, e.g.
+	//     "streamName" (each message is routed via EmitTo(metadata[streamKey]));
+	//   - ${} expression: resolved at execution time and the result IS the stream
+	//     name, e.g. "${metadata.streamName}" or "${msg.stream}" — same dynamic
+	//     variables as other components (${msg.x}/${metadata.x}/${global.x}/${vars.x}).
+	// Empty (default) keeps single-stream mode: rows go to the FROM stream via
+	// Emit as before. Only meaningful when the SQL is a stream-stream JOIN.
+	StreamKey string `json:"streamKey" label:"Stream Key" desc:"Stream name source for stream-stream JOIN (WITHIN) queries. Plain string = metadata key holding the stream name; ${} expression = resolved to the stream name directly (supports ${msg.x}/${metadata.x}/${global.x}/${vars.x}). Empty = single-stream mode"`
 }
 
 // StreamAggregatorNode stream aggregator node
 //
 // Features:
-// - Processes aggregation queries (window aggregation, grouped aggregation, statistics) or CEP (MATCH_RECOGNIZE) pattern recognition
+// - Processes aggregation queries (window aggregation, grouped aggregation, statistics), CEP (MATCH_RECOGNIZE) pattern recognition, or stream-stream JOIN (WITHIN) correlation
 // - Supports single record and array input; array elements are added to the stream one by one
-// - Results (aggregation window trigger / CEP pattern match) are routed through the `stream_event` relation instead of the regular Success chain
+// - Results (aggregation window trigger / CEP pattern match / JOIN match) are routed through the `stream_event` relation instead of the regular Success chain
 // - The original input data (single or array) continues through the `Success` chain, keeping the data flow continuous
+// - Stream-stream JOIN: set StreamKey to the metadata key holding the source stream name; each input message is routed to that stream via EmitTo
 //
 // Data flow:
 // - Input data -> added to stream -> original data passes through the Success chain
@@ -91,6 +104,10 @@ type StreamAggregatorNode struct {
 	chainCtx types.ChainCtx
 	// isCEP marks whether the current query is a MATCH_RECOGNIZE (CEP) query, determining the queryType of result messages
 	isCEP bool
+	// isJoin marks whether the current query is a stream-stream JOIN (WITHIN) query
+	isJoin bool
+	// streamKey 模板：配置含 ${} 时执行期求值（结果即流名），静态值原样作为元数据键名
+	streamKeyTemplate el.Template
 }
 
 // Type returns the component type identifier
@@ -115,7 +132,39 @@ var (
 	ErrAggregatorChainCtxNil  = errors.New("chain context is nil")
 	ErrAggregatorNodeIdEmpty  = errors.New("self node id is empty")
 	ErrAggregatorChainIdEmpty = errors.New("chain id is empty")
+	// ErrStreamNameMetadataEmpty is returned when a stream-stream JOIN query is
+	// configured with StreamKey but the stream name resolves to empty (metadata
+	// key missing, or a ${} expression evaluating to empty).
+	ErrStreamNameMetadataEmpty = errors.New("stream name is empty or missing")
 )
+
+// feed adds one row to the stream. In single-stream mode (non-JOIN query, or
+// StreamKey empty) it goes to the FROM stream via Emit as before; in
+// stream-stream JOIN mode the row is routed via EmitTo to the stream name
+// resolved from StreamKey: a ${} expression is evaluated against the message
+// environment (result IS the stream name), a plain string is used as the
+// metadata key holding the stream name. The returned error (unknown stream
+// name, empty resolution result) is caller-reported via TellFailure.
+func (x *StreamAggregatorNode) feed(ctx types.RuleContext, msg types.RuleMsg, row map[string]interface{}) error {
+	if !x.isJoin || x.Config.StreamKey == "" {
+		x.streamsql.Emit(row)
+		return nil
+	}
+	name := ""
+	if x.streamKeyTemplate != nil && x.streamKeyTemplate.HasVar() {
+		v, err := x.streamKeyTemplate.Execute(base.NodeUtils.GetEvnAndMetadata(ctx, msg))
+		if err != nil {
+			return fmt.Errorf("streamKey expression failed: %w", err)
+		}
+		name = str.ToString(v)
+	} else if msg.Metadata != nil {
+		name = msg.Metadata.GetValue(x.Config.StreamKey)
+	}
+	if name == "" {
+		return fmt.Errorf("%w: %s", ErrStreamNameMetadataEmpty, x.Config.StreamKey)
+	}
+	return x.streamsql.EmitTo(name, row)
+}
 
 // Init initializes the node
 // Called when the node is loaded, to validate the configuration and initialize the StreamSQL instance
@@ -133,6 +182,17 @@ func (x *StreamAggregatorNode) Init(ruleConfig types.Config, configuration types
 	// Validate input format configuration
 	if err = validateInputFormat(x.Config.InputFormat); err != nil {
 		return err
+	}
+
+	// Compile the StreamKey template: a ${} expression is evaluated per message
+	// at execution time (the result is the stream name); a plain string is used
+	// as the metadata key holding the stream name. Same mechanism as ref targetId.
+	if x.Config.StreamKey != "" {
+		tpl, tplErr := el.NewTemplate(x.Config.StreamKey)
+		if tplErr != nil {
+			return fmt.Errorf("invalid streamKey: %w", tplErr)
+		}
+		x.streamKeyTemplate = tpl
 	}
 
 	// Get the chain context
@@ -169,9 +229,11 @@ func (x *StreamAggregatorNode) Init(ruleConfig types.Config, configuration types
 		}
 	}()
 
-	// Validate that it is an aggregation or CEP (MATCH_RECOGNIZE) query; both use the async Emit+sink pipeline
+	// Validate that it is an aggregation, CEP (MATCH_RECOGNIZE) or stream-stream
+	// JOIN (WITHIN) query; all three use the async Emit+sink pipeline
 	x.isCEP = x.streamsql.IsCEPQuery()
-	if !x.streamsql.IsAggregationQuery() && !x.isCEP {
+	x.isJoin = x.streamsql.IsStreamJoinQuery()
+	if !x.streamsql.IsAggregationQuery() && !x.isCEP && !x.isJoin {
 		return fmt.Errorf("%w: SQL='%s'", ErrNotAggregatorQuery, x.Config.SQL)
 	}
 
@@ -195,10 +257,11 @@ func (x *StreamAggregatorNode) Init(ruleConfig types.Config, configuration types
 
 // OnMsg handles a message
 // Supports single records and arrays:
-// - Single record: added directly to the aggregation stream
-// - Array (inputFormat=auto, default): each element is added to the aggregation stream one by one
-// - Array (inputFormat=columns): an IoT point array is pivoted into a single wide row before
-//   entering the aggregation stream; non-point arrays fall back to row-by-row processing
+//   - Single record: added directly to the aggregation stream
+//   - Array (inputFormat=auto, default): each element is added to the aggregation stream one by one
+//   - Array (inputFormat=columns): an IoT point array is pivoted into a single wide row before
+//     entering the aggregation stream; non-point arrays fall back to row-by-row processing
+//
 // In all cases, the original message continues through the Success chain
 func (x *StreamAggregatorNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	if x.streamsql == nil {
@@ -225,7 +288,10 @@ func (x *StreamAggregatorNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		if x.Config.InputFormat == InputFormatColumns {
 			if row, ok := pivotPointArray(data); ok {
 				if len(row) > 0 {
-					x.streamsql.Emit(row)
+					if err := x.feed(ctx, msg, row); err != nil {
+						ctx.TellFailure(msg, err)
+						return
+					}
 				}
 				// Do not Emit when all points are bad; the original message flows on as usual
 				ctx.TellSuccess(msg)
@@ -234,8 +300,7 @@ func (x *StreamAggregatorNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 			// Not a point array; fall back to row-by-row processing
 		}
 		// Process array data
-		err := x.processArrayData(data)
-		if err != nil {
+		if err := x.processArrayData(ctx, msg, data); err != nil {
 			ctx.TellFailure(msg, fmt.Errorf("%w: %v", ErrArrayProcessingFailed, err))
 			return
 		}
@@ -246,7 +311,10 @@ func (x *StreamAggregatorNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 			ctx.TellFailure(msg, fmt.Errorf("data type conversion failed: %w", err))
 			return
 		}
-		x.streamsql.Emit(mapData)
+		if err := x.feed(ctx, msg, mapData); err != nil {
+			ctx.TellFailure(msg, err)
+			return
+		}
 	}
 
 	// Data successfully added to the aggregation stream; the original message flows on
@@ -267,7 +335,7 @@ func (x *StreamAggregatorNode) isArrayData(data interface{}) bool {
 }
 
 // processArrayData processes array data, adding each element to the aggregation stream
-func (x *StreamAggregatorNode) processArrayData(data interface{}) error {
+func (x *StreamAggregatorNode) processArrayData(ctx types.RuleContext, msg types.RuleMsg, data interface{}) error {
 	// Try to convert to []interface{}
 	var arr []interface{}
 
@@ -291,7 +359,9 @@ func (x *StreamAggregatorNode) processArrayData(data interface{}) error {
 		if err != nil {
 			return fmt.Errorf("array element type conversion failed: %w", err)
 		}
-		x.streamsql.Emit(mapItem)
+		if err := x.feed(ctx, msg, mapItem); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -303,10 +373,14 @@ func (x *StreamAggregatorNode) processArrayData(data interface{}) error {
 func (x *StreamAggregatorNode) handleAggregateResult(results []map[string]interface{}) {
 	// Create metadata for the result message
 	metadata := types.NewMetadata()
-	if x.isCEP {
+	switch {
+	case x.isJoin:
+		metadata.PutValue("queryType", "stream_join")
+		metadata.PutValue("resultType", "join_matched")
+	case x.isCEP:
 		metadata.PutValue("queryType", "cep")
 		metadata.PutValue("resultType", "pattern_matched")
-	} else {
+	default:
 		metadata.PutValue("queryType", "aggregation")
 		metadata.PutValue("resultType", "window_triggered")
 	}
@@ -382,7 +456,7 @@ func (x *StreamAggregatorNode) Destroy() {
 // Def returns the component form definition
 func (x *StreamAggregatorNode) Def() types.ComponentForm {
 	return types.ComponentForm{
-		Desc:          "Stream aggregation & CEP node. Runs aggregation (GROUP BY/window) or MATCH_RECOGNIZE. Original data passes via Success, results via stream_event",
+		Desc:          "Stream aggregation & CEP & stream-stream JOIN node. Runs aggregation (GROUP BY/window), MATCH_RECOGNIZE, or WITHIN JOIN (streamKey: metadata key holding the stream name, or a ${} expression resolved to the stream name directly). Original data passes via Success, results via stream_event",
 		RelationTypes: &[]string{types.Success, types.Failure, RelationTypeStreamEvent},
 	}
 }

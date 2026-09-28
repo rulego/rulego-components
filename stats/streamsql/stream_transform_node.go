@@ -98,11 +98,15 @@ var (
 	ErrTransformSQLEmpty      = errors.New("transform SQL query is required")
 	ErrNotTransformQuery      = errors.New("SQL contains aggregation functions, use x/streamAggregator instead")
 	ErrTransformNotSupportCEP = errors.New("SQL contains MATCH_RECOGNIZE (CEP), use x/streamAggregator instead")
-	ErrTransformSQLExecution  = errors.New("failed to execute transform SQL")
-	ErrStreamsqlInstanceNil   = errors.New("streamsql instance is nil")
-	ErrArrayProcessingFailed  = errors.New("failed to process array data")
-	ErrUnsupportedDataType    = errors.New("only JSON data type is supported")
-	ErrDataProcessingFailed   = errors.New("failed to process message data")
+	// ErrTransformNotSupportJoin is returned when the SQL is a stream-stream JOIN
+	// (WITHIN): the EmitSync-based transform cannot consume JOIN queries (the
+	// engine rejects EmitSync on them); use x/streamAggregator with streamKey.
+	ErrTransformNotSupportJoin = errors.New("SQL contains a stream-stream JOIN (WITHIN), use x/streamAggregator instead")
+	ErrTransformSQLExecution   = errors.New("failed to execute transform SQL")
+	ErrStreamsqlInstanceNil    = errors.New("streamsql instance is nil")
+	ErrArrayProcessingFailed   = errors.New("failed to process array data")
+	ErrUnsupportedDataType     = errors.New("only JSON data type is supported")
+	ErrDataProcessingFailed    = errors.New("failed to process message data")
 
 	// Metadata key name identifying whether the data matched the transform condition
 	Match      = "match"
@@ -149,6 +153,11 @@ func (x *StreamTransformNode) Init(ruleConfig types.Config, configuration types.
 	}
 	if x.streamsql.IsCEPQuery() {
 		return fmt.Errorf("%w: SQL='%s'", ErrTransformNotSupportCEP, x.Config.SQL)
+	}
+	// Stream-stream JOIN queries only support async feeding (EmitTo); EmitSync is
+	// rejected by the engine, so route them to x/streamAggregator at load time.
+	if x.streamsql.IsStreamJoinQuery() {
+		return fmt.Errorf("%w: SQL='%s'", ErrTransformNotSupportJoin, x.Config.SQL)
 	}
 
 	// Load metadata tables for stream-table JOIN (must follow Execute). Each table

@@ -940,6 +940,61 @@ func windowCount(mu *sync.Mutex, rs *[]map[string]interface{}) int {
 	return len(*rs)
 }
 
+// TestStreamAggregatorNode_InlineTableEnrich inline metadata tables (explicit source=inline and omitted source are
+// both treated as inline) enrich against aggregation: INNER JOIN groups by the enriched column, LEFT JOIN unmatched
+// rows go into the NULL group.
+func TestStreamAggregatorNode_InlineTableEnrich(t *testing.T) {
+	t.Run("explicit source=inline INNER JOIN", func(t *testing.T) {
+		sql := "SELECT m.location, AVG(temperature) as avg_temp FROM stream JOIN meta m ON deviceId = m.deviceId GROUP BY m.location, CountingWindow(3)"
+		tables := []map[string]interface{}{
+			{"name": "meta", "source": "inline", "rows": []map[string]interface{}{
+				{"deviceId": "d1", "location": "plantA"},
+				{"deviceId": "d2", "location": "plantB"},
+			}},
+		}
+		results, err := runAggregatorWithTables(t, sql, tables, []map[string]interface{}{
+			{"deviceId": "d1", "temperature": 20.0},
+			{"deviceId": "d1", "temperature": 30.0},
+			{"deviceId": "d2", "temperature": 40.0},
+		})
+		assert.Nil(t, err, "inline table initialization should succeed")
+		byLoc := map[string]float64{}
+		for _, r := range results {
+			loc, _ := r["location"].(string)
+			if avg, ok := r["avg_temp"].(float64); ok {
+				byLoc[loc] = avg
+			}
+		}
+		assert.True(t, byLoc["plantA"] == 25.0, "plantA average temperature should be 25, got %v", byLoc)
+		assert.True(t, byLoc["plantB"] == 40.0, "plantB average temperature should be 40, got %v", byLoc)
+	})
+
+	t.Run("omitted source defaults to inline LEFT JOIN", func(t *testing.T) {
+		sql := "SELECT m.location, AVG(temperature) as avg_t FROM stream LEFT JOIN meta m ON deviceId = m.deviceId GROUP BY m.location, CountingWindow(3)"
+		tables := []map[string]interface{}{
+			{"name": "meta", "rows": []map[string]interface{}{
+				{"deviceId": "d1", "location": "plantA"},
+			}},
+		}
+		results, err := runAggregatorWithTables(t, sql, tables, []map[string]interface{}{
+			{"deviceId": "d1", "temperature": 10.0},
+			{"deviceId": "d9", "temperature": 20.0},
+			{"deviceId": "d9", "temperature": 40.0},
+		})
+		assert.Nil(t, err)
+		hasNull, hasPlantA := false, false
+		for _, r := range results {
+			if r["location"] == nil {
+				hasNull = true
+			} else if loc, _ := r["location"].(string); loc == "plantA" {
+				hasPlantA = true
+			}
+		}
+		assert.True(t, hasNull, "inline table LEFT JOIN unmatched rows should also go into the NULL group, got %+v", results)
+		assert.True(t, hasPlantA, "inline table LEFT JOIN matched rows should be grouped normally, got %+v", results)
+	})
+}
+
 // TestNodeScenario_AggregatorDualOutput verifies the aggregator's dual output: original terminal messages pass via Success,
 // while the aggregation array fired by CountingWindow(2) is emitted via stream_event.
 func TestNodeScenario_AggregatorDualOutput(t *testing.T) {
