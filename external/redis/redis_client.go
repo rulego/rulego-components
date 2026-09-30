@@ -51,10 +51,20 @@ type ClientNodeConfiguration struct {
 	Cmd string `json:"cmd" label:"Command" desc:"Redis command, e.g. GET, SET. Supports ${metadata.key} substitution" required:"true"`
 	// Params 命令参数，支持${metadata.key}和${data}变量替换
 	Params []interface{} `json:"params" label:"Params" desc:"Command parameters. Supports ${metadata.key} substitution"`
+	// OutputTo 命令结果输出位置：data(默认)用结果替换msg.Data；metadata写入msg.Metadata的result键，msg.Data保持不变
+	OutputTo string `json:"outputTo" label:"Output To" desc:"data (default): replace msg.Data with the command result; metadata: write result to msg.Metadata 'result' key, payload untouched"`
 }
 
+// OutputTo 取值：命令结果替换 msg.Data，或写入 msg.Metadata 保留原负荷
+const (
+	// OutputData 结果替换 msg.Data（默认，与 restApiCall 等外部节点契约一致）
+	OutputData = "data"
+	// OutputMetadata 结果写入 msg.Metadata 的 result 键（与 redis_publisher 的 KeyResult 对齐）
+	OutputMetadata = "metadata"
+)
+
 // ClientNode redis客户端节点，
-// 成功：转向Success链，redis执行结果存放在msg.Data
+// 成功：转向Success链，redis执行结果按outputTo配置写入msg.Data或msg.Metadata
 // 失败：转向Failure链
 type ClientNode struct {
 	base.SharedNode[*redis.Client]
@@ -69,6 +79,8 @@ type ClientNode struct {
 	paramsTemplates []el.Template
 	// probe 限频 Ping 探测
 	probe *pingProbe
+	// outputTo 归一化后的结果输出位置
+	outputTo string
 }
 
 // Type 返回组件类型
@@ -92,6 +104,15 @@ func (x *ClientNode) Init(ruleConfig types.Config, configuration types.Configura
 		// 验证cmd字段不能为空
 		if strings.TrimSpace(x.Config.Cmd) == "" {
 			return fmt.Errorf("cmd field cannot be empty")
+		}
+
+		// 输出位置归一：未知值直接报错，避免手输错别字静默回落到覆盖 data 的行为
+		switch x.outputTo = strings.ToLower(strings.TrimSpace(x.Config.OutputTo)); x.outputTo {
+		case "", OutputData:
+			x.outputTo = OutputData
+		case OutputMetadata:
+		default:
+			return fmt.Errorf("outputTo must be 'data' or 'metadata', got: %s", x.Config.OutputTo)
 		}
 
 		// 初始化客户端
@@ -239,6 +260,10 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 
 	if err != nil {
 		ctx.TellFailure(msg, err)
+	} else if x.outputTo == OutputMetadata {
+		// 写命令场景保留原 msg 负荷，结果进 metadata
+		msg.Metadata.PutValue(KeyResult, str.ToString(data))
+		ctx.TellSuccess(msg)
 	} else {
 		msg.SetData(str.ToString(data))
 		ctx.TellSuccess(msg)

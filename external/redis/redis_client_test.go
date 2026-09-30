@@ -47,6 +47,8 @@ func TestRedisClientNodeOnMsg(t *testing.T) {
 	testRedisClientParamsMixedExpression(t)
 	testRedisClientCmdParamsCombo(t)
 	testRedisClientEdgeCases(t)
+	// outputTo 输出位置
+	testRedisClientOutputToMetadata(t)
 }
 
 // 测试添加key/value
@@ -641,4 +643,44 @@ func TestClientNodeConnectionStatusUnreachable(t *testing.T) {
 	info := node.ConnectionStatus()
 	assert.Equal(t, types.StatusReconnecting, info.Status)
 	assert.True(t, info.Message != "")
+}
+
+// 测试outputTo=metadata：SET 结果进 metadata，msg.Data 保留原负荷
+func testRedisClientOutputToMetadata(t *testing.T) {
+	var node ClientNode
+	var configuration = make(types.Configuration)
+	configuration["Cmd"] = "SET"
+	configuration["Params"] = []interface{}{"${metadata.key}", "${data}"}
+	configuration["OutputTo"] = OutputMetadata
+	configuration["PoolSize"] = 10
+	configuration["Server"] = "127.0.0.1:6379"
+	config := types.NewConfig()
+	err := node.Init(config, configuration)
+	if err != nil {
+		t.Errorf("err=%s", err)
+	}
+	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
+		assert.Equal(t, types.Success, relationType)
+		assert.Equal(t, `{"aa":"lala"}`, msg.GetData())
+		assert.Equal(t, "OK", msg.Metadata.GetValue(KeyResult))
+	})
+	metaData := types.NewMetadata()
+	metaData.PutValue("key", "test_output_to")
+	msg := ctx.NewMsg("TEST_MSG_TYPE_AA", metaData, `{"aa":"lala"}`)
+	node.OnMsg(ctx, msg)
+
+	time.Sleep(time.Second * 1)
+}
+
+// 测试outputTo非法值：Init 报错，不静默回落到覆盖 data 的行为
+func TestClientNodeOutputToInvalid(t *testing.T) {
+	var node ClientNode
+	config := types.NewConfig()
+	err := node.Init(config, types.Configuration{
+		"Server":   "127.0.0.1:6379",
+		"Cmd":      "GET",
+		"Params":   []interface{}{"k"},
+		"OutputTo": "metdata",
+	})
+	assert.NotNil(t, err)
 }
