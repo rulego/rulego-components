@@ -43,10 +43,11 @@ type ClientNodeConfiguration struct {
 	Server string `json:"server" label:"Server" desc:"Redis server address, e.g. 127.0.0.1:6379" required:"true" ref:"primary"`
 	// Password Redis密码
 	Password string `json:"password" label:"Password" desc:"Redis password" ref:"shared"`
-	// DB Redis数据库索引
-	Db int `json:"db" label:"DB" desc:"Redis database index"`
-	// PoolSize 连接池大小
-	PoolSize int `json:"poolSize" label:"Pool Size" desc:"Connection pool size"`
+	// DB Redis数据库索引。借共享连接时无效（db 是 go-redis client 级选项，
+	// 由共享节点配置决定；多库场景为每个库建一个共享节点）
+	Db int `json:"db" label:"DB" desc:"Redis database index. Ignored when borrowing a shared connection (determined by the shared node config); create one shared node per db for multi-db use" ref:"shared"`
+	// PoolSize 连接池大小，借共享连接时无效（由共享节点配置决定）
+	PoolSize int `json:"poolSize" label:"Pool Size" desc:"Connection pool size. Ignored when borrowing a shared connection (determined by the shared node config)" ref:"shared"`
 	// Cmd Redis命令，支持${metadata.key}和${data}变量替换
 	Cmd string `json:"cmd" label:"Command" desc:"Redis command, e.g. GET, SET. Supports ${metadata.key} substitution" required:"true"`
 	// Params 命令参数，支持${metadata.key}和${data}变量替换

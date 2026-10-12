@@ -27,10 +27,11 @@ type PublisherNodeConfiguration struct {
 	Server string `json:"server" label:"Server" desc:"Redis server address, e.g. 127.0.0.1:6379" required:"true" ref:"primary"`
 	// Password 密码
 	Password string `json:"password" label:"Password" desc:"Redis password" ref:"shared"`
-	// PoolSize 连接池大小
-	PoolSize int `json:"poolSize" label:"Pool Size" desc:"Connection pool size"`
-	// Db 数据库index
-	Db int `json:"db" label:"DB" desc:"Redis database index"`
+	// PoolSize 连接池大小，借共享连接时无效（由共享节点配置决定）
+	PoolSize int `json:"poolSize" label:"Pool Size" desc:"Connection pool size. Ignored when borrowing a shared connection (determined by the shared node config)" ref:"shared"`
+	// Db 数据库index。借共享连接时无效（db 是 go-redis client 级选项，
+	// 由共享节点配置决定；多库场景为每个库建一个共享节点）
+	Db int `json:"db" label:"DB" desc:"Redis database index. Ignored when borrowing a shared connection (determined by the shared node config); create one shared node per db for multi-db use" ref:"shared"`
 	// Channel 发布频道
 	Channel string `json:"channel" label:"Channel" desc:"Pub/sub channel. Supports ${metadata.key} substitution" required:"true"`
 }

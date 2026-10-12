@@ -38,15 +38,15 @@ func init() {
 // WukongimSenderConfiguration 节点配置
 type WukongimSenderConfiguration struct {
 	Server         string `json:"server" label:"Server" desc:"WuKongIM server address, format: tcp://host:port" required:"true" ref:"primary"`
-	UID            string `json:"uid" label:"UID" desc:"Login user UID" required:"true"`
+	UID            string `json:"uid" label:"UID" desc:"Login user UID" required:"true" ref:"shared"`
 	Token          string `json:"token" label:"Token" desc:"Login authentication token" required:"true" ref:"shared"`
 	ChannelType    string `json:"channelType" label:"Channel Type" desc:"Channel type: 1(personal), 2(group), 3(customer service)"`
 	ChannelID      string `json:"channelId" label:"Channel ID" desc:"Target channel ID, supports ${metadata.key} and ${msg.key} substitution" required:"true"`
-	ConnectTimeout int64  `json:"connectTimeout" label:"Connect Timeout (s)" desc:"Connection timeout in seconds"`
-	ProtoVersion   int    `json:"protoVersion" label:"Proto Version" desc:"Communication protocol version"`
-	PingInterval   int64  `json:"pingInterval" label:"Ping Interval (s)" desc:"Heartbeat interval in seconds"`
-	Reconnect      bool   `json:"reconnect" label:"Reconnect" desc:"Auto-reconnect on disconnect"`
-	AutoAck        bool   `json:"autoAck" label:"Auto Ack" desc:"Auto-acknowledge messages"`
+	ConnectTimeout int64  `json:"connectTimeout" label:"Connect Timeout (s)" desc:"Connection timeout in seconds" ref:"shared"`
+	ProtoVersion   int    `json:"protoVersion" label:"Proto Version" desc:"Communication protocol version" ref:"shared"`
+	PingInterval   int64  `json:"pingInterval" label:"Ping Interval (s)" desc:"Heartbeat interval in seconds" ref:"shared"`
+	Reconnect      bool   `json:"reconnect" label:"Reconnect" desc:"Auto-reconnect on disconnect" ref:"shared"`
+	AutoAck        bool   `json:"autoAck" label:"Auto Ack" desc:"Auto-acknowledge messages" ref:"shared"`
 	NoPersist      bool   `json:"noPersist" label:"No Persist" desc:"Do not persist messages"`
 	SyncOnce       bool   `json:"syncOnce" label:"Sync Once" desc:"Sync send, only online users receive"`
 	RedDot         bool   `json:"redDot" label:"Red Dot" desc:"Show red dot on receiver side"`

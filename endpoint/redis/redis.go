@@ -193,7 +193,9 @@ func (r *ResponseMessage) GetError() error {
 type Config struct {
 	Server   string `json:"server" label:"Server" desc:"Redis server address, format: host:port" required:"true" ref:"primary"`
 	Password string `json:"password" label:"Password" desc:"Redis authentication password" ref:"shared"`
-	Db       int    `json:"db" label:"DB Index" desc:"Redis database index, default is 0"`
+	Db       int    `json:"db" label:"DB Index" desc:"Redis database index, default is 0" ref:"shared"`
+	// PoolSize 连接池大小，0 走 go-redis 默认
+	PoolSize int `json:"poolSize" label:"Pool Size" desc:"Connection pool size, 0 for go-redis default" ref:"shared"`
 }
 
 // Redis Redis接收端端点
@@ -492,6 +494,7 @@ func (x *Redis) initClient() (*redis.Client, error) {
 		Addr:     x.Config.Server,
 		DB:       x.Config.Db,
 		Password: x.Config.Password,
+		PoolSize: x.Config.PoolSize,
 	})
 	return client, client.Ping(context.Background()).Err()
 }

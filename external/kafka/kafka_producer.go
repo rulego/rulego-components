@@ -120,8 +120,8 @@ type NodeConfiguration struct {
 	Topic     string     `json:"topic" label:"Topic" desc:"Publish topic, supports ${metadata.key} and ${msg.key} replacement" required:"true"`
 	Key       string     `json:"key" label:"Key" desc:"Message partition key, supports ${metadata.key} and ${msg.key} replacement"`
 	Partition int32      `json:"partition" label:"Partition" desc:"Partition number, -1 for auto selection"`
-	SASL      SASLConfig `json:"sasl" label:"SASL Auth" desc:"SASL authentication configuration"`
-	TLS       TLSConfig  `json:"tls" label:"TLS" desc:"TLS encryption configuration"`
+	SASL      SASLConfig `json:"sasl" label:"SASL Auth" desc:"SASL authentication configuration" ref:"shared"`
+	TLS       TLSConfig  `json:"tls" label:"TLS" desc:"TLS encryption configuration" ref:"shared"`
 }
 
 // SASLConfig SASL认证配置
