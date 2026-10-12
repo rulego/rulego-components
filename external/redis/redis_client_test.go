@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/test"
 	"github.com/rulego/rulego/test/assert"
@@ -47,6 +48,8 @@ func TestRedisClientNodeOnMsg(t *testing.T) {
 	testRedisClientParamsMixedExpression(t)
 	testRedisClientCmdParamsCombo(t)
 	testRedisClientEdgeCases(t)
+	// cmd 内联引号切分
+	testRedisClientInlineCmdQuotes(t)
 	// outputTo 输出位置
 	testRedisClientOutputToMetadata(t)
 }
@@ -683,4 +686,77 @@ func TestClientNodeOutputToInvalid(t *testing.T) {
 		"OutputTo": "metdata",
 	})
 	assert.NotNil(t, err)
+}
+
+// 测试cmd内联引号切分：成对引号是空串、引号内空格不切分、裸JSON原样
+func testRedisClientInlineCmdQuotes(t *testing.T) {
+	var node ClientNode
+	config := types.NewConfig()
+	ctx := test.NewRuleContext(config, func(msg types.RuleMsg, relationType string, err2 error) {
+		assert.Equal(t, types.Success, relationType)
+	})
+	run := func(cmd string) {
+		var configuration = make(types.Configuration)
+		configuration["Server"] = "127.0.0.1:6379"
+		configuration["Cmd"] = cmd
+		if err := node.Init(config, configuration); err != nil {
+			t.Fatalf("err=%s", err)
+		}
+		node.OnMsg(ctx, ctx.NewMsg("TEST_MSG_TYPE_AA", types.NewMetadata(), ""))
+		time.Sleep(time.Second)
+	}
+
+	client := redis.NewClient(&redis.Options{Addr: "127.0.0.1:6379"})
+	defer func() {
+		_ = client.Close()
+	}()
+	get := func(key string) string {
+		v, err := client.Get(t.Context(), key).Result()
+		if err != nil {
+			t.Fatalf("get %s err=%s", key, err)
+		}
+		return v
+	}
+
+	run(`SET inline:quotes:empty ""`)
+	assert.Equal(t, "", get("inline:quotes:empty"))
+	run(`SET inline:quotes:spaced "a b"`)
+	assert.Equal(t, "a b", get("inline:quotes:spaced"))
+	run(`SET inline:quotes:json {"a":1}`)
+	assert.Equal(t, `{"a":1}`, get("inline:quotes:json"))
+}
+
+func TestSplitCmdTokens(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want []string
+	}{
+		{"普通命令", "SET key value", []string{"SET", "key", "value"}},
+		{"成对双引号是空串", `SET mes:line:current ""`, []string{"SET", "mes:line:current", ""}},
+		{"成对单引号是空串", `SET k ''`, []string{"SET", "k", ""}},
+		{"双引号剥壳", `SET k "abc"`, []string{"SET", "k", "abc"}},
+		{"单引号剥壳", `SET k 'abc'`, []string{"SET", "k", "abc"}},
+		{"引号内空格不切分", `SET k "a b c"`, []string{"SET", "k", "a b c"}},
+		{"单引号包裹带空格JSON", `JSON.SET k $ '{"a": 1}'`, []string{"JSON.SET", "k", "$", `{"a": 1}`}},
+		{"裸紧凑JSON不受影响", `SET k {"a":1}`, []string{"SET", "k", `{"a":1}`}},
+		{"token中间引号是字面量", `SET k {"a":1}b`, []string{"SET", "k", `{"a":1}b`}},
+		{"反斜杠是字面量", `SET k C:\dir\file`, []string{"SET", "k", `C:\dir\file`}},
+		{"嵌套异类引号剥外层", `SET k "'x'"`, []string{"SET", "k", `'x'`}},
+		{"未闭合引号原样保留", `SET k "abc`, []string{"SET", "k", `"abc`}},
+		{"部分包裹不剥壳", `SET k "a"b`, []string{"SET", "k", `"a"b`}},
+		{"多个引号参数各自剥壳", `SET k "a" 'b'`, []string{"SET", "k", "a", "b"}},
+		{"首尾空白", "  SET key value  ", []string{"SET", "key", "value"}},
+		{"连续空白", "SET\tkey\n\rvalue", []string{"SET", "key", "value"}},
+		{"空白输入", "   ", nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := splitCmdTokens(c.in)
+			assert.Equal(t, len(c.want), len(got))
+			for i := range c.want {
+				assert.Equal(t, c.want[i], got[i])
+			}
+		})
+	}
 }

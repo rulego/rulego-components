@@ -192,7 +192,7 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 		} else {
 			cmdStr := str.ToString(cmdResult)
 			// 解析命令字符串，支持"SET key value"格式
-			cmdParts := strings.Fields(strings.TrimSpace(cmdStr))
+			cmdParts := splitCmdTokens(cmdStr)
 			if len(cmdParts) == 0 {
 				ctx.TellFailure(msg, fmt.Errorf("empty command"))
 				return
@@ -272,6 +272,57 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 
 func (x *ClientNode) Destroy() {
 	_ = x.SharedNode.Close()
+}
+
+// splitCmdTokens 按空白切分内联命令。引号（单/双）内的空白不切分，
+// 被一对同类引号整体包裹的 token 剥掉首尾引号（"" 即空串），
+// token 中间的引号与反斜杠是字面量，不破坏裸 JSON 与 Windows 路径。
+func splitCmdTokens(s string) []string {
+	var tokens []string
+	var cur []byte
+	var quote byte
+	flush := func() {
+		if len(cur) > 0 {
+			tokens = append(tokens, unquoteWrapped(string(cur)))
+			cur = cur[:0]
+		}
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case quote != 0:
+			cur = append(cur, c)
+			if c == quote {
+				quote = 0
+			}
+		case c == '"' || c == '\'':
+			quote = c
+			cur = append(cur, c)
+		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
+			flush()
+		default:
+			cur = append(cur, c)
+		}
+	}
+	flush()
+	return tokens
+}
+
+// unquoteWrapped 剥掉整体包裹 token 的一对同类引号，其余情况原样返回
+func unquoteWrapped(tok string) string {
+	if len(tok) < 2 {
+		return tok
+	}
+	q := tok[0]
+	if (q != '"' && q != '\'') || tok[len(tok)-1] != q {
+		return tok
+	}
+	for i := 1; i < len(tok)-1; i++ {
+		if tok[i] == q {
+			return tok
+		}
+	}
+	return tok[1 : len(tok)-1]
 }
 
 // Desc returns the component description
