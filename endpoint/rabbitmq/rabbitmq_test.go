@@ -17,7 +17,9 @@
 package rabbitmq
 
 import (
+	"fmt"
 	"os"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -37,6 +39,9 @@ const (
 	exchange      = "rulego.topic.test"
 	topicRequest  = "device.msg.request"
 	topicResponse = "device.msg.response"
+	// namedExchange 与 TestEndpoint 的 exchange 隔离：TestEndpoint 不关闭端点，
+	// 其匿名队列消费者在整个测试进程期间存活并绑定同一交换机
+	namedExchange = "rulego.named.queue.test"
 )
 
 func TestEndpoint(t *testing.T) {
@@ -301,4 +306,135 @@ func channelOf(x *RabbitMQ, routerId string) *amqp.Channel {
 	x.RLock()
 	defer x.RUnlock()
 	return x.channels[routerId]
+}
+
+// TestQueueDeclareOptions 队列声明参数推导：匿名队列强制独占保持历史行为，
+// 具名队列默认非独占、可显式覆盖
+func TestQueueDeclareOptions(t *testing.T) {
+	x := &RabbitMQ{}
+	name, exclusive := x.queueDeclareOptions()
+	assert.Equal(t, "", name)
+	assert.True(t, exclusive)
+
+	x.Config.QueueName = "orders.queue"
+	name, exclusive = x.queueDeclareOptions()
+	assert.Equal(t, "orders.queue", name)
+	assert.False(t, exclusive)
+
+	x.Config.Exclusive = true
+	_, exclusive = x.queueDeclareOptions()
+	assert.True(t, exclusive)
+}
+
+// TestNamedQueueOfflineBuffering 固定队列名场景：消费者离线后队列保留、
+// 后续消息堆积，消费者重新上线后继续消费
+func TestNamedQueueOfflineBuffering(t *testing.T) {
+	if os.Getenv("SKIP_RABBITMQ_TESTS") == "true" {
+		t.Skip("Skipping RabbitMQ tests")
+	}
+	server := os.Getenv("RABBITMQ_URL")
+	if server == "" {
+		server = "amqp://guest:guest@localhost:5672/"
+	}
+	const queueName = "rulego.test.named.queue"
+
+	config := rulego.NewConfig(types.WithDefaultPool())
+	var count int32
+	var msgLog struct {
+		mu sync.Mutex
+		ev []string
+	}
+	record := func(body string, delivery amqp.Delivery) {
+		msgLog.mu.Lock()
+		msgLog.ev = append(msgLog.ev, fmt.Sprintf("body=%s redelivered=%v", body, delivery.Redelivered))
+		msgLog.mu.Unlock()
+	}
+	newEp := func() endpoint.Endpoint {
+		ep, err := endpoint.Registry.New(Type, config, Config{
+			Server:     server,
+			Exchange:   namedExchange,
+			QueueName:  queueName,
+			Durable:    true,
+			AutoDelete: false,
+		})
+		if err != nil {
+			t.Skipf("Failed to create RabbitMQ endpoint (RabbitMQ may not be available): %v", err)
+		}
+		router := endpoint.NewRouter().From(topicRequest).Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
+			rm := exchange.In.(*RequestMessage)
+			record(string(rm.Body()), rm.delivery)
+			atomic.AddInt32(&count, 1)
+			return true
+		}).End()
+		if _, err = ep.AddRouter(router); err != nil {
+			t.Skipf("Failed to add router (RabbitMQ server may not be available): %v", err)
+		}
+		if err = ep.Start(); err != nil {
+			t.Skipf("Failed to start endpoint: %v", err)
+		}
+		return ep
+	}
+	publish := func(body string) {
+		conn, err := amqp.Dial(server)
+		if err != nil {
+			t.Skipf("RabbitMQ server not available: %v", err)
+		}
+		defer conn.Close()
+		ch, err := conn.Channel()
+		if err != nil {
+			t.Fatalf("Failed to create channel: %v", err)
+		}
+		defer ch.Close()
+		if err = ch.Publish(namedExchange, topicRequest, false, false,
+			amqp.Publishing{
+				ContentType:  ContentTypeJson,
+				Body:         []byte(body),
+				DeliveryMode: amqp.Persistent,
+			}); err != nil {
+			t.Fatalf("Failed to publish message: %v", err)
+		}
+	}
+	waitFor := func(n int32) {
+		deadline := time.Now().Add(10 * time.Second)
+		for atomic.LoadInt32(&count) < n {
+			if time.Now().After(deadline) {
+				t.Fatalf("timeout waiting for count=%d, got %d", n, atomic.LoadInt32(&count))
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+
+	// 消费者在线：正常消费
+	ep1 := newEp()
+	publish("message-1")
+	waitFor(1)
+
+	// 消费者离线：队列保留，消息堆积
+	_ = ep1.(*RabbitMQ).Close()
+	conn, err := amqp.Dial(server)
+	if err != nil {
+		t.Skipf("RabbitMQ server not available: %v", err)
+	}
+	ch, err := conn.Channel()
+	if err != nil {
+		t.Fatalf("Failed to create channel: %v", err)
+	}
+	// passive 声明验证队列仍存在（消费者离线未被删除）
+	q, err := ch.QueueDeclarePassive(queueName, true, false, false, false, nil)
+	if err != nil {
+		t.Fatalf("named queue should survive consumer shutdown: %v", err)
+	}
+	assert.Equal(t, queueName, q.Name)
+	_ = ch.Close()
+	_ = conn.Close()
+	publish("message-2")
+
+	// 消费者重新上线：继续消费离线期间堆积的消息
+	ep2 := newEp()
+	defer ep2.(*RabbitMQ).Close()
+	waitFor(2)
+	msgLog.mu.Lock()
+	ev := append([]string(nil), msgLog.ev...)
+	msgLog.mu.Unlock()
+	assert.Equal(t, []string{"body=message-1 redelivered=false", "body=message-2 redelivered=false"}, ev)
 }

@@ -218,8 +218,10 @@ type Config struct {
 	Server       string `json:"server" label:"Server" desc:"RabbitMQ server address, format: amqp://user:pass@host:port/" required:"true" ref:"primary"`
 	Exchange     string `json:"exchange" label:"Exchange" desc:"RabbitMQ exchange name" required:"true"`
 	ExchangeType string `json:"exchangeType" label:"Exchange Type" desc:"Exchange type: direct, topic, fanout, headers, default is topic"`
-	Durable      bool   `json:"durable" label:"Durable" desc:"Whether the exchange persists across server restarts"`
-	AutoDelete   bool   `json:"autoDelete" label:"Auto Delete" desc:"Whether the exchange is auto-deleted when no queues are bound"`
+	Durable      bool   `json:"durable" label:"Durable" desc:"Whether the exchange and queue persist across server restarts"`
+	AutoDelete   bool   `json:"autoDelete" label:"Auto Delete" desc:"Auto-delete the exchange when no queues are bound, or the queue when the last consumer disconnects; keep false to buffer messages while the consumer is offline"`
+	QueueName    string `json:"queueName" label:"Queue Name" desc:"Custom queue name, empty for an auto-generated exclusive temp queue deleted on connection close"`
+	Exclusive    bool   `json:"exclusive" label:"Exclusive" desc:"Whether the queue is restricted to this connection and deleted when it closes; forced true when queueName is empty"`
 }
 
 type RabbitMQ struct {
@@ -265,6 +267,8 @@ func (x *RabbitMQ) New() types.Node {
 			ExchangeType: "topic",
 			Durable:      true,
 			AutoDelete:   true,
+			QueueName:    "",
+			Exclusive:    false,
 		},
 		channels: make(map[string]*amqp.Channel),
 		gens:     make(map[string]uint64),
@@ -683,8 +687,8 @@ func (x *RabbitMQ) initClient() (*amqp.Connection, error) {
 	return conn, err
 }
 
-// queueBind 声明匿名 exclusive 队列并绑定路由键。队列随连接关闭而删除，
-// 主备切换窗口内发布的消息没有队列承接会丢失，无 at-least-once 保证
+// queueBind 声明队列并绑定路由键。queueName 为空时沿用历史行为：匿名
+// exclusive 队列随连接关闭删除，消息无离线堆积能力
 func (x *RabbitMQ) queueBind(key string) (*amqp.Channel, *amqp.Queue, error) {
 	conn, err := x.SharedNode.GetSafely()
 	if err != nil {
@@ -694,7 +698,8 @@ func (x *RabbitMQ) queueBind(key string) (*amqp.Channel, *amqp.Queue, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	q, err := ch.QueueDeclare("", x.Config.Durable, x.Config.AutoDelete, true, false, nil)
+	name, exclusive := x.queueDeclareOptions()
+	q, err := ch.QueueDeclare(name, x.Config.Durable, x.Config.AutoDelete, exclusive, false, nil)
 	if err != nil {
 		_ = ch.Close()
 		return nil, nil, err
@@ -724,6 +729,14 @@ func (x *RabbitMQ) queueBind(key string) (*amqp.Channel, *amqp.Queue, error) {
 		}
 	}
 	return ch, &q, nil
+}
+
+// queueDeclareOptions 返回队列声明的名称与独占标志：匿名队列按 AMQP 惯例必须独占
+func (x *RabbitMQ) queueDeclareOptions() (string, bool) {
+	if x.Config.QueueName == "" {
+		return "", true
+	}
+	return x.Config.QueueName, x.Config.Exclusive
 }
 
 func (x *RabbitMQ) handlerMsg(router endpointApi.Router, ch *amqp.Channel, msg amqp.Delivery) {

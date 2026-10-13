@@ -127,6 +127,8 @@ type ClientNodeConfiguration struct {
 	Durable bool `json:"durable" label:"Durable" desc:"true=persistent exchange survives server restart"`
 	//表示交换器是否自动删除
 	AutoDelete bool `json:"autoDelete" label:"Auto Delete" desc:"true=auto-delete when no queues bound"`
+	//表示消息是否持久化（delivery mode 2），目标队列须同为持久化才能在 broker 重启后保留消息
+	Persistent bool `json:"persistent" label:"Persistent" desc:"true=publish messages with delivery mode 2 so they survive a broker restart; the target queue must also be durable"`
 }
 
 type ClientNode struct {
@@ -153,6 +155,7 @@ func (x *ClientNode) New() types.Node {
 		ExchangeType: "topic",
 		Durable:      true,
 		AutoDelete:   true,
+		Persistent:   false,
 		Key:          "device.msg.request",
 	}}
 }
@@ -210,12 +213,15 @@ func (x *ClientNode) OnMsg(ctx types.RuleContext, msg types.RuleMsg) {
 	if err == nil {
 		defer x.channelPool.Put(ch)
 
-		err = ch.Publish(x.Config.Exchange, key, false, false,
-			amqp.Publishing{
-				ContentType:     x.getContentType(msg),
-				ContentEncoding: KeyUTF8,
-				Body:            []byte(msg.GetData()),
-			})
+		publishing := amqp.Publishing{
+			ContentType:     x.getContentType(msg),
+			ContentEncoding: KeyUTF8,
+			Body:            []byte(msg.GetData()),
+		}
+		if x.Config.Persistent {
+			publishing.DeliveryMode = amqp.Persistent
+		}
+		err = ch.Publish(x.Config.Exchange, key, false, false, publishing)
 	}
 
 	if err != nil {
