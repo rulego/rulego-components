@@ -36,6 +36,20 @@ import (
 var testdataFolder = "../../testdata"
 var redisServer = "127.0.0.1:6379"
 
+// waitDelivery 轮询等待投递入账。-race 高载下固定 200ms 等待可能不够，
+// CI 偶发拿 0 计数误报
+func waitDelivery(t *testing.T, count *int32, want int32) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if atomic.LoadInt32(count) >= want {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	assert.Equal(t, want, atomic.LoadInt32(count))
+}
+
 func TestRedisEndpoint(t *testing.T) {
 	// 检查是否有可用的 Redis 服务器
 	redisURL := os.Getenv("REDIS_URL")
@@ -125,8 +139,7 @@ func TestRedisEndpoint(t *testing.T) {
 	// 发布消息到device.msg.request
 	redisClient.Publish(context.TODO(), "device.msg.request", "test message")
 	// 等待消息处理
-	time.Sleep(time.Millisecond * 200)
-	assert.Equal(t, int32(2), atomic.LoadInt32(&count))
+	waitDelivery(t, &count, 2)
 	atomic.StoreInt32(&count, 0)
 
 	router3 := endpoint.NewRouter().SetId("router3").From("device.msg.request").Process(func(router endpointApi.Router, exchange *endpointApi.Exchange) bool {
@@ -151,16 +164,14 @@ func TestRedisEndpoint(t *testing.T) {
 	// 发布消息到device.msg.request
 	redisClient.Publish(context.TODO(), "device.msg.request", "test message")
 	// 等待消息处理
-	time.Sleep(time.Millisecond * 200)
-	assert.Equal(t, int32(4), atomic.LoadInt32(&count))
+	waitDelivery(t, &count, 4)
 	atomic.StoreInt32(&count, 0)
 
 	_ = ep.RemoveRouter("router3")
 
 	redisClient.Publish(context.TODO(), "device.msg.request", "test message")
 	// 等待消息处理
-	time.Sleep(time.Millisecond * 200)
-	assert.Equal(t, int32(2), atomic.LoadInt32(&count))
+	waitDelivery(t, &count, 2)
 	atomic.StoreInt32(&count, 0)
 
 	_ = ep.RemoveRouter("router1")
@@ -175,8 +186,7 @@ func TestRedisEndpoint(t *testing.T) {
 
 	redisClient.Publish(context.TODO(), "device.msg.request", "test message")
 	// 等待消息处理
-	time.Sleep(time.Millisecond * 200)
-	assert.Equal(t, int32(2), atomic.LoadInt32(&count))
+	waitDelivery(t, &count, 2)
 	atomic.StoreInt32(&count, 0)
 }
 
