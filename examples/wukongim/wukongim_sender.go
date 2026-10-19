@@ -41,7 +41,7 @@ func main() {
 	metaData.PutValue("channelType", "2")
 	msg := types.NewMsg(0, "", types.JSON, metaData, `{"orderNo":"1234567890","title":"冰美式不加糖","imgUrl":"https://pic2.zhimg.com/v2-2d6108b9a038c6b6af6648471bb5e0fa_xll.jpg?source=32738c0c","num":1,"price":8,"type":56}`)
 
-	ruleEngine.OnMsg(msg, types.WithEndFunc(func(ctx types.RuleContext, msg types.RuleMsg, err error) {
+	ruleEngine.OnMsg(msg, types.WithOnEnd(func(ctx types.RuleContext, msg types.RuleMsg, err error, relationType string) {
 		fmt.Println("msg处理结果=====")
 		//得到规则链处理结果
 		fmt.Println(msg, err)
